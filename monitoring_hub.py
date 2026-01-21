@@ -986,7 +986,7 @@ def _choose_region(selected_profiles):
 
 
 def _pick_profiles(allow_multiple=True):
-    source = _select_prompt("Pilih sumber profil", ["Group (SSO)", "Manual"])
+    source = _select_prompt("Pilih sumber profil", ["Group (SSO)", "All Account"])
     if not source:
         return [], None, True
 
