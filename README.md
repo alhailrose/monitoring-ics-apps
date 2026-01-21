@@ -7,6 +7,25 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
 - Akses AWS (SSO atau kredensial) sesuai profil di `~/.aws/config`
 - Git + akses ke repo (SSH atau HTTPS)
 - pipx (disarankan untuk instalasi tim) atau venv lokal
+- AWS CLI terpasang dan terkonfigurasi
+
+## Install & konfigurasi AWS CLI
+1) Pasang AWS CLI v2 (Linux/WSL): ikuti panduan resmi https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html (curl installer, unzip, sudo install).
+2) Konfigurasi profil (manual):
+   ```
+   aws configure --profile <nama_profil>
+   aws configure set region ap-southeast-3 --profile <nama_profil>
+   ```
+3) Untuk SSO (CLI v2):
+   ```
+   aws configure sso --profile <nama_profil_sso>
+   aws sso login --profile <nama_profil_sso>
+   ```
+4) Pastikan profil yang Anda pakai ada di `~/.aws/config` dan sesuai daftar `PROFILE_GROUPS` di kode. Jika butuh acuan config milik tim (mis. laptop pc Bagus Syafiq), salin/seragamkan entri profilnya.
+5) Uji kredensial:
+   ```
+   aws sts get-caller-identity --profile <nama_profil>
+   ```
 
 ## Konfigurasi GitHub SSH (WSL/Linux)
 1) Pastikan paket SSH:
