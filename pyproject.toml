@@ -1,0 +1,22 @@
+[project]
+name = "monitoring-hub"
+version = "0.1.0"
+description = "Centralized AWS monitoring checks with interactive CLI"
+requires-python = ">=3.9"
+dependencies = [
+  "boto3>=1.34",
+  "questionary>=2.0",
+  "rich>=13.7",
+  "tzdata; platform_system == 'Windows'",
+]
+
+[project.scripts]
+monitoring-hub = "monitoring_hub:main"
+
+[tool.setuptools]
+py-modules = ["monitoring_hub"]
+packages = ["checks"]
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"

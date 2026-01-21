@@ -1,0 +1,4 @@
+boto3>=1.34
+questionary>=2.0
+rich>=13.7
+tzdata; platform_system == "Windows"
