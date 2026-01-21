@@ -1177,15 +1177,12 @@ Available checks: health, cost, guardduty, cloudwatch, notifications, backup, rd
     
     args = parser.parse_args()
 
-    if args.interactive:
+    # Default ke mode interaktif jika tidak ada argumen --check/--all
+    if args.interactive or (not args.check and not args.all):
         run_interactive()
         sys.exit(0)
 
     # Validate arguments
-    if not args.check and not args.all:
-        parser.print_help()
-        sys.exit(1)
-    
     if args.group and args.sso:
         print("ERROR: Use only one of --group or --sso")
         sys.exit(1)
