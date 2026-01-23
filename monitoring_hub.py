@@ -17,6 +17,8 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
+
+from checks import cloudwatch_cost_report as cw_cost_report
 from checks.health_events import HealthChecker
 from checks.cost_anomalies import CostAnomalyChecker
 from checks.guardduty import GuardDutyChecker
@@ -401,31 +403,44 @@ def build_whatsapp_backup(date_str, all_results):
         expired = res.get('expired_jobs', 0)
 
         if not issues:
-            parts = []
-            if res.get('total_jobs', 0) > 0:
-                parts.append(f"AWS Backup: {res.get('completed_jobs',0)}/{res.get('total_jobs',0)}")
-            if res.get('vaults'):
-                total_rp_24h = sum(v.get('recovery_points_24h', 0) for v in res.get('vaults', []))
-                parts.append(f"Vault: {total_rp_24h} RP 24h")
-            if res.get('rds_snapshots_24h', 0) > 0:
-                parts.append(f"RDS: {res.get('rds_snapshots_24h')} snapshots")
-            activity = " | ".join(parts) if parts else "aktivitas 24h"
-            completed_lines.append(f"- {display} - {acct} ({activity})")
+            completed_lines.append(f"- {display} - {acct}")
         else:
-            if failed:
-                failed_lines.append(f"- {display} - {acct} => {failed} failed job(s)")
-            if expired:
-                expired_lines.append(f"- {display} - {acct} => {expired} expired job(s)")
+            # Get failed/expired job details
+            job_details = res.get('job_details', [])
+            failed_jobs = [j for j in job_details if j.get('state') == 'FAILED']
+            expired_jobs = [j for j in job_details if j.get('state') == 'EXPIRED']
+            
+            if failed_jobs:
+                for job in failed_jobs:
+                    ts_wib = job.get("created_wib")
+                    ts_str = ts_wib.strftime('%d-%m-%Y %H:%M WIB') if hasattr(ts_wib, 'strftime') else str(ts_wib)
+                    reason = job.get('reason', 'No reason')
+                    resource = job.get('resource_label', 'N/A')
+                    failed_lines.append(f"- {display} - {acct}")
+                    failed_lines.append(f"  Resource: {resource}")
+                    failed_lines.append(f"  Time: {ts_str}")
+                    failed_lines.append(f"  Reason: {reason}")
+            
+            if expired_jobs:
+                for job in expired_jobs:
+                    ts_wib = job.get("created_wib")
+                    ts_str = ts_wib.strftime('%d-%m-%Y %H:%M WIB') if hasattr(ts_wib, 'strftime') else str(ts_wib)
+                    reason = job.get('reason', 'No reason')
+                    resource = job.get('resource_label', 'N/A')
+                    expired_lines.append(f"- {display} - {acct}")
+                    expired_lines.append(f"  Resource: {resource}")
+                    expired_lines.append(f"  Time: {ts_str}")
+                    expired_lines.append(f"  Reason: {reason}")
+            
+            # Other issues (vault gaps, etc)
             for i in issues:
                 if "failed" in i or "expired" in i:
                     continue
                 failed_lines.append(f"- {display} - {acct} => {i}")
 
-    completed_block = "\r\n".join(completed_lines) if completed_lines else "- (tidak ada akun dengan status OK)"
+    completed_block = "\r\n".join(completed_lines) if completed_lines else "- (tidak ada)"
     failed_block = "\r\n".join(failed_lines) if failed_lines else "- (tidak ada)"
     expired_block = "\r\n".join(expired_lines) if expired_lines else "- (tidak ada)"
-    vault_gap_block = "\r\n".join(vault_gap_lines) if vault_gap_lines else "- (tidak ada)"
-    nobackup_block = "\r\n".join(nobackup_lines) if nobackup_lines else "- (tidak ada)"
 
     return (
         "Selamat Pagi Team,\r\n"
@@ -436,11 +451,7 @@ def build_whatsapp_backup(date_str, all_results):
         "Failed:\r\n"
         f"{failed_block}\r\n\r\n"
         "Expired:\r\n"
-        f"{expired_block}\r\n\r\n"
-        "Vault Gaps (tidak ada RP 24h):\r\n"
-        f"{vault_gap_block}\r\n\r\n"
-        "No Backups:\r\n"
-        f"{nobackup_block}\r\n"
+        f"{expired_block}\r\n"
     ).strip()
 
 
@@ -1025,13 +1036,121 @@ def _pause():
         return
 
 
+def _format_cw_plain(rows, names, start, end, region, top):
+    """Teams-friendly plain text (fixed width) for CloudWatch cost report."""
+    rows_sorted = sorted(rows, key=lambda r: r["cost"], reverse=True)
+    if top > 0:
+        rows_sorted = rows_sorted[:top]
+
+    lines = []
+    lines.append(f"CloudWatch Cost & Usage ({region})")
+    lines.append(f"Periode: {start} s/d {(datetime.fromisoformat(end) - timedelta(days=1)).date()} (end exclusive)")
+    lines.append("")
+    lines.append(f"{'#':>2}  {'Account':<12} {'Name':<38} {'Cost USD':>9} {'UsageQty':>12}")
+
+    total_cost = sum(r["cost"] for r in rows)
+    total_usage = sum(r["usage"] for r in rows)
+
+    for idx, r in enumerate(rows_sorted, start=1):
+        acct = r["account"]
+        name = (names.get(acct, "") or "")[:38]
+        cost = float(r["cost"])
+        usage = float(r["usage"])
+        lines.append(f"{idx:>2}  {acct:<12} {name:<38} {cost:>9.2f} {usage:>12,.2f}")
+
+    lines.append(f"{'':>2}  {'':<12} {'TOTAL':<38} {float(total_cost):>9.2f} {float(total_usage):>12,.2f}")
+    return "\n".join(lines)
+
+
+def run_cloudwatch_cost_report():
+    """Interactive CloudWatch cost & usage report (Jakarta default)."""
+    profile = "ksni-master"
+    region = _choose_region([]) or "ap-southeast-3"
+
+    fmt_choice = _select_prompt(
+        "Pilih format output",
+        [
+            "Teams (plain text)",
+            "Markdown table",
+            "Table (terminal)",
+        ],
+        default="Teams (plain text)",
+    )
+    if not fmt_choice:
+        return
+
+    # Top N
+    try:
+        top_str = questionary.text("Top berapa akun? (default 10)", default="10", style=CUSTOM_STYLE).ask()
+    except KeyboardInterrupt:
+        _handle_interrupt(exit_direct=True)
+        return
+    try:
+        top_n = int(top_str) if top_str else 10
+    except ValueError:
+        top_n = 10
+
+    # Date range defaults to MTD
+    start = datetime.now().date().replace(day=1)
+    end = datetime.now().date() + timedelta(days=1)
+
+    try:
+        session = boto3.Session(profile_name=profile)
+        names = cw_cost_report.fetch_account_names(session)
+        rows = cw_cost_report.fetch_cost_usage(session, (start.isoformat(), end.isoformat()), region)
+    except (BotoCoreError, ClientError) as exc:
+        console.print(f"[red]Gagal mengambil data Cost Explorer: {exc}[/red]")
+        return
+    except Exception as exc:
+        console.print(f"[red]Error tak terduga: {exc}[/red]")
+        return
+
+    if fmt_choice == "Table (terminal)":
+        table = cw_cost_report.format_table(rows, names, start.isoformat(), end.isoformat(), region, top_n)
+        console.print(table)
+    elif fmt_choice == "Markdown table":
+        md = cw_cost_report.format_markdown(rows, names, start.isoformat(), end.isoformat(), region, top_n)
+        console.print(md)
+    else:  # Teams plain text
+        text = _format_cw_plain(rows, names, start.isoformat(), end.isoformat(), region, top_n)
+        console.print(text)
+
+
+def run_arbel_check():
+    """Run Arbel-specific checks (Backup + RDS for aryanoble accounts)."""
+    arbel_actions = [
+        questionary.Choice(title="Backup check · semua akun aryanoble", value="backup"),
+        questionary.Choice(title="RDS check · connect-prod & cis-erha", value="rds"),
+    ]
+    
+    try:
+        choice = _select_prompt("Pilih Arbel check", arbel_actions)
+    except KeyboardInterrupt:
+        _handle_interrupt(exit_direct=True)
+        return
+    
+    if not choice:
+        return
+    
+    region = "ap-southeast-3"
+    
+    if choice == "backup":
+        # All aryanoble-backup accounts
+        profiles = list(PROFILE_GROUPS['aryanoble-backup'].keys())
+        run_group_specific('backup', profiles, region, group_name='aryanoble-backup')
+    elif choice == "rds":
+        # Only connect-prod and cis-erha
+        profiles = ['connect-prod', 'cis-erha']
+        run_group_specific('rds', profiles, region, group_name='aryanoble-backup')
+
+
 def run_interactive():
     """Interactive menu loop; returns to main menu after each action."""
     quick_actions = [
         questionary.Choice(title="Single check · cek satu profil", value="single"),
         questionary.Choice(title="All checks · ringkas banyak profil", value="all"),
-        questionary.Choice(title="Backup report · WhatsApp", value="backup"),
-        questionary.Choice(title="RDS report · WhatsApp", value="rds"),
+        questionary.Choice(title="Arbel check · backup & RDS aryanoble", value="arbel"),
+        questionary.Choice(title="CloudWatch cost report (Jakarta)", value="cw_cost"),
     ]
 
     while True:
@@ -1043,6 +1162,15 @@ def run_interactive():
             break
         if not main_choice:
             break
+
+        if main_choice == "arbel":
+            run_arbel_check()
+            _pause()
+            continue
+        if main_choice == "cw_cost":
+            run_cloudwatch_cost_report()
+            _pause()
+            continue
 
         if main_choice == "single":
             try:
@@ -1086,36 +1214,6 @@ def run_interactive():
             if region is None:
                 continue
             run_all_checks(profiles, region, group_name=group_choice)
-            _pause()
-            continue
-
-        if main_choice == "backup":
-            profiles, group_choice, back = _pick_profiles(allow_multiple=True)
-            if back:
-                continue
-            if not profiles:
-                console.print("[bold red]ERROR[/bold red]: Tidak ada profil dipilih.")
-                _pause()
-                continue
-            region = _choose_region(profiles)
-            if region is None:
-                continue
-            run_group_specific('backup', profiles, region, group_name=group_choice)
-            _pause()
-            continue
-
-        if main_choice == "rds":
-            profiles, group_choice, back = _pick_profiles(allow_multiple=True)
-            if back:
-                continue
-            if not profiles:
-                console.print("[bold red]ERROR[/bold red]: Tidak ada profil dipilih.")
-                _pause()
-                continue
-            region = _choose_region(profiles)
-            if region is None:
-                continue
-            run_group_specific('rds', profiles, region, group_name=group_choice)
             _pause()
             continue
 

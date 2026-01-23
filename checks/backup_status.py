@@ -221,22 +221,42 @@ class BackupStatusChecker(BaseChecker):
         lines.append("AWS BACKUP STATUS")
         lines.append(f"Region: {results.get('region')}")
         if results.get("checked_at_utc"):
+            checked_wib = results['checked_at_utc'].astimezone(JAKARTA_TZ)
+            window_wib = results['window_start_utc'].astimezone(JAKARTA_TZ)
             lines.append(
-                f"Checked at: {results['checked_at_utc'].strftime('%Y-%m-%d %H:%M:%S UTC')} | Window start: {results['window_start_utc'].strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                f"Checked at: {checked_wib.strftime('%Y-%m-%d %H:%M WIB')}"
+            )
+            lines.append(
+                f"Window: {window_wib.strftime('%Y-%m-%d %H:%M')} - {checked_wib.strftime('%Y-%m-%d %H:%M WIB')}"
             )
         lines.append(
-            f"Jobs (24h): total {results.get('total_jobs', 0)} | completed {results.get('completed_jobs', 0)} | failed {results.get('failed_jobs', 0)} | expired {results.get('expired_jobs', 0)}"
+            f"Jobs: total {results.get('total_jobs', 0)} | completed {results.get('completed_jobs', 0)} | failed {results.get('failed_jobs', 0)} | expired {results.get('expired_jobs', 0)}"
         )
 
-        # List sample job details (up to 5)
+        # Show failed/expired jobs first with details
         details = results.get("job_details", [])
-        if details:
+        failed_jobs = [j for j in details if j.get('state') in ['FAILED', 'EXPIRED']]
+        if failed_jobs:
             lines.append("")
-            lines.append("Recent jobs (24h, up to 5):")
-            for j in details[:5]:
+            lines.append(f"⚠️ FAILED/EXPIRED JOBS ({len(failed_jobs)}):")
+            for j in failed_jobs:
                 ts_wib = j.get("created_wib")
                 ts_str = ts_wib.strftime('%Y-%m-%d %H:%M WIB') if hasattr(ts_wib, 'strftime') else str(ts_wib)
-                lines.append(f"- {j.get('state', '')}: {j.get('resource', '')} at {ts_str}")
+                reason = j.get('reason', 'No reason provided')
+                lines.append(f"- {j.get('state')}: {j.get('resource_label', 'N/A')}")
+                lines.append(f"  Time: {ts_str}")
+                lines.append(f"  Reason: {reason}")
+
+        # List sample successful jobs (up to 3)
+        if details:
+            success_jobs = [j for j in details if j.get('state') == 'COMPLETED'][:3]
+            if success_jobs:
+                lines.append("")
+                lines.append("Recent successful jobs (up to 3):")
+                for j in success_jobs:
+                    ts_wib = j.get("created_wib")
+                    ts_str = ts_wib.strftime('%Y-%m-%d %H:%M WIB') if hasattr(ts_wib, 'strftime') else str(ts_wib)
+                    lines.append(f"- {j.get('resource_label', 'N/A')} at {ts_str}")
 
         # Backup plans listing
         plans = results.get("backup_plans", [])
