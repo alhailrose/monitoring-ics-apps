@@ -390,23 +390,23 @@ def run_interactive():
     # Main menu choices with icons
     main_choices = [
         questionary.Choice(
-            f"{ICONS['single']} Single Check    [dim]Cek satu profil dengan detail[/dim]",
+            f"{ICONS['single']} Single Check    Cek satu profil dengan detail",
             value="single",
         ),
         questionary.Choice(
-            f"{ICONS['all']} All Checks      [dim]Ringkasan multi-profil (parallel)[/dim]",
+            f"{ICONS['all']} All Checks      Ringkasan multi-profil (parallel)",
             value="all",
         ),
         questionary.Choice(
-            f"{ICONS['arbel']} Arbel Check     [dim]Backup & RDS untuk AryaNoble[/dim]",
+            f"{ICONS['arbel']} Arbel Check     Backup & RDS untuk AryaNoble",
             value="arbel",
         ),
         questionary.Choice(
-            f"{ICONS['cost']} Cost Report     [dim]CloudWatch cost & usage[/dim]",
+            f"{ICONS['cost']} Cost Report     CloudWatch cost & usage",
             value="cw_cost",
         ),
         questionary.Choice(
-            f"{ICONS['settings']} Settings        [dim]Konfigurasi & info[/dim]",
+            f"{ICONS['settings']} Settings        Konfigurasi & info",
             value="settings",
         ),
         questionary.Choice(f"{ICONS['exit']} Exit", value="exit"),

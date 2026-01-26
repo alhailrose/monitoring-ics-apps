@@ -112,9 +112,9 @@ class Config:
     """Configuration manager with external file support."""
 
     def __init__(self):
-        self._profile_groups = None
-        self._settings = None
-        self._display_names = None
+        self._profile_groups: dict[str, dict[str, str]] = {}
+        self._settings: dict[str, Any] = {}
+        self._display_names: dict[str, str] = {}
         self._loaded = False
 
     def _load(self):
@@ -134,22 +134,25 @@ class Config:
                     external_config = yaml.safe_load(f) or {}
 
                 # Merge profile groups (external overrides/adds to defaults)
-                if "profile_groups" in external_config:
-                    for group_name, profiles in external_config[
-                        "profile_groups"
-                    ].items():
+                profile_groups = external_config.get("profile_groups")
+                if isinstance(profile_groups, dict):
+                    for group_name, profiles in profile_groups.items():
                         if group_name in self._profile_groups:
-                            self._profile_groups[group_name].update(profiles)
+                            if isinstance(profiles, dict):
+                                self._profile_groups[group_name].update(profiles)
                         else:
-                            self._profile_groups[group_name] = profiles
+                            if isinstance(profiles, dict):
+                                self._profile_groups[group_name] = profiles
 
                 # Merge settings
-                if "defaults" in external_config:
-                    self._settings.update(external_config["defaults"])
+                defaults = external_config.get("defaults")
+                if isinstance(defaults, dict):
+                    self._settings.update(defaults)
 
                 # Merge display names
-                if "display_names" in external_config:
-                    self._display_names.update(external_config["display_names"])
+                display_names = external_config.get("display_names")
+                if isinstance(display_names, dict):
+                    self._display_names.update(display_names)
 
             except yaml.YAMLError as e:
                 print(f"Warning: Failed to parse config file: {e}")
@@ -159,19 +162,19 @@ class Config:
         self._loaded = True
 
     @property
-    def profile_groups(self) -> dict:
+    def profile_groups(self) -> dict[str, dict[str, str]]:
         """Get profile groups (lazy loaded)."""
         self._load()
         return self._profile_groups
 
     @property
-    def settings(self) -> dict:
+    def settings(self) -> dict[str, Any]:
         """Get settings (lazy loaded)."""
         self._load()
         return self._settings
 
     @property
-    def display_names(self) -> dict:
+    def display_names(self) -> dict[str, str]:
         """Get display names (lazy loaded)."""
         self._load()
         return self._display_names
