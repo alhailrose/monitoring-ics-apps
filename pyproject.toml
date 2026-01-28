@@ -1,10 +1,11 @@
 [project]
 name = "monitoring-hub"
-version = "1.3.0"
+version = "1.3.1"
 description = "Centralized AWS monitoring checks with interactive CLI"
 requires-python = ">=3.9"
 dependencies = [
-  "boto3>=1.34",
+  "boto3>=1.34,<1.36",
+  "botocore>=1.34,<1.36",
   "questionary>=2.0",
   "rich>=13.7",
   "pyyaml>=6.0",
