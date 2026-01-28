@@ -74,12 +74,34 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
    ```
    Contoh SSH: `pipx install "git+ssh://git@github.com/alhailrose/monitoring-ics-apps.git@main"`
    Contoh HTTPS (publik/bertok): `pipx install "git+https://github.com/alhailrose/monitoring-ics-apps.git@main"`
-3) Jalankan di folder mana saja:
+
+3) **Untuk profil non-SSO (aws login):** Install wrapper auto-refresh credentials
+   ```bash
+   # Download wrapper
+   curl -o /tmp/monitoring-hub-wrapper https://raw.githubusercontent.com/alhailrose/monitoring-ics-apps/main/scripts/monitoring-hub-wrapper
+   
+   # Install globally
+   sudo cp /tmp/monitoring-hub-wrapper /usr/local/bin/monitoring-hub-wrapper
+   sudo chmod +x /usr/local/bin/monitoring-hub-wrapper
+   
+   # Tambah alias (pilih sesuai shell)
+   echo "alias monitoring-hub='monitoring-hub-wrapper'" >> ~/.zshrc   # untuk zsh
+   echo "alias monitoring-hub='monitoring-hub-wrapper'" >> ~/.bashrc  # untuk bash
+   
+   # Reload shell
+   source ~/.zshrc  # atau source ~/.bashrc
    ```
-   monitoring-hub
+   
+   Wrapper ini otomatis refresh credentials dari `aws login` sebelum jalankan monitoring-hub.
+   Edit `/usr/local/bin/monitoring-hub-wrapper` untuk menambah profil non-SSO di array `AWS_LOGIN_PROFILES`.
+
+4) Jalankan di folder mana saja:
+   ```
+   monitoring-hub --check health --profile myprof
    ```
    (tanpa argumen langsung masuk mode interaktif)
-4) Upgrade ke versi terbaru:
+
+5) Upgrade ke versi terbaru:
    ```
    pipx reinstall "git+<REPO_URL>@<TAG>"   # atau pipx upgrade monitoring-hub jika URL sama
    ```
