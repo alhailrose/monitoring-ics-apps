@@ -788,7 +788,7 @@ def _print_detailed_report(
         lines.append("1. ROUTINE MONITORING: Continue assessment schedule")
 
     # WhatsApp messages for aryanoble
-    if group_name == "aryanoble-backup":
+    if group_name == "Aryanoble":
         date_str_wa = datetime.now(timezone(timedelta(hours=7))).strftime("%d-%m-%Y")
 
         lines.append("")

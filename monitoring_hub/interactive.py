@@ -141,7 +141,7 @@ def _pick_profiles(allow_multiple=True):
 
     if source == "group":
         # Group selection with profile counts
-        mandatory_groups = {"nabati", "master"}
+        mandatory_groups = {"NABATI-KSNI", "Master"}
         group_choices = [
             questionary.Choice(
                 f"{ICONS['dot']} {name} ({len(profs)} profiles){' (mandatory)' if name in mandatory_groups else ''}", 
@@ -343,11 +343,11 @@ def run_arbel_check():
     region = "ap-southeast-3"
 
     if choice == "backup":
-        profiles = list(PROFILE_GROUPS["aryanoble-backup"].keys())
-        run_group_specific("backup", profiles, region, group_name="aryanoble-backup")
+        profiles = list(PROFILE_GROUPS["Aryanoble"].keys())
+        run_group_specific("backup", profiles, region, group_name="Aryanoble")
     elif choice == "rds":
         profiles = ["connect-prod", "cis-erha"]
-        run_group_specific("rds", profiles, region, group_name="aryanoble-backup")
+        run_group_specific("rds", profiles, region, group_name="Aryanoble")
 
 
 def run_settings_menu():
