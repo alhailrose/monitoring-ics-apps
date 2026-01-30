@@ -52,18 +52,32 @@ class NotificationChecker(BaseChecker):
 
         lines = []
         lines.append("AWS NOTIFICATION CENTER")
-        lines.append(f"Today: {results['today_count']} new managed events; {results['regular_count']} regular events")
-        lines.append(f"Total managed events available: {results['total_managed']}")
+        lines.append(f"Today: {results['today_count']} new | Total: {results['total_managed']}")
 
+        # Show today's events if any
         if results['today_events']:
             lines.append("")
-            lines.append("Today's notifications (up to 3):")
-            for event in results['today_events'][:3]:
+            lines.append("🔴 Today's notifications:")
+            for event in results['today_events'][:5]:
                 notif_event = event.get('notificationEvent', {})
                 event_type = notif_event.get('sourceEventMetadata', {}).get('eventType', 'N/A')
                 headline = notif_event.get('messageComponents', {}).get('headline', 'N/A')
+                created = event.get('creationTime', 'N/A')
                 
-                lines.append(f"\n• {event_type}")
-                lines.append(f"  Description: {headline[:200]}...")
+                lines.append(f"\n• [{created}] {event_type}")
+                lines.append(f"  {headline[:150]}...")
+        
+        # Always show latest 3 for context
+        elif results['all_events']:
+            lines.append("")
+            lines.append("Latest notifications (for reference):")
+            for event in results['all_events'][:3]:
+                notif_event = event.get('notificationEvent', {})
+                event_type = notif_event.get('sourceEventMetadata', {}).get('eventType', 'N/A')
+                headline = notif_event.get('messageComponents', {}).get('headline', 'N/A')
+                created = event.get('creationTime', 'N/A')
+                
+                lines.append(f"\n• [{created}] {event_type}")
+                lines.append(f"  {headline[:150]}...")
 
         return "\n".join(lines)

@@ -193,8 +193,8 @@ def main():
 
     # Run checks
     if args.check:
-        # Special handling: allow backup/rds across group for WhatsApp-ready output
-        if args.check in ["backup", "rds"] and len(profiles) > 1:
+        # Special handling: allow backup/rds/notifications across group for WhatsApp-ready output
+        if args.check in ["backup", "rds", "notifications"] and len(profiles) > 1:
             run_group_specific(
                 args.check,
                 profiles,
@@ -206,7 +206,7 @@ def main():
             if len(profiles) > 1:
                 print_error("Individual check mode only supports single profile")
                 print_info(
-                    "Use --all for multiple profiles or use backup/rds with --group"
+                    "Use --all for multiple profiles or use backup/rds/notifications with --group"
                 )
                 sys.exit(1)
             run_individual_check(args.check, profiles[0], resolved_region)
