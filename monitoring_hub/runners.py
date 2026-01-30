@@ -269,7 +269,7 @@ def run_all_checks(
     region: str,
     group_name: Optional[str] = None,
     workers: int = DEFAULT_WORKERS,
-    exclude_backup_rds: bool = False,
+    exclude_backup_rds: bool = True,
 ):
     """Run all checks with parallel execution and detailed text output."""
 
@@ -591,10 +591,19 @@ def _print_detailed_report(
 
     # Notification Center Section
     notif_data = None
+    all_notif_events = []
+    total_today = 0
+    total_managed_all = 0
+    
     for profile, results in all_results.items():
         if "notifications" in results:
-            notif_data = results["notifications"]
-            break
+            notif_result = results["notifications"]
+            if notif_result.get("status") == "success":
+                if notif_data is None:
+                    notif_data = notif_result
+                total_today += notif_result.get("today_count", 0)
+                total_managed_all += notif_result.get("total_managed", 0)
+                all_notif_events.extend(notif_result.get("all_events", []))
 
     lines.append("")
     lines.append("NOTIFICATION CENTER")
@@ -606,15 +615,12 @@ def _print_detailed_report(
         if len(errors_by_check["notifications"]) > 5:
             lines.append(f"  ... and {len(errors_by_check['notifications']) - 5} more")
     elif notif_data:
-        today_count = notif_data.get("today_count", 0)
-        total_managed = notif_data.get("total_managed", 0)
-
-        if today_count == 0:
+        if total_today == 0:
             lines.append(
-                f"Status: No new notifications today ({total_managed} existing available)"
+                f"Status: No new notifications today ({total_managed_all} existing available)"
             )
         else:
-            lines.append(f"Status: {today_count} new notifications detected today")
+            lines.append(f"Status: {total_today} new notifications detected today")
             lines.append("")
             lines.append("Today's Notifications:")
             for event in notif_data.get("today_events", [])[:3]:
@@ -627,6 +633,28 @@ def _print_detailed_report(
                 )
                 lines.append(f"  * Event Type: {event_type}")
                 lines.append(f"    Description: {headline}")
+        
+        # Show all existing notifications from all accounts
+        lines.append("")
+        lines.append(f"[DEBUG] all_notif_events length: {len(all_notif_events)}, total_managed_all: {total_managed_all}")
+        if len(all_notif_events) > 0:
+            # Sort by creation time (newest first)
+            sorted_events = sorted(all_notif_events, key=lambda x: x.get("creationTime", ""), reverse=True)
+            lines.append("")
+            lines.append(f"All Notifications ({len(sorted_events)} total):")
+            for event in sorted_events[:5]:
+                notif_event = event.get("notificationEvent", {})
+                event_type = notif_event.get("sourceEventMetadata", {}).get(
+                    "eventType", "N/A"
+                )
+                headline = notif_event.get("messageComponents", {}).get(
+                    "headline", "N/A"
+                )
+                created = event.get("creationTime", "N/A")
+                lines.append(f"  * [{created}] {event_type}")
+                lines.append(f"    {headline[:120]}...")
+            if len(sorted_events) > 5:
+                lines.append(f"  ... and {len(sorted_events) - 5} more")
     else:
         lines.append("Status: No data")
 
@@ -914,22 +942,48 @@ def _print_simple_report(
     lines.append("NOTIFICATION CENTER")
     notif_errors = [e for e in check_errors if e[1] == "notifications"]
     notif_data = None
+    all_notif_events = []
+    total_today = 0
+    total_managed_all = 0
+    
     for profile, results in all_results.items():
         if "notifications" in results:
-            notif_data = results["notifications"]
-            break
+            notif_result = results["notifications"]
+            if notif_result.get("status") == "success":
+                if notif_data is None:
+                    notif_data = notif_result
+                total_today += notif_result.get("today_count", 0)
+                total_managed_all += notif_result.get("total_managed", 0)
+                all_notif_events.extend(notif_result.get("all_events", []))
 
     if notif_errors:
         lines.append("Status: ERROR - Notification Center check failed")
     elif notif_data:
-        today_count = notif_data.get("today_count", 0)
-        total_managed = notif_data.get("total_managed", 0)
-        if today_count == 0:
+        if total_today == 0:
             lines.append(
-                f"Status: No new notifications today ({total_managed} existing available)"
+                f"Status: No new notifications today ({total_managed_all} existing available)"
             )
         else:
-            lines.append(f"Status: {today_count} new notifications detected today")
+            lines.append(f"Status: {total_today} new notifications detected today")
+        
+        # Show all existing notifications from all accounts
+        if len(all_notif_events) > 0:
+            sorted_events = sorted(all_notif_events, key=lambda x: x.get("creationTime", ""), reverse=True)
+            lines.append("")
+            lines.append(f"All Notifications ({len(sorted_events)} total):")
+            for event in sorted_events[:5]:
+                notif_event = event.get("notificationEvent", {})
+                event_type = notif_event.get("sourceEventMetadata", {}).get(
+                    "eventType", "N/A"
+                )
+                headline = notif_event.get("messageComponents", {}).get(
+                    "headline", "N/A"
+                )
+                created = event.get("creationTime", "N/A")
+                lines.append(f"  * [{created}] {event_type}")
+                lines.append(f"    {headline[:120]}...")
+            if len(sorted_events) > 5:
+                lines.append(f"  ... and {len(sorted_events) - 5} more")
     else:
         lines.append("Status: No data")
 

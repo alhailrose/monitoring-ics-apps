@@ -18,13 +18,13 @@ class NotificationChecker(BaseChecker):
             today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
             today_end = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999)
 
-            today_events = client.list_notification_events(
+            today_events = client.list_managed_notification_events(
                 startTime=today_start,
                 endTime=today_end
-            ).get('notificationEvents', [])
+            ).get('managedNotificationEvents', [])
 
-            all_events = client.list_notification_events().get('notificationEvents', [])
-            regular_events = []
+            all_events = client.list_managed_notification_events().get('managedNotificationEvents', [])
+            regular_events = client.list_notification_events().get('notificationEvents', [])
 
             return {
                 'status': 'success',
@@ -32,8 +32,10 @@ class NotificationChecker(BaseChecker):
                 'account_id': account_id,
                 'today_events': today_events,
                 'all_events': all_events,
+                'regular_events': regular_events,
                 'today_count': len(today_events),
-                'total_managed': len(all_events)
+                'total_managed': len(all_events),
+                'regular_count': len(regular_events)
             }
 
         except Exception as e:
@@ -57,8 +59,9 @@ class NotificationChecker(BaseChecker):
             lines.append("")
             lines.append("🔴 Today's notifications:")
             for event in results['today_events'][:5]:
-                event_type = event.get('sourceEventMetadata', {}).get('eventType', 'N/A')
-                headline = event.get('messageComponents', {}).get('headline', 'N/A')
+                notif_event = event.get('notificationEvent', {})
+                event_type = notif_event.get('sourceEventMetadata', {}).get('eventType', 'N/A')
+                headline = notif_event.get('messageComponents', {}).get('headline', 'N/A')
                 created = event.get('creationTime', 'N/A')
                 
                 lines.append(f"\n• [{created}] {event_type}")
@@ -69,8 +72,9 @@ class NotificationChecker(BaseChecker):
             lines.append("")
             lines.append("Latest notifications (for reference):")
             for event in results['all_events'][:3]:
-                event_type = event.get('sourceEventMetadata', {}).get('eventType', 'N/A')
-                headline = event.get('messageComponents', {}).get('headline', 'N/A')
+                notif_event = event.get('notificationEvent', {})
+                event_type = notif_event.get('sourceEventMetadata', {}).get('eventType', 'N/A')
+                headline = notif_event.get('messageComponents', {}).get('headline', 'N/A')
                 created = event.get('creationTime', 'N/A')
                 
                 lines.append(f"\n• [{created}] {event_type}")

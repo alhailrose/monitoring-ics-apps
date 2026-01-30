@@ -97,9 +97,9 @@ def main():
         "--all", action="store_true", help="Run all checks (summary mode)"
     )
     parser.add_argument(
-        "--no-backup-rds",
+        "--include-backup-rds",
         action="store_true",
-        help="Skip backup and RDS checks in --all mode (aryanoble style report)",
+        help="Include backup and RDS checks in --all mode (default: excluded)",
     )
     parser.add_argument(
         "--interactive", action="store_true", help="Run interactive mode with menu"
@@ -189,7 +189,7 @@ def main():
         sys.exit(1)
 
     resolved_region = resolve_region(profiles, args.region)
-    exclude_backup_rds = args.no_backup_rds or group_choice == "aryanoble"
+    exclude_backup_rds = True if not args.include_backup_rds else False
 
     # Run checks
     if args.check:
