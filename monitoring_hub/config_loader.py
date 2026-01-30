@@ -15,7 +15,7 @@ CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 # Built-in default profile groups (fallback if no external config)
 DEFAULT_PROFILE_GROUPS = {
-    "nabati": {
+    "NABATI-KSNI": {
         "core-network-ksni": "207567759835",
         "data-ksni": "563983755611",
         "dc-trans-ksni": "982538789545",
@@ -34,7 +34,7 @@ DEFAULT_PROFILE_GROUPS = {
         "sales-support-pma": "734881641265",
         "website-ksni": "637423330091",
     },
-    "sadewa": {
+    "SADEWA": {
         "Diamond": "464587839665",
         "Techmeister": "763944546283",
         "KKI": "471112835466",
@@ -45,7 +45,7 @@ DEFAULT_PROFILE_GROUPS = {
         "fresnel-pialang": "510940807875",
         "fresnel-ykai": "339712722804",
     },
-    "aryanoble-backup": {
+    "Aryanoble": {
         "HRIS": "493314732063",
         "fee-doctor": "084828597777",
         "cis-erha": "451916275465",
@@ -59,23 +59,13 @@ DEFAULT_PROFILE_GROUPS = {
         "centralized-s3": "533267291161",
         "backup-hris": "390403877301",
     },
-    "aryanoble": {
-        "HRIS": "493314732063",
-        "fee-doctor": "084828597777",
-        "cis-erha": "451916275465",
-        "connect-prod": "620463044477",
-        "public-web": "211125667194",
-        "dermies-max": "637423567244",
-        "tgw": "654654394944",
-        "iris-prod": "522814722913",
-        "sfa": "546158667544",
-        "erha-buddy": "486250145105",
-        "centralized-s3": "533267291161",
-        "backup-hris": "390403877301",
-    },
-    "hungryhub": {"prod": "202255947274"},
-    "master": {"arbel-master": "477153214925"},
-    "ics": {
+    "HungryHub": {"prod": "202255947274"},
+    "Agung Sedayu": {"asg": "264887202956"},
+    "Master": {
+        "arbel-master": "477153214925",
+        "ksni-master": "317949653982",
+               },
+    "NON SSO": {
         "nikp": "038361715485",
         "sandbox": "339712808680",
         "rumahmedia": "975050309328",

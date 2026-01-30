@@ -141,9 +141,11 @@ def _pick_profiles(allow_multiple=True):
 
     if source == "group":
         # Group selection with profile counts
+        mandatory_groups = {"nabati", "master"}
         group_choices = [
             questionary.Choice(
-                f"{ICONS['dot']} {name} ({len(profs)} profiles)", value=name
+                f"{ICONS['dot']} {name} ({len(profs)} profiles){' (mandatory)' if name in mandatory_groups else ''}", 
+                value=name
             )
             for name, profs in PROFILE_GROUPS.items()
         ]
@@ -153,14 +155,26 @@ def _pick_profiles(allow_multiple=True):
             return [], None, True
 
         choices = list(PROFILE_GROUPS[group_choice].keys())
+        # Mark mandatory profiles
+        mandatory_profiles = {"asg"}
         if allow_multiple:
             # Add select all option
+            formatted_choices = [
+                f"{choice} (mandatory)" if choice in mandatory_profiles else choice
+                for choice in choices
+            ]
             profiles = _checkbox_prompt(
-                f"{ICONS['check']} Pilih Akun dari {group_choice}", choices
+                f"{ICONS['check']} Pilih Akun dari {group_choice}", formatted_choices
             )
+            # Remove (mandatory) suffix from selected profiles
+            profiles = [p.replace(" (mandatory)", "") for p in profiles]
         else:
-            selected = _select_prompt(f"{ICONS['single']} Pilih Akun", choices)
-            profiles = [selected] if selected else []
+            formatted_choices = [
+                f"{choice} (mandatory)" if choice in mandatory_profiles else choice
+                for choice in choices
+            ]
+            selected = _select_prompt(f"{ICONS['single']} Pilih Akun", formatted_choices)
+            profiles = [selected.replace(" (mandatory)", "")] if selected else []
     else:
         local_profiles = list_local_profiles()
         if not local_profiles:
@@ -311,7 +325,7 @@ def run_cloudwatch_cost_report():
 def run_arbel_check():
     """Run Arbel-specific checks (Backup + RDS for aryanoble accounts)."""
     print_mini_banner()
-    print_section_header("Arbel Check", ICONS["arbel"])
+    print_section_header("Arbel Check (mandatory)", ICONS["arbel"])
 
     arbel_choices = [
         questionary.Choice(

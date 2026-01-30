@@ -5,6 +5,7 @@ ASCII art banner, status badges, progress indicators, and table formatters.
 
 from datetime import datetime
 from typing import Optional
+import importlib.metadata
 
 from rich.console import Console
 from rich.panel import Panel
@@ -22,7 +23,10 @@ from rich.box import ROUNDED, HEAVY, DOUBLE
 from rich import box
 
 # Version info
-VERSION = "1.3.0"
+try:
+    VERSION = importlib.metadata.version("monitoring-hub")
+except importlib.metadata.PackageNotFoundError:
+    VERSION = "0.0.0.dev"
 
 # Console instance
 console = Console()
@@ -208,7 +212,7 @@ def create_menu_choices():
         },
         {
             "value": "arbel",
-            "title": f"{ICONS['arbel']} Arbel Check",
+            "title": f"{ICONS['arbel']} Arbel Check (mandatory)",
             "description": "Backup & RDS untuk AryaNoble",
         },
         {
