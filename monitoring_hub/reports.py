@@ -86,7 +86,7 @@ SUMMARY_MAP = {
     "cloudwatch": summarize_cloudwatch,
     "notifications": summarize_notifications,
     "backup": summarize_backup,
-    "rds": summarize_rds,
+    "daily-arbel": summarize_rds,
 }
 
 
@@ -196,25 +196,43 @@ def build_whatsapp_backup(date_str, all_results):
 
 def build_whatsapp_rds(all_results):
     """Build WhatsApp-ready RDS report message."""
+    from checks.daily_arbel import HOURLY_PROFILES
+    
     now_jkt = datetime.now(timezone(timedelta(hours=7)))
-    greeting = "Selamat Pagi" if 5 <= now_jkt.hour <= 17 else "Selamat Malam"
+    # Perbaiki greeting: Pagi (5-11), Siang (11-15), Sore (15-18), Malam (18-5)
+    if 5 <= now_jkt.hour < 11:
+        greeting = "Selamat Pagi"
+        waktu = "Pagi"
+    elif 11 <= now_jkt.hour < 15:
+        greeting = "Selamat Siang"
+        waktu = "Siang"
+    elif 15 <= now_jkt.hour < 18:
+        greeting = "Selamat Sore"
+        waktu = "Sore"
+    else:
+        greeting = "Selamat Malam"
+        waktu = "Malam"
+        
     date_str = now_jkt.strftime("%d-%m-%Y")
+    time_str = now_jkt.strftime("%H:%M WIB")
 
     messages = []
     for profile, checks in all_results.items():
-        res = checks.get("rds")
+        res = checks.get("daily-arbel")
         if not res or res.get("status") in ["skipped", "error"]:
             continue
         acct_id = res.get("account_id", get_account_id(profile))
         acct_name = res.get("account_name", profile)
 
-        lines = [
-            f"{greeting} Team,",
-            f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {'Pagi' if 5 <= now_jkt.hour <= 17 else 'Malam'} ini",
-            f"{date_str}",
-            "",
-            "Summary:",
-        ]
+        lines = [f"{greeting} Team,"]
+        
+        # Tambahkan info monitoring window untuk hourly profiles
+        if profile in HOURLY_PROFILES:
+            lines.append(f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini (Data per {time_str}, monitoring 1 jam terakhir)")
+        else:
+            lines.append(f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini")
+        
+        lines.extend([date_str, "", "Summary:"])
 
         instances = res.get("instances", {})
         for role, data in instances.items():
@@ -274,7 +292,7 @@ def generate_whatsapp_message(all_results):
     # RDS section
     rds_lines = []
     for profile, checks in all_results.items():
-        rds = checks.get("rds")
+        rds = checks.get("daily-arbel")
         if not rds or rds.get("status") == "skipped":
             continue
         if rds.get("status") == "error":

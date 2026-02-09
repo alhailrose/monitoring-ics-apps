@@ -12,7 +12,7 @@ from checks.guardduty import GuardDutyChecker
 from checks.cloudwatch_alarms import CloudWatchAlarmChecker
 from checks.notifications import NotificationChecker
 from checks.backup_status import BackupStatusChecker
-from checks.rds_metrics import RDSMetricsChecker
+from checks.daily_arbel import DailyArbelChecker
 from checks.ec2_list import EC2ListChecker
 
 from .config_loader import (
@@ -99,7 +99,7 @@ AVAILABLE_CHECKS = {
     "cloudwatch": CloudWatchAlarmChecker,
     "notifications": NotificationChecker,
     "backup": BackupStatusChecker,
-    "rds": RDSMetricsChecker,
+    "daily-arbel": DailyArbelChecker,
     "ec2list": EC2ListChecker,
 }
 
@@ -110,7 +110,7 @@ ALL_MODE_CHECKS = {
     "cloudwatch": CloudWatchAlarmChecker,
     "notifications": NotificationChecker,
     "backup": BackupStatusChecker,
-    "rds": RDSMetricsChecker,
+    "daily-arbel": DailyArbelChecker,
 }
 
 # Checks to run in lightweight --all mode (no backup/rds)

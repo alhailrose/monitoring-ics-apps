@@ -332,7 +332,10 @@ def run_arbel_check():
             f"{ICONS['backup']} Backup - Semua akun AryaNoble", value="backup"
         ),
         questionary.Choice(
-            f"{ICONS['rds']} RDS Metrics - connect-prod & cis-erha", value="rds"
+            f"{ICONS['rds']} Daily Arbel Hourly - connect-prod & cis-erha (1 jam)", value="daily-arbel-hourly"
+        ),
+        questionary.Choice(
+            f"{ICONS['rds']} Daily Arbel - Akun lainnya (12 jam)", value="daily-arbel"
         ),
     ]
 
@@ -345,9 +348,140 @@ def run_arbel_check():
     if choice == "backup":
         profiles = list(PROFILE_GROUPS["Aryanoble"].keys())
         run_group_specific("backup", profiles, region, group_name="Aryanoble")
-    elif choice == "rds":
+    elif choice == "daily-arbel-hourly":
         profiles = ["connect-prod", "cis-erha"]
-        run_group_specific("rds", profiles, region, group_name="Aryanoble")
+        run_group_specific("daily-arbel", profiles, region, group_name="Aryanoble (Hourly)")
+    elif choice == "daily-arbel":
+        profiles = ["dermies-max", "erha-buddy", "public-web"]
+        run_group_specific("daily-arbel", profiles, region, group_name="Aryanoble")
+
+
+def run_nabati_check():
+    """Run Nabati-specific analysis (CPU usage + Cost for NABATI-KSNI accounts)."""
+    from checks.nabati_analysis import run_nabati_analysis
+    
+    print_mini_banner()
+    print_section_header("Nabati Analysis", ICONS["nabati"])
+
+    # Ask for month
+    now = datetime.now()
+    current_month = now.strftime("%Y-%m")
+    
+    month_input = questionary.text(
+        f"{ICONS['info']} Bulan analisis (YYYY-MM, default: {current_month}):",
+        default=current_month,
+        style=CUSTOM_STYLE,
+    ).ask()
+    
+    if not month_input:
+        return
+    
+    month = month_input.strip() or current_month
+
+    # Get all Nabati profiles
+    profiles = list(PROFILE_GROUPS["NABATI-KSNI"].keys())
+    
+    print_info(f"Menganalisis {len(profiles)} akun Nabati untuk bulan {month}...")
+    
+    with console.status("[bold cyan]Mengumpulkan data CPU & Cost...", spinner="dots"):
+        results = run_nabati_analysis(profiles, month)
+    
+    # Display results
+    _display_nabati_results(results)
+
+
+def _display_nabati_results(data: dict):
+    """Display Nabati analysis results in formatted tables."""
+    results = data["results"]
+    month = data["month"]
+    
+    # Separate high and low CPU
+    high_cpu = []
+    low_cpu = []
+    total_cost = 0.0
+    
+    for r in results:
+        if "error" in r:
+            continue
+            
+        total_cost += r.get("cost", 0.0)
+        
+        if r.get("no_instances"):
+            low_cpu.append(r)
+        elif r.get("max_cpu", 0) >= 80:
+            high_cpu.append(r)
+        else:
+            low_cpu.append(r)
+    
+    # High CPU table
+    console.print()
+    console.print(f"[bold cyan]Instances with spikes ≥80% ({month})[/bold cyan]")
+    
+    if high_cpu:
+        high_table = Table(box=box.ROUNDED, show_header=True)
+        high_table.add_column("Account", style="cyan")
+        high_table.add_column("Account ID", style="dim")
+        high_table.add_column("Instance", style="yellow")
+        high_table.add_column("Max CPU", style="red bold")
+        high_table.add_column("Time", style="dim")
+        
+        for r in sorted(high_cpu, key=lambda x: x.get("max_cpu", 0), reverse=True):
+            high_table.add_row(
+                r["account_name"],
+                r["profile"].split("-")[0] if "-" in r["profile"] else r["profile"],
+                r.get("max_cpu_instance", "N/A"),
+                f"{r.get('max_cpu', 0):.1f}%",
+                r.get("max_cpu_time", "N/A"),
+            )
+        
+        console.print(high_table)
+    else:
+        console.print("[dim]None[/dim]")
+    
+    # Low CPU table
+    console.print()
+    console.print(f"[bold cyan]Instances with no spikes ≥80% ({month})[/bold cyan]")
+    
+    if low_cpu:
+        low_table = Table(box=box.ROUNDED, show_header=True)
+        low_table.add_column("Account", style="cyan")
+        low_table.add_column("Status", style="green")
+        low_table.add_column("Max CPU", style="yellow")
+        
+        for r in sorted(low_cpu, key=lambda x: x["account_name"]):
+            if r.get("no_instances"):
+                status = "No instances running"
+                cpu = "N/A"
+            else:
+                status = f"Instance {r.get('max_cpu_instance', 'N/A')}"
+                cpu = f"{r.get('max_cpu', 0):.1f}%"
+            
+            low_table.add_row(r["account_name"], status, cpu)
+        
+        console.print(low_table)
+    
+    # Cost table
+    console.print()
+    console.print(f"[bold cyan]Total Cost - {month}[/bold cyan]")
+    
+    cost_table = Table(box=box.ROUNDED, show_header=True)
+    cost_table.add_column("Account", style="cyan")
+    cost_table.add_column("Cost (USD)", style="green", justify="right")
+    
+    for r in sorted(results, key=lambda x: x.get("cost", 0), reverse=True):
+        if "error" not in r:
+            cost_table.add_row(
+                r["account_name"],
+                f"${r.get('cost', 0):,.2f}",
+            )
+    
+    cost_table.add_row(
+        "[bold]TOTAL[/bold]",
+        f"[bold]${total_cost:,.2f}[/bold]",
+    )
+    
+    console.print(cost_table)
+    console.print()
 
 
 def run_settings_menu():
@@ -440,7 +574,7 @@ def run_interactive():
             f"{ICONS['notifications']} Notifications", value="notifications"
         ),
         questionary.Choice(f"{ICONS['backup']} Backup Status", value="backup"),
-        questionary.Choice(f"{ICONS['rds']} RDS Metrics", value="rds"),
+        questionary.Choice(f"{ICONS['rds']} Daily Arbel", value="daily-arbel"),
         questionary.Choice(f"{ICONS['ec2list']} EC2 List", value="ec2list"),
     ]
 
@@ -464,6 +598,11 @@ def run_interactive():
             _pause()
             continue
 
+        if main_choice == "nabati":
+            run_nabati_check()
+            _pause()
+            continue
+
         if main_choice == "cw_cost":
             run_cloudwatch_cost_report()
             _pause()
@@ -477,7 +616,7 @@ def run_interactive():
             if not check:
                 continue
 
-            allow_multi = check in ["backup", "rds"]
+            allow_multi = check in ["backup", "daily-arbel"]
             profiles, group_choice, back = _pick_profiles(allow_multiple=allow_multi)
             if back:
                 continue
@@ -490,7 +629,7 @@ def run_interactive():
             if region is None:
                 continue
 
-            if check in ["backup", "rds"] and len(profiles) > 1:
+            if check in ["backup", "daily-arbel"] and len(profiles) > 1:
                 run_group_specific(check, profiles, region, group_name=group_choice)
             elif check in ["cost", "guardduty", "cloudwatch", "notifications"]:
                 run_all_checks(

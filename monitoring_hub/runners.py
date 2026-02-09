@@ -169,7 +169,7 @@ def run_group_specific(
     console.print()
 
     # For non-backup/rds checks, print each profile's report
-    if check_name not in ["backup", "rds"]:
+    if check_name not in ["backup", "daily-arbel"]:
         checker_class = AVAILABLE_CHECKS[check_name]
         checker = checker_class(region=region)
         for profile in profiles:
@@ -254,7 +254,7 @@ def run_group_specific(
                         )
             print("")
 
-    elif check_name == "rds":
+    elif check_name == "daily-arbel":
         whatsapp = build_whatsapp_rds(all_results)
 
         print("\n" + "=" * 70)
@@ -374,7 +374,7 @@ def run_all_checks(
 
     console.print()
 
-    include_backup_rds = "backup" in checks or "rds" in checks
+    include_backup_rds = "backup" in checks or "daily-arbel" in checks
 
     if include_backup_rds:
         _print_detailed_report(
@@ -685,17 +685,17 @@ def _print_detailed_report(
                     f"  * {profile} ({account_id}): {failed} failed / {total} total jobs"
                 )
 
-    # RDS Section
+    # Daily Arbel Section
     lines.append("")
-    lines.append("RDS METRICS")
-    if errors_by_check.get("rds"):
-        lines.append("Status: ERROR - RDS check failed")
-        for prof, err in errors_by_check["rds"][:5]:
+    lines.append("DAILY ARBEL METRICS")
+    if errors_by_check.get("daily-arbel"):
+        lines.append("Status: ERROR - Daily Arbel check failed")
+        for prof, err in errors_by_check["daily-arbel"][:5]:
             lines.append(f"  * {prof}: {err}")
     else:
         rds_warnings = []
         for profile, results in all_results.items():
-            rds_data = results.get("rds", {})
+            rds_data = results.get("daily-arbel", {})
             if rds_data.get("status") == "skipped":
                 continue
             instances = rds_data.get("instances", {})

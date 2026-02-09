@@ -49,6 +49,7 @@ ICONS = {
     "single": "🔍",
     "all": "📋",
     "arbel": "🏥",
+    "nabati": "🍪",
     "cost": "💰",
     "health": "❤️",
     "guardduty": "🛡️",
@@ -216,6 +217,11 @@ def create_menu_choices():
             "description": "Backup & RDS untuk AryaNoble",
         },
         {
+            "value": "nabati",
+            "title": f"{ICONS['nabati']} Nabati Analysis",
+            "description": "CPU Usage & Cost untuk NABATI-KSNI",
+        },
+        {
             "value": "cw_cost",
             "title": f"{ICONS['cost']} Cost Report",
             "description": "CloudWatch cost & usage Jakarta",
@@ -237,7 +243,7 @@ def create_check_choices():
         "cloudwatch": f"{ICONS['cloudwatch']} CloudWatch Alarms",
         "notifications": f"{ICONS['notifications']} Notifications",
         "backup": f"{ICONS['backup']} Backup Status",
-        "rds": f"{ICONS['rds']} RDS Metrics",
+        "daily-arbel": f"{ICONS['rds']} Daily Arbel",
         "ec2list": f"{ICONS['ec2list']} EC2 List",
     }
 
@@ -272,7 +278,7 @@ def create_summary_table(title: str, profiles: list, results: dict) -> Table:
     table.add_column("Guard", justify="center", min_width=8)
     table.add_column("CW", justify="center", min_width=8)
     table.add_column("Backup", justify="center", min_width=8)
-    table.add_column("RDS", justify="center", min_width=8)
+    table.add_column("Daily Arbel", justify="center", min_width=8)
 
     def get_status_icon(check_results: dict) -> str:
         if not check_results:
@@ -301,7 +307,7 @@ def create_summary_table(title: str, profiles: list, results: dict) -> Table:
             get_status_icon(profile_results.get("guardduty", {})),
             get_status_icon(profile_results.get("cloudwatch", {})),
             get_status_icon(profile_results.get("backup", {})),
-            get_status_icon(profile_results.get("rds", {})),
+            get_status_icon(profile_results.get("daily-arbel", {})),
         )
 
     return table

@@ -72,7 +72,7 @@ def main():
   # Initialize config file
   monitoring-hub --init-config
 
-{ICONS["check"]} Available checks: health, cost, guardduty, cloudwatch, notifications, backup, rds, ec2list
+{ICONS["check"]} Available checks: health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list
 
 {ICONS["settings"]} Config file: {CONFIG_FILE}
         """,
@@ -91,7 +91,7 @@ def main():
     # Check flags
     parser.add_argument(
         "--check",
-        help="Run specific check (health, cost, guardduty, cloudwatch, notifications, backup, rds, ec2list)",
+        help="Run specific check (health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list)",
     )
     parser.add_argument(
         "--all", action="store_true", help="Run all checks (summary mode)"
@@ -194,7 +194,7 @@ def main():
     # Run checks
     if args.check:
         # Special handling: allow backup/rds/notifications across group for WhatsApp-ready output
-        if args.check in ["backup", "rds", "notifications"] and len(profiles) > 1:
+        if args.check in ["backup", "daily-arbel", "notifications"] and len(profiles) > 1:
             run_group_specific(
                 args.check,
                 profiles,
