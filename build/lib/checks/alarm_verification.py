@@ -1,171 +1,210 @@
-"""
-CloudWatch Alarm Verification Checker (Duration Check)
-Based on cloudwatch-evidence-bot logic.
-Checks if an alarm has been in ALARM state for >= 10 minutes.
-"""
+"""Alarm verification checker for specific CloudWatch alarm names."""
+
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional
 
 import boto3
-from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Optional, Tuple
 
 from .base import BaseChecker
 
-# WIB timezone (UTC+7)
+
 WIB = timezone(timedelta(hours=7))
+
+OPERATOR_MAP = {
+    "GreaterThanThreshold": ">",
+    "GreaterThanOrEqualToThreshold": ">=",
+    "LessThanThreshold": "<",
+    "LessThanOrEqualToThreshold": "<=",
+}
+
+
+def _format_wib(value: Optional[datetime]) -> str:
+    if value is None:
+        return "unknown"
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(WIB).strftime("%H:%M WIB")
 
 
 class AlarmVerificationChecker(BaseChecker):
     def __init__(
-        self, region: str = "ap-southeast-3", min_duration_minutes: int = 10, **kwargs
+        self,
+        region: str = "ap-southeast-3",
+        min_duration_minutes: int = 10,
+        alarm_names=None,
+        **kwargs,
     ):
         super().__init__(region, **kwargs)
         self.min_duration_minutes = min_duration_minutes
+        if isinstance(alarm_names, str):
+            parsed = [x.strip() for x in alarm_names.split(",")]
+            self.alarm_names = [x for x in parsed if x]
+        else:
+            self.alarm_names = [
+                str(x).strip() for x in (alarm_names or []) if str(x).strip()
+            ]
 
-    def _find_transition_to_alarm(self, history: List[Dict]) -> Optional[datetime]:
-        """Find the timestamp when the alarm transitioned from OK to ALARM."""
-        # Sort history by timestamp descending (newest first)
-        sorted_history = sorted(history, key=lambda x: x["Timestamp"], reverse=True)
-
-        for item in sorted_history:
-            summary = item.get("HistorySummary", "")
-            if "from OK to ALARM" in summary:
-                return item.get("Timestamp")
-            # If we hit an ALARM to OK transition (before finding an OK to ALARM),
-            # it means the alarm flapped. We want the start of the *current* alarm period.
-            if "from ALARM to OK" in summary:
-                # If we encounter this before finding the start, it means the current alarm
-                # started *after* this recovery. But if we are currently in ALARM state,
-                # we should keep searching backwards for the start of *this* alarm period.
-                # Actually, if we see ALARM->OK, it means the alarm recovered at that point.
-                # Since the alarm is currently ALARM, there must be an OK->ALARM *after* (newer than) this.
-                # Since we iterate newest to oldest, we should have found it already.
-                # If we haven't found it yet, maybe the history doesn't cover it?
-                # Or maybe the state change happened recently.
-                continue
-
-        # If not found in history, maybe it's been in alarm for longer than the history window?
-        # Or maybe it started as ALARM (insufficient data -> alarm).
-        for item in sorted_history:
-            summary = item.get("HistorySummary", "")
-            if "to ALARM" in summary:  # Catch INSUFFICIENT_DATA -> ALARM too
-                return item.get("Timestamp")
-
+    def _find_transition(self, history: List[Dict], marker: str) -> Optional[datetime]:
+        for item in history:
+            summary = item.get("HistorySummary") or item.get("history_summary") or ""
+            if marker in summary:
+                return item.get("Timestamp") or item.get("timestamp")
         return None
 
-    def check(self, profile: str, account_id: str):
+    def _threshold_text(self, alarm: Dict) -> str:
+        operator = OPERATOR_MAP.get(alarm.get("ComparisonOperator", ""), "")
+        threshold = alarm.get("Threshold")
+        unit = alarm.get("Unit")
+        if threshold is None:
+            return "N/A"
+        if isinstance(threshold, float) and threshold.is_integer():
+            threshold = int(threshold)
+        return f"{operator} {threshold}{(' ' + unit) if unit else ''}".strip()
+
+    def _greeting(self) -> str:
+        hour = datetime.now(WIB).hour
+        if 5 <= hour < 11:
+            return "Selamat Pagi"
+        if 11 <= hour < 15:
+            return "Selamat Siang"
+        if 15 <= hour < 18:
+            return "Selamat Sore"
+        return "Selamat Malam"
+
+    def _ongoing_message(
+        self, alarm_name: str, threshold_text: str, start_time: datetime
+    ) -> str:
+        return (
+            f"{self._greeting()}, izin menginformasikan pada *{alarm_name}* sedang melewati "
+            f"threshold {threshold_text} sejak {_format_wib(start_time)} (status: ongoing)."
+        )
+
+    def check(self, profile, account_id):
+        if not self.alarm_names:
+            return {
+                "status": "skipped",
+                "profile": profile,
+                "account_id": account_id,
+                "reason": "Alarm name wajib diisi (tidak mengambil semua alarm).",
+            }
+
         try:
             session = boto3.Session(profile_name=profile, region_name=self.region)
             cw = session.client("cloudwatch", region_name=self.region)
-
-            # 1. Get all alarms in ALARM state
-            paginator = cw.get_paginator("describe_alarms")
-            active_alarms = []
-            for page in paginator.paginate(StateValue="ALARM"):
-                active_alarms.extend(page["MetricAlarms"])
-
-            results = []
             now_utc = datetime.now(timezone.utc)
-
-            # History window: check last 24 hours to find when it started
             history_start = now_utc - timedelta(hours=24)
+            alarms_result = []
 
-            for alarm in active_alarms:
-                alarm_name = alarm["AlarmName"]
+            for alarm_name in self.alarm_names:
+                described = cw.describe_alarms(AlarmNames=[alarm_name])
+                metric_alarms = described.get("MetricAlarms", [])
 
-                # 2. Get alarm history to find start time
-                history_resp = cw.describe_alarm_history(
-                    AlarmName=alarm_name,
-                    HistoryItemType="StateUpdate",
-                    StartDate=history_start,
-                    EndDate=now_utc,
-                    ScanBy="TimestampDescending",
-                )
-                history_items = history_resp.get("AlarmHistoryItems", [])
+                if not metric_alarms:
+                    alarms_result.append(
+                        {
+                            "alarm_name": alarm_name,
+                            "status": "not-found",
+                            "alarm_state": "UNKNOWN",
+                            "ongoing_minutes": 0,
+                            "should_report": False,
+                            "recommended_action": "MONITOR",
+                            "message": "",
+                        }
+                    )
+                    continue
 
-                start_time = self._find_transition_to_alarm(history_items)
+                alarm = metric_alarms[0]
+                alarm_state = alarm.get("StateValue", "INSUFFICIENT_DATA")
+                threshold_text = self._threshold_text(alarm)
+                breach_start = None
+                ongoing_minutes = 0
+                should_report = False
+                message = ""
 
-                duration_minutes = 0
-                start_time_str = "Unknown ( > 24h )"
+                if alarm_state == "ALARM":
+                    history = cw.describe_alarm_history(
+                        AlarmName=alarm_name,
+                        HistoryItemType="StateUpdate",
+                        StartDate=history_start,
+                        EndDate=now_utc,
+                        ScanBy="TimestampDescending",
+                    ).get("AlarmHistoryItems", [])
 
-                if start_time:
-                    # Ensure start_time is timezone-aware
-                    if start_time.tzinfo is None:
-                        start_time = start_time.replace(tzinfo=timezone.utc)
+                    breach_start = self._find_transition(history, "from OK to ALARM")
+                    if breach_start is None:
+                        breach_start = self._find_transition(history, "to ALARM")
 
-                    duration = now_utc - start_time
-                    duration_minutes = int(duration.total_seconds() / 60)
-                    start_time_wib = start_time.astimezone(WIB)
-                    start_time_str = start_time_wib.strftime("%H:%M WIB")
+                    if breach_start is not None:
+                        if breach_start.tzinfo is None:
+                            breach_start = breach_start.replace(tzinfo=timezone.utc)
+                        ongoing_minutes = max(
+                            1, int((now_utc - breach_start).total_seconds() // 60)
+                        )
 
-                is_reportable = duration_minutes >= self.min_duration_minutes
+                    should_report = ongoing_minutes >= self.min_duration_minutes
+                    if should_report and breach_start is not None:
+                        message = self._ongoing_message(
+                            alarm_name, threshold_text, breach_start
+                        )
 
-                results.append(
+                alarms_result.append(
                     {
-                        "name": alarm_name,
-                        "reason": alarm.get("StateReason", "N/A"),
-                        "start_time": start_time_str,
-                        "duration_minutes": duration_minutes,
-                        "is_reportable": is_reportable,
-                        "threshold": self.min_duration_minutes,
+                        "alarm_name": alarm_name,
+                        "status": "ok",
+                        "alarm_state": alarm_state,
+                        "threshold_text": threshold_text,
+                        "breach_start_time": _format_wib(breach_start),
+                        "ongoing_minutes": ongoing_minutes,
+                        "should_report": should_report,
+                        "recommended_action": "REPORT_NOW"
+                        if should_report
+                        else "MONITOR",
+                        "reason": alarm.get("StateReason", ""),
+                        "message": message,
                     }
                 )
-
-            # Sort by reportable first, then duration descending
-            results.sort(key=lambda x: (not x["is_reportable"], -x["duration_minutes"]))
 
             return {
                 "status": "success",
                 "profile": profile,
                 "account_id": account_id,
-                "alarms": results,
-                "checked_at": now_utc.isoformat(),
+                "min_alarm_minutes": self.min_duration_minutes,
+                "alarms": alarms_result,
             }
-
-        except Exception as e:
+        except Exception as exc:
             return {
                 "status": "error",
                 "profile": profile,
                 "account_id": account_id,
-                "error": str(e),
+                "error": str(exc),
             }
 
     def format_report(self, results):
         if results.get("status") == "error":
             return f"ERROR: {results.get('error')}"
+        if results.get("status") == "skipped":
+            return f"SKIPPED: {results.get('reason')}"
 
         alarms = results.get("alarms", [])
         if not alarms:
-            return "Status: No active alarms found."
+            return "No alarm data."
 
-        lines = []
-        lines.append(f"ALARM VERIFICATION REPORT ({len(alarms)} active alarms)")
-        lines.append(f"Threshold for reporting: >= {self.min_duration_minutes} minutes")
-        lines.append("")
-
-        reportable = [a for a in alarms if a["is_reportable"]]
-        pending = [a for a in alarms if not a["is_reportable"]]
-
-        if reportable:
-            lines.append("🚨 REPORTABLE ALARMS (Confirmed > 10 mins):")
-            for a in reportable:
-                lines.append(f"• {a['name']}")
-                lines.append(
-                    f"  Duration: {a['duration_minutes']} minutes (since {a['start_time']})"
-                )
-                lines.append(f"  Reason: {a['reason']}")
-                lines.append(f"  Action: ESCALATE / REPORT NOW")
-                lines.append("")
-
-        if pending:
-            lines.append("⏳ PENDING ALARMS (Wait, < 10 mins):")
-            for a in pending:
-                remaining = max(0, self.min_duration_minutes - a["duration_minutes"])
-                lines.append(f"• {a['name']}")
-                lines.append(
-                    f"  Duration: {a['duration_minutes']} minutes (since {a['start_time']})"
-                )
-                lines.append(f"  Reason: {a['reason']}")
-                lines.append(f"  Action: WAIT {remaining} minutes and re-check")
-                lines.append("")
+        lines = [
+            f"ALARM VERIFICATION (threshold {results.get('min_alarm_minutes', 10)} menit)"
+        ]
+        for item in alarms:
+            lines.append("")
+            lines.append(f"- {item.get('alarm_name', 'N/A')}")
+            lines.append(
+                f"  state={item.get('alarm_state')} action={item.get('recommended_action')}"
+            )
+            if item.get("status") == "not-found":
+                lines.append("  alarm tidak ditemukan di akun/region ini")
+                continue
+            lines.append(
+                f"  ongoing={item.get('ongoing_minutes', 0)} menit | start={item.get('breach_start_time', 'unknown')}"
+            )
+            if item.get("message"):
+                lines.append(f"  message: {item.get('message')}")
 
         return "\n".join(lines)

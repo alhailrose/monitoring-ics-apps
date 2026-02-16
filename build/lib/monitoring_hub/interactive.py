@@ -329,10 +329,22 @@ def run_arbel_check():
     print_mini_banner()
     print_section_header("Arbel Check (RDS Utilization)", ICONS["arbel"])
 
+    arbel_profiles = [
+        "connect-prod",
+        "cis-erha",
+        "dermies-max",
+        "erha-buddy",
+        "public-web",
+    ]
+    default_profiles = {"dermies-max", "cis-erha", "connect-prod"}
+
     arbel_choices = [
         questionary.Choice(f"{ICONS['rds']} Daily Arbel - 1 Jam", value="1h"),
         questionary.Choice(f"{ICONS['rds']} Daily Arbel - 3 Jam", value="3h"),
         questionary.Choice(f"{ICONS['rds']} Daily Arbel - 12 Jam", value="12h"),
+        questionary.Choice(
+            f"{ICONS['alarm']} Alarm Verification by Name", value="alarm-name"
+        ),
         questionary.Choice(
             f"{ICONS['backup']} Backup - Semua akun AryaNoble", value="backup"
         ),
@@ -349,7 +361,43 @@ def run_arbel_check():
         run_group_specific("backup", profiles, region, group_name="Aryanoble")
         return
 
-    profiles = ["connect-prod", "cis-erha", "dermies-max", "erha-buddy", "public-web"]
+    profile_choices = [
+        questionary.Choice(p, value=p, checked=(p in default_profiles))
+        for p in arbel_profiles
+    ]
+    selected_profiles = _checkbox_prompt(
+        f"{ICONS['check']} Pilih akun Arbel", profile_choices
+    )
+    if not selected_profiles:
+        print_error("Tidak ada akun dipilih.")
+        return
+
+    if choice == "alarm-name":
+        try:
+            alarm_input = questionary.text(
+                "Masukkan nama alarm (pisahkan dengan koma jika lebih dari 1):",
+                style=CUSTOM_STYLE,
+            ).ask()
+        except KeyboardInterrupt:
+            _handle_interrupt(exit_direct=True)
+            return
+
+        alarm_names = [x.strip() for x in (alarm_input or "").split(",") if x.strip()]
+        if not alarm_names:
+            print_error("Nama alarm wajib diisi.")
+            return
+
+        run_group_specific(
+            "alarm_verification",
+            selected_profiles,
+            region,
+            group_name="Aryanoble Alarm",
+            check_kwargs={
+                "alarm_names": alarm_names,
+                "min_duration_minutes": 10,
+            },
+        )
+        return
 
     window_map = {
         "1h": (1, "1 Hour"),
@@ -361,7 +409,7 @@ def run_arbel_check():
 
     run_group_specific(
         "daily-arbel",
-        profiles,
+        selected_profiles,
         region,
         group_name=f"Aryanoble ({suffix})",
         check_kwargs={"window_hours": window_hours},
