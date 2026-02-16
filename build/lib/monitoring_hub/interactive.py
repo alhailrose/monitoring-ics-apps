@@ -333,22 +333,13 @@ def run_arbel_check():
         questionary.Choice(f"{ICONS['rds']} Daily Arbel - 1 Jam", value="1h"),
         questionary.Choice(f"{ICONS['rds']} Daily Arbel - 3 Jam", value="3h"),
         questionary.Choice(f"{ICONS['rds']} Daily Arbel - 12 Jam", value="12h"),
-        questionary.Choice(
-            f"{ICONS['backup']} Backup - Semua akun AryaNoble", value="backup"
-        ),
     ]
 
-    choice = _select_prompt(f"{ICONS['arbel']} Pilih Window / Check", arbel_choices)
+    choice = _select_prompt(f"{ICONS['arbel']} Pilih Window", arbel_choices)
     if not choice:
         return
 
     region = "ap-southeast-3"
-
-    if choice == "backup":
-        profiles = list(PROFILE_GROUPS["Aryanoble"].keys())
-        run_group_specific("backup", profiles, region, group_name="Aryanoble")
-        return
-
     profiles = ["connect-prod", "cis-erha", "dermies-max", "erha-buddy", "public-web"]
 
     window_map = {
@@ -544,37 +535,8 @@ def run_settings_menu():
         print_info(f"Config path: {CONFIG_FILE}")
 
 
-def run_alarm_verification():
-    """Run Alarm Verification check."""
-    print_mini_banner()
-    print_section_header("Alarm Verification (>10m)", ICONS["alarm"])
-
-    # 1. Pilih Profil
-    profiles, group_choice, back = _pick_profiles(allow_multiple=True)
-    if back:
-        return
-    if not profiles:
-        print_error("Tidak ada profil dipilih.")
-        return
-
-    # 2. Pilih Region
-    region = _choose_region(profiles)
-    if region is None:
-        return
-
-    # 3. Jalankan Check
-    if len(profiles) > 1:
-        run_group_specific(
-            "alarm_verification", profiles, region, group_name=group_choice
-        )
-    else:
-        run_individual_check("alarm_verification", profiles[0], region)
-
-
 def run_interactive():
     """Interactive menu loop with beautiful UI."""
-
-    # ... (rest of the function)
 
     # Main menu choices with icons
     main_choices = [
@@ -589,10 +551,6 @@ def run_interactive():
         questionary.Choice(
             f"{ICONS['arbel']} Arbel Check     Backup & RDS untuk AryaNoble",
             value="arbel",
-        ),
-        questionary.Choice(
-            f"{ICONS['alarm']} Alarm Verification Cek durasi alarm aktif",
-            value="alarm_verification",
         ),
         questionary.Choice(
             f"{ICONS['cost']} Cost Report     CloudWatch cost & usage",
@@ -643,11 +601,6 @@ def run_interactive():
 
         if main_choice == "arbel":
             run_arbel_check()
-            _pause()
-            continue
-
-        if main_choice == "alarm_verification":
-            run_alarm_verification()
             _pause()
             continue
 
