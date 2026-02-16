@@ -2,6 +2,25 @@
 
 CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, CloudWatch, Cost Anomaly, Backup, RDS, EC2 list) dengan menu interaktif.
 
+## Quick Start (3 langkah)
+1) Install aplikasi via pipx:
+   ```bash
+   pipx install "git+ssh://git@github.com/alhailrose/monitoring-ics-apps.git@main"
+   ```
+2) Login AWS profile yang dipakai:
+   ```bash
+   aws sso login --profile ksni-master
+   ```
+3) Jalankan:
+   ```bash
+   monitoring-hub
+   ```
+
+Jika update versi terbaru:
+```bash
+pipx reinstall "git+ssh://git@github.com/alhailrose/monitoring-ics-apps.git@main"
+```
+
 ## Fitur lengkap
 - **Single Check (per akun/profil):**
   - `health`: AWS Health Events
@@ -19,6 +38,7 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
   - `Backup`
 - **Nabati Analysis:** analisis CPU spike dan cost bulanan untuk akun NABATI-KSNI.
 - **CloudWatch Cost Report:** output table/markdown/plain text.
+  - Scope saat ini: source profile tetap `ksni-master` (NABATI-KSNI).
 - **WhatsApp-ready report:** format siap kirim untuk backup, RDS, dan alarm verification.
 
 ### Matriks fitur per mode

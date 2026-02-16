@@ -309,7 +309,8 @@ def run_cloudwatch_cost_report():
     console.print(
         Panel(
             "[bold]Tujuan:[/bold] ringkasan biaya CloudWatch lintas akun\n"
-            "[bold]Output:[/bold] table / markdown / plain text",
+            "[bold]Output:[/bold] table / markdown / plain text\n"
+            "[bold yellow]Scope:[/bold yellow] source profile tetap [bold]ksni-master[/bold] (NABATI-KSNI)",
             title="📉 Cost Dashboard",
             border_style="cyan",
             box=box.ROUNDED,
@@ -319,6 +320,7 @@ def run_cloudwatch_cost_report():
     console.print()
 
     profile = "ksni-master"
+    print_info(f"Source profile cost report: {profile} (NABATI-KSNI)")
     region = _choose_region([]) or "ap-southeast-3"
 
     format_choices = [
