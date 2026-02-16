@@ -14,6 +14,13 @@ from .base import BaseChecker
 WIB = timezone(timedelta(hours=7))
 
 
+def format_wib_time(dt: datetime) -> str:
+    """Format datetime to WIB string."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(WIB).strftime("%H:%M WIB")
+
+
 class AlarmVerificationChecker(BaseChecker):
     def __init__(
         self, region: str = "ap-southeast-3", min_duration_minutes: int = 10, **kwargs
@@ -30,17 +37,10 @@ class AlarmVerificationChecker(BaseChecker):
             summary = item.get("HistorySummary", "")
             if "from OK to ALARM" in summary:
                 return item.get("Timestamp")
-            # If we hit an ALARM to OK transition (before finding an OK to ALARM),
-            # it means the alarm flapped. We want the start of the *current* alarm period.
+
+            # If we hit an ALARM to OK transition, we continue searching
+            # because we want the start of the current alarm period
             if "from ALARM to OK" in summary:
-                # If we encounter this before finding the start, it means the current alarm
-                # started *after* this recovery. But if we are currently in ALARM state,
-                # we should keep searching backwards for the start of *this* alarm period.
-                # Actually, if we see ALARM->OK, it means the alarm recovered at that point.
-                # Since the alarm is currently ALARM, there must be an OK->ALARM *after* (newer than) this.
-                # Since we iterate newest to oldest, we should have found it already.
-                # If we haven't found it yet, maybe the history doesn't cover it?
-                # Or maybe the state change happened recently.
                 continue
 
         # If not found in history, maybe it's been in alarm for longer than the history window?
@@ -51,6 +51,37 @@ class AlarmVerificationChecker(BaseChecker):
                 return item.get("Timestamp")
 
         return None
+
+    def _generate_alert_message(self, alarm_data: Dict) -> str:
+        """Generate alert message similar to cloudwatch-evidence-bot."""
+        alarm_name = alarm_data["name"]
+        start_time_str = alarm_data["start_time_obj"]
+
+        # Format time if available
+        if start_time_str:
+            start_text = format_wib_time(start_time_str)
+        else:
+            start_text = "Unknown time"
+
+        greeting = "Selamat Pagi"  # Default greeting, can be improved
+        now_wib = datetime.now(WIB)
+        if 5 <= now_wib.hour < 11:
+            greeting = "Selamat Pagi"
+        elif 11 <= now_wib.hour < 15:
+            greeting = "Selamat Siang"
+        elif 15 <= now_wib.hour < 18:
+            greeting = "Selamat Sore"
+        else:
+            greeting = "Selamat Malam"
+
+        # Construct message based on bot format
+        # {greeting}, izin menginformasikan pada {alarm_name} sedang melewati
+        # threshold {threshold_text} sejak {start_text} (status: ongoing).
+
+        return (
+            f"{greeting}, izin menginformasikan pada *{alarm_name}* sedang melewati "
+            f"threshold sejak {start_text} (status: ongoing)."
+        )
 
     def check(self, profile: str, account_id: str):
         try:
@@ -99,16 +130,22 @@ class AlarmVerificationChecker(BaseChecker):
 
                 is_reportable = duration_minutes >= self.min_duration_minutes
 
-                results.append(
-                    {
-                        "name": alarm_name,
-                        "reason": alarm.get("StateReason", "N/A"),
-                        "start_time": start_time_str,
-                        "duration_minutes": duration_minutes,
-                        "is_reportable": is_reportable,
-                        "threshold": self.min_duration_minutes,
-                    }
-                )
+                # Basic data for result
+                alarm_res = {
+                    "name": alarm_name,
+                    "reason": alarm.get("StateReason", "N/A"),
+                    "start_time": start_time_str,
+                    "start_time_obj": start_time,
+                    "duration_minutes": duration_minutes,
+                    "is_reportable": is_reportable,
+                    "threshold": self.min_duration_minutes,
+                }
+
+                # Generate bot-style message if reportable
+                if is_reportable:
+                    alarm_res["message"] = self._generate_alert_message(alarm_res)
+
+                results.append(alarm_res)
 
             # Sort by reportable first, then duration descending
             results.sort(key=lambda x: (not x["is_reportable"], -x["duration_minutes"]))
@@ -153,6 +190,8 @@ class AlarmVerificationChecker(BaseChecker):
                     f"  Duration: {a['duration_minutes']} minutes (since {a['start_time']})"
                 )
                 lines.append(f"  Reason: {a['reason']}")
+                if "message" in a:
+                    lines.append(f"  [Bot Format]: {a['message']}")
                 lines.append(f"  Action: ESCALATE / REPORT NOW")
                 lines.append("")
 
