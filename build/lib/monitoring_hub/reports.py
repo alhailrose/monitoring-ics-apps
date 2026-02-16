@@ -278,6 +278,66 @@ def build_whatsapp_rds(all_results):
     return "\n".join(lines)
 
 
+def build_whatsapp_rds_client(all_results):
+    """Build formal client-facing WhatsApp-ready RDS report message."""
+
+    now_jkt = datetime.now(timezone(timedelta(hours=7)))
+    if 5 <= now_jkt.hour < 11:
+        greeting = "Selamat Pagi"
+        waktu = "Pagi"
+    elif 11 <= now_jkt.hour < 15:
+        greeting = "Selamat Siang"
+        waktu = "Siang"
+    elif 15 <= now_jkt.hour < 18:
+        greeting = "Selamat Sore"
+        waktu = "Sore"
+    else:
+        greeting = "Selamat Malam"
+        waktu = "Malam"
+
+    date_str = now_jkt.strftime("%d-%m-%Y")
+    time_str = now_jkt.strftime("%H:%M WIB")
+
+    messages = []
+    for profile, checks in all_results.items():
+        res = checks.get("daily-arbel")
+        if not res or res.get("status") in ["skipped", "error"]:
+            continue
+
+        acct_id = res.get("account_id", get_account_id(profile))
+        acct_name = res.get("account_name", profile)
+        window_hours = res.get("window_hours", 12)
+
+        lines = [f"{greeting} Team,"]
+        lines.append(
+            f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini (Data per {time_str}, monitoring {window_hours} jam terakhir)"
+        )
+        lines.extend([date_str, "", "Summary:"])
+
+        instances = res.get("instances", {})
+        for role, data in instances.items():
+            lines.append("")
+            lines.append(f"{role.capitalize()}:")
+            metrics = data.get("metrics", {})
+            for m in [
+                "ACUUtilization",
+                "CPUUtilization",
+                "FreeableMemory",
+                "DatabaseConnections",
+            ]:
+                info = metrics.get(m, {})
+                msg = info.get("message", f"{m}: Data tidak tersedia")
+                lines.append(f"* {msg}")
+
+        messages.append("\n".join(lines))
+
+    if not messages:
+        return "Tidak ada data RDS untuk profil Aryanoble yang terkonfigurasi."
+
+    sep = "\n" + ("-" * 70) + "\n\n"
+    return sep.join(messages)
+
+
 def build_whatsapp_alarm(all_results):
     """Build WhatsApp-ready alarm verification summary."""
 

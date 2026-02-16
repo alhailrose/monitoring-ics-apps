@@ -218,6 +218,109 @@ def _pause():
             _handle_interrupt(exit_direct=True)
 
 
+def _render_main_dashboard():
+    """Render dense dashboard cards for main menu."""
+    ops_panel = Panel(
+        "[bold cyan]Single Check[/bold cyan]\n"
+        "Verifikasi detail per akun\n\n"
+        "[bold cyan]All Checks[/bold cyan]\n"
+        "Monitoring paralel multi-akun\n\n"
+        "[bold cyan]Arbel Check[/bold cyan]\n"
+        "RDS + Alarm + Backup flow harian",
+        title="🛠️ Operations",
+        border_style="cyan",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+
+    insight_panel = Panel(
+        "[bold magenta]Cost Report[/bold magenta]\n"
+        "CloudWatch cost snapshot\n\n"
+        "[bold magenta]Settings[/bold magenta]\n"
+        "Konfigurasi profil dan default",
+        title="📊 Insights",
+        border_style="magenta",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+
+    nav_panel = Panel(
+        "[bold]↑↓[/bold] navigasi menu\n"
+        "[bold]Enter[/bold] pilih\n"
+        "[bold]Ctrl+C x2[/bold] keluar cepat",
+        title="⌨️ Navigation",
+        border_style="bright_black",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+
+    console.print(Columns([ops_panel, insight_panel, nav_panel], expand=True))
+    console.print()
+
+
+def _render_single_check_dashboard():
+    """Render dense dashboard cards for single-check workflow."""
+    security = Panel(
+        f"{ICONS['health']} Health Events\n"
+        f"{ICONS['guardduty']} GuardDuty Findings\n"
+        f"{ICONS['cloudwatch']} CloudWatch Alarms",
+        title="🔐 Security",
+        border_style="red",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    operations = Panel(
+        f"{ICONS['backup']} Backup Status\n"
+        f"{ICONS['rds']} Daily Arbel\n"
+        f"{ICONS['alarm']} Alarm Verification",
+        title="⚙️ Operations",
+        border_style="green",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    utility = Panel(
+        f"{ICONS['cost']} Cost Anomalies\n"
+        f"{ICONS['notifications']} Notifications\n"
+        f"{ICONS['ec2list']} EC2 List",
+        title="🧰 Utility",
+        border_style="yellow",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    console.print(Columns([security, operations, utility], expand=True))
+    console.print()
+
+
+def _render_all_checks_dashboard(profile_count: int):
+    """Render dense dashboard cards for all-checks workflow."""
+    run_panel = Panel(
+        f"Target accounts: [bold]{profile_count}[/bold]\n"
+        "Mode: Parallel checks\n"
+        "Output: Executive summary + detail",
+        title="🚀 Run Plan",
+        border_style="cyan",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    focus_panel = Panel(
+        "Cost anomalies\nGuardDuty\nCloudWatch\nNotifications",
+        title="🎯 Focus Areas",
+        border_style="magenta",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    hint_panel = Panel(
+        "Gunakan group profiles untuk coverage penuh\n"
+        "Gunakan region default jika tidak yakin",
+        title="💡 Hint",
+        border_style="bright_black",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    console.print(Columns([run_panel, focus_panel, hint_panel], expand=True))
+    console.print()
+
+
 def _format_cw_plain(rows, names, start, end, region, top):
     """Teams-friendly plain text for CloudWatch cost report."""
     rows_sorted = sorted(rows, key=lambda r: r["cost"], reverse=True)
@@ -256,6 +359,17 @@ def run_cloudwatch_cost_report():
     """Interactive CloudWatch cost & usage report."""
     print_mini_banner()
     print_section_header("CloudWatch Cost Report", ICONS["cost"])
+    console.print(
+        Panel(
+            "[bold]Tujuan:[/bold] ringkasan biaya CloudWatch lintas akun\n"
+            "[bold]Output:[/bold] table / markdown / plain text",
+            title="📉 Cost Dashboard",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
+    console.print()
 
     profile = "ksni-master"
     region = _choose_region([]) or "ap-southeast-3"
@@ -746,6 +860,17 @@ def run_settings_menu():
     """Settings and configuration menu."""
     print_mini_banner()
     print_section_header("Settings & Info", ICONS["settings"])
+    console.print(
+        Panel(
+            "Kelola config default region, workers, dan profile groups.\n"
+            "Gunakan sample config untuk bootstrap environment baru.",
+            title="⚙️ Configuration Center",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
+    console.print()
 
     config = get_config()
 
@@ -871,6 +996,7 @@ def run_interactive():
     while True:
         console.clear()
         print_banner()
+        _render_main_dashboard()
 
         main_choice = _select_prompt(f"{ICONS['star']} Menu Utama", main_choices)
 
@@ -901,6 +1027,7 @@ def run_interactive():
         if main_choice == "single":
             print_mini_banner()
             print_section_header("Single Check", ICONS["single"])
+            _render_single_check_dashboard()
 
             check = _select_prompt(f"{ICONS['single']} Pilih Check", check_choices)
             if not check:
@@ -944,6 +1071,8 @@ def run_interactive():
                 print_error("Tidak ada profil dipilih.")
                 _pause()
                 continue
+
+            _render_all_checks_dashboard(len(profiles))
 
             region = _choose_region(profiles)
             if region is None:
