@@ -1,4 +1,5 @@
 """Daily Arbel checker (ACU/CPU/FreeableMemory/Connections) with thresholds per account."""
+
 import boto3
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
@@ -8,11 +9,7 @@ from .base import BaseChecker
 
 
 JKT = ZoneInfo("Asia/Jakarta")
-WINDOW_HOURS = 12
 PERIOD_SECONDS = 60  # 1 menit untuk detail lebih tinggi
-
-# Profiles dengan monitoring hourly (1 jam terakhir untuk breach detection)
-HOURLY_PROFILES = ["connect-prod", "cis-erha"]
 
 
 # Thresholds per account key/profile
@@ -21,9 +18,14 @@ ACCOUNT_CONFIG = {
         "account_name": "CONNECT Prod (Non CIS)",
         "cluster_id": "noncis-prod-rds",
         "instances": {"writer": None},  # auto-detect writer
-        "metrics": ["ACUUtilization", "CPUUtilization", "FreeableMemory", "DatabaseConnections"],
+        "metrics": [
+            "ACUUtilization",
+            "CPUUtilization",
+            "FreeableMemory",
+            "DatabaseConnections",
+        ],
         "thresholds": {
-            "FreeableMemory": 10 * 1024 ** 3,
+            "FreeableMemory": 10 * 1024**3,
             "ACUUtilization": 75,
             "CPUUtilization": 75,
             "DatabaseConnections": 1500,
@@ -36,9 +38,14 @@ ACCOUNT_CONFIG = {
             "writer": "cis-prod-rds-instance",
             "reader": "cis-prod-rds-instance-reader",
         },
-        "metrics": ["ACUUtilization", "CPUUtilization", "FreeableMemory", "DatabaseConnections"],
+        "metrics": [
+            "ACUUtilization",
+            "CPUUtilization",
+            "FreeableMemory",
+            "DatabaseConnections",
+        ],
         "thresholds": {
-            "FreeableMemory": 20 * 1024 ** 3,
+            "FreeableMemory": 20 * 1024**3,
             "ACUUtilization": 75,
             "CPUUtilization": 75,
             "DatabaseConnections": 3000,
@@ -51,9 +58,14 @@ ACCOUNT_CONFIG = {
             "writer": "dermies-prod-rds",
             "reader": "dermies-prod-rds-reader",
         },
-        "metrics": ["ACUUtilization", "CPUUtilization", "FreeableMemory", "DatabaseConnections"],
+        "metrics": [
+            "ACUUtilization",
+            "CPUUtilization",
+            "FreeableMemory",
+            "DatabaseConnections",
+        ],
         "thresholds": {
-            "FreeableMemory": 10 * 1024 ** 3,
+            "FreeableMemory": 10 * 1024**3,
             "ACUUtilization": 75,
             "CPUUtilization": 75,
             "DatabaseConnections": 1500,
@@ -64,12 +76,17 @@ ACCOUNT_CONFIG = {
         "instances": {
             "prod": "erhabuddy-prod-mysql-db",
         },
-        "metrics": ["CPUUtilization", "FreeableMemory", "DatabaseConnections", "FreeStorageSpace"],
+        "metrics": [
+            "CPUUtilization",
+            "FreeableMemory",
+            "DatabaseConnections",
+            "FreeStorageSpace",
+        ],
         "thresholds": {
-            "FreeableMemory": 800 * 1024 ** 2,       # 800 MB (~10% of 8GB)
+            "FreeableMemory": 800 * 1024**2,  # 800 MB (~10% of 8GB)
             "CPUUtilization": 75,
             "DatabaseConnections": 500,
-            "FreeStorageSpace": 10 * 1024 ** 3,       # 10 GB (of 178GB allocated)
+            "FreeStorageSpace": 10 * 1024**3,  # 10 GB (of 178GB allocated)
         },
     },
     "public-web": {
@@ -78,12 +95,17 @@ ACCOUNT_CONFIG = {
             "mysql-prod": "mysql-prod-instance",
             "postgre-prod": "postgre-prod-instance",
         },
-        "metrics": ["CPUUtilization", "FreeableMemory", "DatabaseConnections", "FreeStorageSpace"],
+        "metrics": [
+            "CPUUtilization",
+            "FreeableMemory",
+            "DatabaseConnections",
+            "FreeStorageSpace",
+        ],
         "thresholds": {
-            "FreeableMemory": 200 * 1024 ** 2,       # 200 MB (~10% of 2GB, smallest instance)
+            "FreeableMemory": 200 * 1024**2,  # 200 MB (~10% of 2GB, smallest instance)
             "CPUUtilization": 75,
             "DatabaseConnections": 500,
-            "FreeStorageSpace": 5 * 1024 ** 3,        # 5 GB (of 20GB allocated)
+            "FreeStorageSpace": 5 * 1024**3,  # 5 GB (of 20GB allocated)
         },
     },
 }
@@ -107,7 +129,9 @@ def human_bytes(b):
 
 def get_writer_instance(rds_client, cluster_id):
     try:
-        clusters = rds_client.describe_db_clusters(DBClusterIdentifier=cluster_id)["DBClusters"]
+        clusters = rds_client.describe_db_clusters(DBClusterIdentifier=cluster_id)[
+            "DBClusters"
+        ]
         for cluster in clusters:
             for member in cluster["DBClusterMembers"]:
                 if member.get("IsClusterWriter"):
@@ -134,17 +158,15 @@ def build_metric_query(id_base, metric_name, instance_id, stat):
 
 
 class DailyArbelChecker(BaseChecker):
-    def __init__(self, region: str = "ap-southeast-3"):
-        super().__init__(region)
+    def __init__(
+        self, region: str = "ap-southeast-3", window_hours: int = 12, **kwargs
+    ):
+        super().__init__(region, **kwargs)
+        self.window_hours = window_hours
 
     def _fetch_metrics(self, cw_client, instance_id, metric_names, profile=None):
         end = datetime.now(timezone.utc)
-        start = end - timedelta(hours=WINDOW_HOURS)
-        
-        # Untuk hourly profiles, simpan window 1 jam terakhir untuk breach detection
-        one_hour_ago_start = None
-        if profile in HOURLY_PROFILES:
-            one_hour_ago_start = end - timedelta(hours=1)
+        start = end - timedelta(hours=self.window_hours)
 
         queries = []
         id_base = instance_id.replace("-", "_").replace(".", "_")
@@ -179,49 +201,38 @@ class DailyArbelChecker(BaseChecker):
             results[metric_name]["last"] = vs[-1]
             results[metric_name]["avg"] = sum(vs) / len(vs)
             results[metric_name]["max"] = max(vs)
-            
-            # Untuk hourly profiles, simpan data 1 jam terakhir untuk breach detection
-            if one_hour_ago_start:
-                one_hour_pairs = [(t, v) for t, v in zip(ts, vs) if one_hour_ago_start <= t <= end]
-                if one_hour_pairs:
-                    oh_ts, oh_vs = zip(*one_hour_pairs)
-                    results[metric_name]["last_hour"] = {
-                        "timestamps": list(oh_ts),
-                        "values": list(oh_vs),
-                    }
 
         return results
 
     def _breach_detail(self, info, thresholds, metric, comparator, profile=None):
         """Return list of breach periods with (start_time, end_time, peak_val)."""
-        # Untuk hourly profiles, cek breach dalam 1 jam terakhir
-        if profile in HOURLY_PROFILES and "last_hour" in info:
-            vals = info["last_hour"].get("values", [])
-            timestamps = info["last_hour"].get("timestamps", [])
-        else:
-            vals = info.get("values", [])
-            timestamps = info.get("timestamps", [])
-            
+        vals = info.get("values", [])
+        timestamps = info.get("timestamps", [])
+
         if comparator == "above":
-            breached = [(t, v) for t, v in zip(timestamps, vals) if v > thresholds[metric]]
+            breached = [
+                (t, v) for t, v in zip(timestamps, vals) if v > thresholds[metric]
+            ]
         else:
-            breached = [(t, v) for t, v in zip(timestamps, vals) if v < thresholds[metric]]
+            breached = [
+                (t, v) for t, v in zip(timestamps, vals) if v < thresholds[metric]
+            ]
         if not breached:
             return None
-        
+
         # Group consecutive breaches into periods (gap > 5 menit = periode baru)
         periods = []
         current_period = [breached[0]]
-        
+
         for i in range(1, len(breached)):
-            time_gap = (breached[i][0] - breached[i-1][0]).total_seconds() / 60
+            time_gap = (breached[i][0] - breached[i - 1][0]).total_seconds() / 60
             if time_gap <= 5:  # Masih dalam periode yang sama
                 current_period.append(breached[i])
             else:  # Periode baru
                 periods.append(current_period)
                 current_period = [breached[i]]
         periods.append(current_period)
-        
+
         # Format setiap periode
         result = []
         for period in periods:
@@ -229,13 +240,16 @@ class DailyArbelChecker(BaseChecker):
                 peak = max(period, key=lambda x: x[1])
             else:
                 peak = min(period, key=lambda x: x[1])
-            
+
             start_time = period[0][0].astimezone(JKT).strftime("%H:%M")
             end_time = period[-1][0].astimezone(JKT).strftime("%H:%M")
             peak_val = peak[1]
-            
-            result.append((peak_val, start_time, end_time))
-        
+
+            # Hitung durasi dalam menit
+            duration = int((period[-1][0] - period[0][0]).total_seconds() / 60)
+
+            result.append((peak_val, start_time, end_time, duration))
+
         return result
 
     def _evaluate_metric(self, metric, info, thresholds, profile=None):
@@ -248,59 +262,126 @@ class DailyArbelChecker(BaseChecker):
         thr = thresholds[metric]
 
         if metric in ("ACUUtilization", "CPUUtilization"):
-            label = "ACU Utilization" if metric == "ACUUtilization" else "CPU Utilization"
+            label = (
+                "ACU Utilization" if metric == "ACUUtilization" else "CPU Utilization"
+            )
             bd = self._breach_detail(info, thresholds, metric, "above", profile)
+            # Filter: hanya tampilkan breach >= 10 menit
+            if bd:
+                bd = [p for p in bd if p[3] >= 10]
+
             if last > thr:
                 msg = f"{label}: {last:.0f}% (di atas {int(thr)}%)"
                 if bd:
-                    breach_info = ", ".join([f"{p[0]:.0f}% pukul {p[1]}-{p[2]} WIB" for p in bd])
+                    breach_info = ", ".join(
+                        [
+                            f"{p[0]:.0f}% pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                            for p in bd
+                        ]
+                    )
                     msg += f" | {breach_info}"
                 return "warn", msg
             if bd:
-                breach_info = ", ".join([f"{p[0]:.0f}% pukul {p[1]}-{p[2]} WIB" for p in bd])
-                return "past-warn", f"{label}: {last:.0f}% (sekarang normal, sempat > {int(thr)}% | {breach_info})"
+                breach_info = ", ".join(
+                    [f"{p[0]:.0f}% pukul {p[1]}-{p[2]} WIB ({p[3]} menit)" for p in bd]
+                )
+                return (
+                    "past-warn",
+                    f"{label}: {last:.0f}% (sekarang normal, sempat > {int(thr)}% | {breach_info})",
+                )
             return "ok", f"{label}: {last:.0f}% (normal)"
 
         if metric == "FreeableMemory":
             label = "Freeable Memory"
             bd = self._breach_detail(info, thresholds, metric, "below", profile)
+            # Filter: hanya tampilkan breach >= 10 menit
+            if bd:
+                bd = [p for p in bd if p[3] >= 10]
+
             if last < thr:
                 msg = f"{label}: {human_bytes(last)} (rendah < {human_bytes(thr)})"
                 if bd:
-                    breach_info = ", ".join([f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB" for p in bd])
+                    breach_info = ", ".join(
+                        [
+                            f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                            for p in bd
+                        ]
+                    )
                     msg += f" | {breach_info}"
                 return "warn", msg
             if bd:
-                breach_info = ", ".join([f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB" for p in bd])
-                return "past-warn", f"{label}: {human_bytes(last)} (sekarang normal, sempat < {human_bytes(thr)} | {breach_info})"
+                breach_info = ", ".join(
+                    [
+                        f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                        for p in bd
+                    ]
+                )
+                return (
+                    "past-warn",
+                    f"{label}: {human_bytes(last)} (sekarang normal, sempat < {human_bytes(thr)} | {breach_info})",
+                )
             return "ok", f"{label}: {human_bytes(last)} (normal)"
 
         if metric == "DatabaseConnections":
             label = "DB Connections"
             bd = self._breach_detail(info, thresholds, metric, "above", profile)
+            # Filter: hanya tampilkan breach >= 10 menit
+            if bd:
+                bd = [p for p in bd if p[3] >= 10]
+
             if last > thr:
                 msg = f"{label}: {int(last)} (di atas {thr})"
                 if bd:
-                    breach_info = ", ".join([f"{int(p[0])} connections pukul {p[1]}-{p[2]} WIB" for p in bd])
+                    breach_info = ", ".join(
+                        [
+                            f"{int(p[0])} connections pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                            for p in bd
+                        ]
+                    )
                     msg += f" | {breach_info}"
                 return "warn", msg
             if bd:
-                breach_info = ", ".join([f"{int(p[0])} connections pukul {p[1]}-{p[2]} WIB" for p in bd])
-                return "past-warn", f"{label}: {int(last)} (sekarang normal, sempat > {thr} | {breach_info})"
+                breach_info = ", ".join(
+                    [
+                        f"{int(p[0])} connections pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                        for p in bd
+                    ]
+                )
+                return (
+                    "past-warn",
+                    f"{label}: {int(last)} (sekarang normal, sempat > {thr} | {breach_info})",
+                )
             return "ok", f"{label}: {int(last)} (normal)"
 
         if metric == "FreeStorageSpace":
             label = "Free Storage"
             bd = self._breach_detail(info, thresholds, metric, "below", profile)
+            # Filter: hanya tampilkan breach >= 10 menit
+            if bd:
+                bd = [p for p in bd if p[3] >= 10]
+
             if last < thr:
                 msg = f"{label}: {human_bytes(last)} (rendah < {human_bytes(thr)})"
                 if bd:
-                    breach_info = ", ".join([f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB" for p in bd])
+                    breach_info = ", ".join(
+                        [
+                            f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                            for p in bd
+                        ]
+                    )
                     msg += f" | {breach_info}"
                 return "warn", msg
             if bd:
-                breach_info = ", ".join([f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB" for p in bd])
-                return "past-warn", f"{label}: {human_bytes(last)} (sekarang normal, sempat < {human_bytes(thr)} | {breach_info})"
+                breach_info = ", ".join(
+                    [
+                        f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                        for p in bd
+                    ]
+                )
+                return (
+                    "past-warn",
+                    f"{label}: {human_bytes(last)} (sekarang normal, sempat < {human_bytes(thr)} | {breach_info})",
+                )
             return "ok", f"{label}: {human_bytes(last)} (normal)"
 
         return "no-data", f"{metric}: Data tidak tersedia"
@@ -330,13 +411,21 @@ class DailyArbelChecker(BaseChecker):
 
             for role, inst_id in instances.items():
                 if not inst_id:
-                    instance_reports[role] = {"status": "no-data", "message": "Instance not found"}
+                    instance_reports[role] = {
+                        "status": "no-data",
+                        "message": "Instance not found",
+                    }
                     continue
 
                 metrics_info = self._fetch_metrics(cw, inst_id, cfg["metrics"], profile)
                 evaluations = {}
                 for metric_name in cfg["metrics"]:
-                    status, msg = self._evaluate_metric(metric_name, metrics_info.get(metric_name, {}), cfg["thresholds"], profile)
+                    status, msg = self._evaluate_metric(
+                        metric_name,
+                        metrics_info.get(metric_name, {}),
+                        cfg["thresholds"],
+                        profile,
+                    )
                     evaluations[metric_name] = {"status": status, "message": msg}
                     if status == "warn":
                         any_warn = True
@@ -353,6 +442,7 @@ class DailyArbelChecker(BaseChecker):
                 "profile": profile,
                 "account_id": account_id,
                 "region": self.region,
+                "window_hours": self.window_hours,
                 "account_name": cfg.get("account_name", profile),
                 "instances": instance_reports,
             }
@@ -385,7 +475,7 @@ class DailyArbelChecker(BaseChecker):
         else:
             greeting = "Selamat Malam"
             waktu = "Malam"
-            
+
         date_str = now.strftime("%d-%m-%Y")
         time_str = now.strftime("%H:%M WIB")
         acct_name = results.get("account_name", results.get("profile"))
@@ -394,13 +484,12 @@ class DailyArbelChecker(BaseChecker):
 
         lines: List[str] = []
         lines.append(f"{greeting} Team,")
-        
-        # Tambahkan info monitoring window untuk hourly profiles
-        if profile in HOURLY_PROFILES:
-            lines.append(f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini (Data per {time_str}, monitoring 1 jam terakhir)")
-        else:
-            lines.append(f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini")
-        
+
+        # Tambahkan info monitoring window
+        lines.append(
+            f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini (Data per {time_str}, monitoring {self.window_hours} jam terakhir)"
+        )
+
         lines.append(date_str)
         lines.append("")
         lines.append("Summary:")

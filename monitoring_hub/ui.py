@@ -57,6 +57,7 @@ ICONS = {
     "backup": "💾",
     "rds": "🗄️",
     "notifications": "🔔",
+    "alarm": "⏱️",
     "ec2list": "🖥️",
     "settings": "⚙️",
     "exit": "🚪",

@@ -196,8 +196,7 @@ def build_whatsapp_backup(date_str, all_results):
 
 def build_whatsapp_rds(all_results):
     """Build WhatsApp-ready RDS report message."""
-    from checks.daily_arbel import HOURLY_PROFILES
-    
+
     now_jkt = datetime.now(timezone(timedelta(hours=7)))
     # Perbaiki greeting: Pagi (5-11), Siang (11-15), Sore (15-18), Malam (18-5)
     if 5 <= now_jkt.hour < 11:
@@ -212,7 +211,7 @@ def build_whatsapp_rds(all_results):
     else:
         greeting = "Selamat Malam"
         waktu = "Malam"
-        
+
     date_str = now_jkt.strftime("%d-%m-%Y")
     time_str = now_jkt.strftime("%H:%M WIB")
 
@@ -225,13 +224,13 @@ def build_whatsapp_rds(all_results):
         acct_name = res.get("account_name", profile)
 
         lines = [f"{greeting} Team,"]
-        
-        # Tambahkan info monitoring window untuk hourly profiles
-        if profile in HOURLY_PROFILES:
-            lines.append(f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini (Data per {time_str}, monitoring 1 jam terakhir)")
-        else:
-            lines.append(f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini")
-        
+
+        # Tambahkan info monitoring window
+        window_hours = res.get("window_hours", 12)
+        lines.append(
+            f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini (Data per {time_str}, monitoring {window_hours} jam terakhir)"
+        )
+
         lines.extend([date_str, "", "Summary:"])
 
         instances = res.get("instances", {})

@@ -76,11 +76,13 @@ def run_individual_check(check_name: str, profile: str, region: str):
     console.print(report)
 
 
-def _check_single_profile(check_name: str, profile: str, region: str) -> dict:
+def _check_single_profile(
+    check_name: str, profile: str, region: str, check_kwargs: dict = None
+) -> dict:
     """Run a single check on a profile. Used for parallel execution."""
     account_id = get_account_id(profile)
     checker_class = AVAILABLE_CHECKS[check_name]
-    checker = checker_class(region=region)
+    checker = checker_class(region=region, **(check_kwargs or {}))
 
     try:
         results = checker.check(profile, account_id)
@@ -116,6 +118,7 @@ def run_group_specific(
     region: str,
     group_name: Optional[str] = None,
     workers: int = DEFAULT_WORKERS,
+    check_kwargs: dict = None,
 ):
     """Run a specific check across multiple profiles with parallel execution."""
 
@@ -151,7 +154,7 @@ def run_group_specific(
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
                 executor.submit(
-                    _check_single_profile, check_name, profile, region
+                    _check_single_profile, check_name, profile, region, check_kwargs
                 ): profile
                 for profile in profiles
             }
@@ -171,7 +174,7 @@ def run_group_specific(
     # For non-backup/rds checks, print each profile's report
     if check_name not in ["backup", "daily-arbel"]:
         checker_class = AVAILABLE_CHECKS[check_name]
-        checker = checker_class(region=region)
+        checker = checker_class(region=region, **(check_kwargs or {}))
         for profile in profiles:
             res = all_results.get(profile, {}).get(check_name, {})
             report = checker.format_report(res)
@@ -594,7 +597,7 @@ def _print_detailed_report(
     all_notif_events = []
     total_today = 0
     total_managed_all = 0
-    
+
     for profile, results in all_results.items():
         if "notifications" in results:
             notif_result = results["notifications"]
@@ -633,13 +636,17 @@ def _print_detailed_report(
                 )
                 lines.append(f"  * Event Type: {event_type}")
                 lines.append(f"    Description: {headline}")
-        
+
         # Show all existing notifications from all accounts
         lines.append("")
-        lines.append(f"[DEBUG] all_notif_events length: {len(all_notif_events)}, total_managed_all: {total_managed_all}")
+        lines.append(
+            f"[DEBUG] all_notif_events length: {len(all_notif_events)}, total_managed_all: {total_managed_all}"
+        )
         if len(all_notif_events) > 0:
             # Sort by creation time (newest first)
-            sorted_events = sorted(all_notif_events, key=lambda x: x.get("creationTime", ""), reverse=True)
+            sorted_events = sorted(
+                all_notif_events, key=lambda x: x.get("creationTime", ""), reverse=True
+            )
             lines.append("")
             lines.append(f"All Notifications ({len(sorted_events)} total):")
             for event in sorted_events[:5]:
@@ -945,7 +952,7 @@ def _print_simple_report(
     all_notif_events = []
     total_today = 0
     total_managed_all = 0
-    
+
     for profile, results in all_results.items():
         if "notifications" in results:
             notif_result = results["notifications"]
@@ -965,10 +972,12 @@ def _print_simple_report(
             )
         else:
             lines.append(f"Status: {total_today} new notifications detected today")
-        
+
         # Show all existing notifications from all accounts
         if len(all_notif_events) > 0:
-            sorted_events = sorted(all_notif_events, key=lambda x: x.get("creationTime", ""), reverse=True)
+            sorted_events = sorted(
+                all_notif_events, key=lambda x: x.get("creationTime", ""), reverse=True
+            )
             lines.append("")
             lines.append(f"All Notifications ({len(sorted_events)} total):")
             for event in sorted_events[:5]:

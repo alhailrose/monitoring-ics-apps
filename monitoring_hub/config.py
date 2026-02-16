@@ -14,6 +14,7 @@ from checks.notifications import NotificationChecker
 from checks.backup_status import BackupStatusChecker
 from checks.daily_arbel import DailyArbelChecker
 from checks.ec2_list import EC2ListChecker
+from checks.alarm_verification import AlarmVerificationChecker
 
 from .config_loader import (
     get_profile_groups,
@@ -101,6 +102,7 @@ AVAILABLE_CHECKS = {
     "backup": BackupStatusChecker,
     "daily-arbel": DailyArbelChecker,
     "ec2list": EC2ListChecker,
+    "alarm_verification": AlarmVerificationChecker,
 }
 
 # Checks to run in --all mode (excludes health only)
