@@ -13,7 +13,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
-from rich.columns import Columns
 
 from checks import cloudwatch_cost_report as cw_cost_report
 
@@ -219,105 +218,53 @@ def _pause():
 
 
 def _render_main_dashboard():
-    """Render dense dashboard cards for main menu."""
-    ops_panel = Panel(
-        "[bold cyan]Single Check[/bold cyan]\n"
-        "Verifikasi detail per akun\n\n"
-        "[bold cyan]All Checks[/bold cyan]\n"
-        "Monitoring paralel multi-akun\n\n"
-        "[bold cyan]Arbel Check[/bold cyan]\n"
-        "RDS + Alarm + Backup flow harian",
-        title="🛠️ Operations",
-        border_style="cyan",
-        box=box.ROUNDED,
-        padding=(1, 2),
-    )
+    """Render compact top bar for main menu."""
+    quick = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+    quick.add_column("k", style="dim")
+    quick.add_column("v")
+    quick.add_row("Core", "Single Check  |  All Checks  |  Arbel Check")
+    quick.add_row("Support", "Cost Report  |  Settings")
+    quick.add_row("Keys", "↑↓ navigate  •  Enter select  •  Ctrl+C exit")
 
-    insight_panel = Panel(
-        "[bold magenta]Cost Report[/bold magenta]\n"
-        "CloudWatch cost snapshot\n\n"
-        "[bold magenta]Settings[/bold magenta]\n"
-        "Konfigurasi profil dan default",
-        title="📊 Insights",
-        border_style="magenta",
-        box=box.ROUNDED,
-        padding=(1, 2),
+    console.print(
+        Panel(
+            quick,
+            title="🧭 Control Center",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(0, 1),
+        )
     )
-
-    nav_panel = Panel(
-        "[bold]↑↓[/bold] navigasi menu\n"
-        "[bold]Enter[/bold] pilih\n"
-        "[bold]Ctrl+C x2[/bold] keluar cepat",
-        title="⌨️ Navigation",
-        border_style="bright_black",
-        box=box.ROUNDED,
-        padding=(1, 2),
-    )
-
-    console.print(Columns([ops_panel, insight_panel, nav_panel], expand=True))
     console.print()
 
 
 def _render_single_check_dashboard():
-    """Render dense dashboard cards for single-check workflow."""
-    security = Panel(
-        f"{ICONS['health']} Health Events\n"
-        f"{ICONS['guardduty']} GuardDuty Findings\n"
-        f"{ICONS['cloudwatch']} CloudWatch Alarms",
-        title="🔐 Security",
-        border_style="red",
-        box=box.ROUNDED,
-        padding=(1, 2),
+    """Render compact single-check helper."""
+    console.print(
+        Panel(
+            f"{ICONS['health']} Health  •  {ICONS['guardduty']} GuardDuty  •  {ICONS['cloudwatch']} CloudWatch  •  "
+            f"{ICONS['backup']} Backup  •  {ICONS['rds']} Daily Arbel  •  {ICONS['alarm']} Alarm  •  "
+            f"{ICONS['cost']} Cost  •  {ICONS['notifications']} Notifications  •  {ICONS['ec2list']} EC2 List",
+            title="🔍 Available Checks",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(0, 1),
+        )
     )
-    operations = Panel(
-        f"{ICONS['backup']} Backup Status\n"
-        f"{ICONS['rds']} Daily Arbel\n"
-        f"{ICONS['alarm']} Alarm Verification",
-        title="⚙️ Operations",
-        border_style="green",
-        box=box.ROUNDED,
-        padding=(1, 2),
-    )
-    utility = Panel(
-        f"{ICONS['cost']} Cost Anomalies\n"
-        f"{ICONS['notifications']} Notifications\n"
-        f"{ICONS['ec2list']} EC2 List",
-        title="🧰 Utility",
-        border_style="yellow",
-        box=box.ROUNDED,
-        padding=(1, 2),
-    )
-    console.print(Columns([security, operations, utility], expand=True))
     console.print()
 
 
 def _render_all_checks_dashboard(profile_count: int):
-    """Render dense dashboard cards for all-checks workflow."""
-    run_panel = Panel(
-        f"Target accounts: [bold]{profile_count}[/bold]\n"
-        "Mode: Parallel checks\n"
-        "Output: Executive summary + detail",
-        title="🚀 Run Plan",
-        border_style="cyan",
-        box=box.ROUNDED,
-        padding=(1, 2),
+    """Render compact all-checks helper."""
+    console.print(
+        Panel(
+            f"Target: [bold]{profile_count} akun[/bold]  •  Mode: parallel  •  Focus: Cost / GuardDuty / CloudWatch / Notifications",
+            title="📋 All Checks Plan",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(0, 1),
+        )
     )
-    focus_panel = Panel(
-        "Cost anomalies\nGuardDuty\nCloudWatch\nNotifications",
-        title="🎯 Focus Areas",
-        border_style="magenta",
-        box=box.ROUNDED,
-        padding=(1, 2),
-    )
-    hint_panel = Panel(
-        "Gunakan group profiles untuk coverage penuh\n"
-        "Gunakan region default jika tidak yakin",
-        title="💡 Hint",
-        border_style="bright_black",
-        box=box.ROUNDED,
-        padding=(1, 2),
-    )
-    console.print(Columns([run_panel, focus_panel, hint_panel], expand=True))
     console.print()
 
 
@@ -492,81 +439,39 @@ def run_arbel_check():
             len(arbel_alarm_catalog.get(profile, [])) for profile in default_profiles
         )
 
-        hero = Panel(
-            "[bold cyan]Arbel Monitoring Center[/bold cyan]  [dim]Dashboard Padat[/dim]\n"
-            "[dim]Fokus: RDS utilization + verifikasi alarm untuk operasional harian[/dim]",
-            border_style="cyan",
-            box=box.HEAVY,
-            padding=(0, 2),
-        )
+        top = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        top.add_column("k", style="dim")
+        top.add_column("v")
+        top.add_row("Region", "ap-southeast-3")
+        top.add_row("Default Accounts", ", ".join(default_profiles))
+        top.add_row("Default Alarm Count", str(default_alarm_count))
+        top.add_row("Rule", "report jika ALARM >= 10 menit")
 
-        scope_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-        scope_table.add_column("k", style="dim")
-        scope_table.add_column("v", style="white")
-        scope_table.add_row("Region", "ap-southeast-3")
-        scope_table.add_row("Default Accounts", ", ".join(default_profiles))
-        scope_table.add_row("Default Alarm Count", str(default_alarm_count))
-        scope_table.add_row("Alarm Rule", "Report jika ALARM >= 10 menit")
+        mode = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        mode.add_column("mode", style="cyan")
+        mode.add_column("flow", style="white")
+        mode.add_row("RDS Monitoring", "pilih akun -> pilih window -> run")
+        mode.add_row("Alarm Verification", "pilih akun -> pilih alarm -> run")
+        mode.add_row("Backup", "langsung run semua akun Aryanoble")
 
-        stat_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-        stat_table.add_column("metric", style="dim")
-        stat_table.add_column("value", justify="right")
-        stat_table.add_row("Run Standar", "3h")
-        stat_table.add_row("Accounts", str(len(default_profiles)))
-        stat_table.add_row("Alarm Catalog", str(default_alarm_count))
-
-        stat_panel = Panel(
-            stat_table,
-            title="📈 Statistik",
-            border_style="yellow",
-            box=box.ROUNDED,
-            padding=(1, 2),
-        )
-
-        quick_panel = Panel(
-            "[bold cyan]RDS Monitoring[/bold cyan]\n"
-            "Pilih akun lalu window 1h / 3h / 12h\n\n"
-            "[bold cyan]Alarm Verification[/bold cyan]\n"
-            "Pilih akun lalu alarm yang mau dicek",
-            title="⚙️ Flow Utama",
-            border_style="cyan",
-            box=box.ROUNDED,
-            padding=(1, 2),
-        )
-
-        custom_panel = Panel(
-            "[bold magenta]Backup[/bold magenta]\n"
-            "Report backup semua akun Aryanoble\n\n"
-            "[bold magenta]Defaults[/bold magenta]\n"
-            "dermies-max, cis-erha, connect-prod",
-            title="🗂️ Ops Tambahan",
-            border_style="magenta",
-            box=box.ROUNDED,
-            padding=(1, 2),
-        )
-
-        scope_panel = Panel(
-            scope_table,
-            title="📌 Cakupan",
-            border_style="green",
-            box=box.ROUNDED,
-            padding=(1, 2),
-        )
-
-        legend_panel = Panel(
-            "[bold]1[/bold] pilih mode  [dim]•[/dim]  [bold]2[/bold] pilih akun  [dim]•[/dim]  [bold]3[/bold] jalankan report\n"
-            "[bold yellow]Tip:[/bold yellow] centang akun default lalu tambah akun jika perlu",
-            title="⌨️ Keyboard",
-            border_style="bright_black",
-            box=box.ROUNDED,
-            padding=(0, 2),
-        )
-
-        console.print(hero)
         console.print(
-            Columns([quick_panel, custom_panel, scope_panel, stat_panel], expand=True)
+            Panel(
+                top,
+                title="🏥 Arbel Monitoring Center",
+                border_style="cyan",
+                box=box.ROUNDED,
+                padding=(0, 1),
+            )
         )
-        console.print(legend_panel)
+        console.print(
+            Panel(
+                mode,
+                title="🧭 Flow",
+                border_style="green",
+                box=box.ROUNDED,
+                padding=(0, 1),
+            )
+        )
         console.print()
 
     def _pick_arbel_profiles():

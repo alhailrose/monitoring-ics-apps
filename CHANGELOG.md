@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Alarm verification sekarang menyertakan konteks status saat ini (`ALARM`/`OK`) dan history breach terbaru.
+- Tambah pengujian:
+  - `tests/test_alarm_verification.py` untuk batas durasi 10 menit dan status terkini.
+  - `tests/test_whatsapp_alarm_report.py` untuk validasi format WhatsApp klien.
+
+### Changed
+- Arbel flow di menu interaktif disederhanakan menjadi 3 mode utama: `RDS Monitoring`, `Alarm Verification`, `Backup`.
+- Pemilihan akun dan nama alarm sekarang langsung via checkbox (default tercentang) agar lebih cepat untuk operasional.
+- Format `build_whatsapp_rds` dikembalikan ke format klien yang lebih detail; format ringkas dipindah ke `build_whatsapp_rds_compact`.
+- Pesan WhatsApp alarm format klien diperjelas dengan penggabungan metrik yang naik dalam satu kalimat agar tidak membingungkan penerima.
+- Dokumentasi README diperbarui untuk mencakup semua fitur (single/all/arbel/nabati/cost report) beserta ringkasan command CLI.
+
+### Fixed
+- Kasus alarm yang sudah kembali `OK` sekarang tetap ditampilkan dengan history rentang waktu dan durasi breach.
+- Ringkasan alarm tidak lagi menampilkan hasil seolah "normal" tanpa konteks history.
+
 ## [1.4.0] - 2026-02-09
 
 ### Added

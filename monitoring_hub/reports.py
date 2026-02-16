@@ -361,7 +361,56 @@ def build_whatsapp_alarm(all_results):
     report_now = []
     monitor = []
     recovered = []
+    ok_now = []
     not_found = []
+
+    def _account_label(profile: str) -> str:
+        return profile.replace("-", " ").upper()
+
+    def _metric_label(alarm_name: str) -> str:
+        lname = (alarm_name or "").lower()
+        role = (
+            "Reader"
+            if "reader" in lname
+            else "Writer"
+            if "writer" in lname
+            else "General"
+        )
+        if "freeable-memory" in lname or "memory" in lname:
+            metric = "Freeable Memory"
+        elif "cpu" in lname:
+            metric = "CPU Utilization"
+        elif "acu" in lname:
+            metric = "ACU Utilization"
+        elif "connection" in lname:
+            metric = "Database Connections"
+        else:
+            metric = "Metric"
+        if role == "General":
+            return metric
+        return f"{metric} ({role})"
+
+    def _metric_phrase(metrics):
+        uniq = []
+        seen = set()
+        for m in metrics:
+            if m in seen:
+                continue
+            seen.add(m)
+            uniq.append(m)
+        if not uniq:
+            return "-"
+        if len(uniq) == 1:
+            return uniq[0]
+        if len(uniq) == 2:
+            return f"{uniq[0]} dan {uniq[1]}"
+        return f"{', '.join(uniq[:-1])}, serta {uniq[-1]}"
+
+    def _one_line_reason(value: str) -> str:
+        if not value:
+            return "-"
+        line = value.replace("\n", " ").strip()
+        return (line[:137] + "...") if len(line) > 140 else line
 
     for profile, checks in all_results.items():
         res = checks.get("alarm_verification")
@@ -378,33 +427,95 @@ def build_whatsapp_alarm(all_results):
 
             if action == "REPORT_NOW":
                 report_now.append(
-                    f"- {name} ({profile}) | {alarm.get('ongoing_minutes', 0)}m ongoing"
+                    {
+                        "profile": profile,
+                        "alarm_name": name,
+                        "metric": _metric_label(name),
+                        "threshold": alarm.get("threshold_text", "N/A"),
+                        "range": f"{alarm.get('breach_start_time', 'unknown')} - now",
+                        "reason": _one_line_reason(alarm.get("reason", "")),
+                        "ongoing": alarm.get("ongoing_minutes", 0),
+                    }
                 )
             elif action == "MONITOR":
                 monitor.append(
-                    f"- {name} ({profile}) | {alarm.get('ongoing_minutes', 0)}m ongoing"
+                    {
+                        "profile": profile,
+                        "alarm_name": name,
+                        "metric": _metric_label(name),
+                        "threshold": alarm.get("threshold_text", "N/A"),
+                        "range": f"{alarm.get('breach_start_time', 'unknown')} - now",
+                        "reason": _one_line_reason(alarm.get("reason", "")),
+                        "ongoing": alarm.get("ongoing_minutes", 0),
+                    }
                 )
             elif action == "NO_REPORT_RECOVERED":
                 recovered.append(
-                    f"- {name} ({profile}) | recovered {alarm.get('breach_duration_minutes', 0)}m"
+                    {
+                        "profile": profile,
+                        "alarm_name": name,
+                        "metric": _metric_label(name),
+                        "threshold": alarm.get("threshold_text", "N/A"),
+                        "range": f"{alarm.get('breach_start_time', 'unknown')} - {alarm.get('breach_end_time', 'unknown')}",
+                        "duration": alarm.get("breach_duration_minutes", 0),
+                        "reason": _one_line_reason(alarm.get("reason", "")),
+                    }
+                )
+                ok_now.append(recovered[-1])
+            elif action == "NO_REPORT_TRANSIENT":
+                ok_now.append(
+                    {
+                        "profile": profile,
+                        "alarm_name": name,
+                        "metric": _metric_label(name),
+                        "threshold": alarm.get("threshold_text", "N/A"),
+                        "range": f"{alarm.get('breach_start_time', 'unknown')} - {alarm.get('breach_end_time', 'unknown')}",
+                        "duration": alarm.get("breach_duration_minutes", 0),
+                        "reason": _one_line_reason(alarm.get("reason", "")),
+                    }
                 )
 
     lines = [
         f"{greeting} Team 👋",
         f"*Arbel Alarm Verification* | {time_str}",
         "",
-        f"📊 Summary: REPORT_NOW={len(report_now)} | MONITOR={len(monitor)} | RECOVERED={len(recovered)}",
+        f"📊 Summary: REPORT_NOW={len(report_now)} | MONITOR={len(monitor)} | OK_NOW={len(ok_now)}",
     ]
 
     if report_now:
         lines.extend(["", "🚨 REPORT NOW:"])
-        lines.extend(report_now[:8])
+        for item in report_now[:8]:
+            lines.append(
+                f"- {_account_label(item['profile'])}: *{item['metric']}* melebihi *{item['threshold']}* (range {item['range']}, {item['ongoing']}m ongoing)"
+            )
+            lines.append(f"  reason: {item['reason']}")
     if monitor:
         lines.extend(["", "⏳ MONITOR:"])
-        lines.extend(monitor[:8])
-    if recovered:
+        for item in monitor[:8]:
+            lines.append(
+                f"- {_account_label(item['profile'])}: *{item['metric']}* sedang dipantau, sudah {item['ongoing']}m"
+            )
+            lines.append(f"  reason: {item['reason']}")
+    if ok_now:
+        lines.extend(["", "✅ SAAT INI OK (history):"])
+        grouped = {}
+        for item in ok_now:
+            key = (item["profile"], item["threshold"], item["range"], item["duration"])
+            grouped.setdefault(key, {"metrics": [], "reason": item["reason"]})
+            grouped[key]["metrics"].append(item["metric"])
+
+        for (profile, threshold, rng, duration), payload in list(grouped.items())[:8]:
+            metrics_text = _metric_phrase(payload["metrics"])
+            lines.append(
+                f"- Kami informasikan bahwa pada akun *{_account_label(profile)}*, metrik *{metrics_text}* terdeteksi *alert melebihi {threshold}* pada rentang waktu *{rng}* ({duration}m). Saat ini status alarm sudah *OK*."
+            )
+            lines.append(f"  reason: {payload['reason']}")
+    elif recovered:
         lines.extend(["", "✅ RECOVERED (no report):"])
-        lines.extend(recovered[:8])
+        for item in recovered[:8]:
+            lines.append(
+                f"- {_account_label(item['profile'])}: recovered {item['duration']}m ({item['range']})"
+            )
     if not_found:
         lines.extend(["", "❓ NOT FOUND:"])
         lines.extend(not_found[:5])

@@ -149,6 +149,7 @@ class AlarmVerificationChecker(BaseChecker):
             "alarm_name": alarm_name,
             "status": "ok",
             "alarm_state": alarm_state,
+            "current_state": "ALARM" if alarm_state == "ALARM" else "OK",
             "threshold_text": threshold_text,
             "breach_start_time": _format_wib(start_time),
             "breach_end_time": _format_wib(end_time),
@@ -258,6 +259,7 @@ class AlarmVerificationChecker(BaseChecker):
                     f"  ongoing={item.get('ongoing_minutes', 0)} menit | range={item.get('breach_start_time', 'unknown')} - now"
                 )
             else:
+                lines.append("  saat_ini=OK")
                 lines.append(
                     f"  last_breach_range={item.get('breach_start_time', 'unknown')} - {item.get('breach_end_time', 'unknown')}"
                 )

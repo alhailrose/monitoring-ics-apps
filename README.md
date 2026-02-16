@@ -2,6 +2,55 @@
 
 CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, CloudWatch, Cost Anomaly, Backup, RDS, EC2 list) dengan menu interaktif.
 
+## Fitur lengkap
+- **Single Check (per akun/profil):**
+  - `health`: AWS Health Events
+  - `cost`: Cost Anomalies
+  - `guardduty`: GuardDuty findings
+  - `cloudwatch`: CloudWatch alarms
+  - `notifications`: notifikasi AWS/operasional
+  - `backup`: status backup job + vault summary
+  - `daily-arbel`: RDS utilization report
+  - `ec2list`: daftar EC2
+- **All Checks (multi akun, parallel):** cost + guardduty + cloudwatch + notifications (opsional include backup/rds via flag CLI).
+- **Arbel Check (flow operasional):**
+  - `RDS Monitoring` (window 1h/3h/12h, multi akun)
+  - `Alarm Verification` by alarm name (spesifik, tidak scan semua alarm global)
+  - `Backup`
+- **Nabati Analysis:** analisis CPU spike dan cost bulanan untuk akun NABATI-KSNI.
+- **CloudWatch Cost Report:** output table/markdown/plain text.
+- **WhatsApp-ready report:** format siap kirim untuk backup, RDS, dan alarm verification.
+
+### Matriks fitur per mode
+| Mode | Cakupan | Keterangan |
+|---|---|---|
+| `Single Check` | `health`, `cost`, `guardduty`, `cloudwatch`, `notifications`, `backup`, `daily-arbel`, `ec2list`, `alarm_verification` | Verifikasi detail per akun/profil |
+| `All Checks` | `cost`, `guardduty`, `cloudwatch`, `notifications` | Eksekusi paralel multi akun (ringkasan eksekutif) |
+| `All Checks + include` | tambah `backup` + `daily-arbel` | Aktif via `--include-backup-rds` |
+| `Arbel Check` | `RDS Monitoring`, `Alarm Verification`, `Backup` | Flow operasional untuk akun Arbel |
+| `Nabati Analysis` | CPU spike + Cost bulanan | Fokus akun NABATI-KSNI |
+| `Cost Report` | CloudWatch cost usage | Output table/markdown/plain text |
+
+### Fitur operasional penting
+- **Parallel workers** untuk multi-account checks (`--workers`).
+- **Region resolver** otomatis berdasarkan profil, bisa override manual (`--region`).
+- **Config eksternal** via `~/.monitoring-hub/config.yaml` (profile groups + defaults).
+- **Auto-refresh wrapper** untuk profil non-SSO berbasis `aws login`.
+- **Output WA siap kirim**:
+  - `--backup` -> template backup harian
+  - `--check daily-arbel` -> report RDS klien
+  - `--check alarm_verification` (via Arbel flow) -> summary report now/monitor/ok-now
+
+## Ringkasan command CLI
+- Interaktif: `monitoring-hub`
+- Cek spesifik: `monitoring-hub --check <nama_check> --profile <profil>`
+- Semua check: `monitoring-hub --all --group <group>`
+- Include backup+rds di mode all: `monitoring-hub --all --group <group> --include-backup-rds`
+- Init config sample: `monitoring-hub --init-config`
+
+Daftar check valid untuk `--check`:
+`health`, `cost`, `guardduty`, `cloudwatch`, `notifications`, `backup`, `daily-arbel`, `ec2list`.
+
 ## Prasyarat
 - Python 3.9+
 - Akses AWS (SSO atau kredensial) sesuai profil di `~/.aws/config`
@@ -120,7 +169,24 @@ python monitoring_hub.py      # atau: monitoring_hub.py --check health --profile
 - Mode interaktif: pilih check → pilih akun (backup/RDS/all bisa multi) → pilih region → output tampil.
 - Untuk run non-interaktif: `monitoring-hub --check guardduty --profile myprof` atau `--all --profile a,b`.
 
-## Catatan penggunaan
-- Pastikan sudah login AWS (SSO atau credentials) sesuai profil yang ada di `PROFILE_GROUPS` atau profil lokal di `~/.aws/config`.
-- Esc/Ctrl+C di menu utama langsung keluar; di prompt pemilihan akan kembali/keluar.
-- Menu interaktif: pilih check, pilih akun (bisa multi untuk backup/RDS/all), pilih region, lalu output ditampilkan.
+## Arbel Daily & Alarm (update terbaru)
+- Menu `Arbel Check` berfokus pada `RDS Monitoring`, `Alarm Verification`, dan `Backup`.
+- Pemilihan akun Arbel menggunakan checkbox dengan default akun utama tercentang: `dermies-max`, `cis-erha`, `connect-prod`.
+- Pemilihan alarm menggunakan checkbox dengan default alarm relevan tercentang.
+- Alarm check bersifat spesifik nama alarm (tidak mengambil semua alarm ALARM secara global).
+- Rule eskalasi alarm: laporkan hanya jika status `ALARM` masih berlangsung `>= 10 menit`.
+
+## Format output WhatsApp alarm
+- Ringkasan alarm menampilkan `REPORT_NOW`, `MONITOR`, dan `OK_NOW`.
+- Untuk alarm yang sudah pulih, output tetap menampilkan history dan status terkini OK.
+- Format klien (contoh):
+  ```text
+  Selamat Siang Team 👋
+  *Arbel Alarm Verification* | 11:34 WIB
+
+  📊 Summary: REPORT_NOW=0 | MONITOR=0 | OK_NOW=1
+
+  ✅ SAAT INI OK (history):
+  - Kami informasikan bahwa pada akun *DERMIES MAX*, metrik *Freeable Memory (Reader), CPU Utilization (Reader), serta ACU Utilization (Reader)* terdeteksi *alert melebihi > 75 Percent* pada rentang waktu *11:03 WIB - 11:13 WIB* (10m). Saat ini status alarm sudah *OK*.
+    reason: Threshold Crossed
+  ```

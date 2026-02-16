@@ -62,6 +62,28 @@ class AlarmVerificationCheckerTests(unittest.TestCase):
         self.assertTrue(result["should_report"])
         self.assertEqual("REPORT_NOW", result["recommended_action"])
         self.assertEqual(15, result["ongoing_minutes"])
+        self.assertEqual("ALARM", result["current_state"])
+
+    def test_report_when_alarm_ongoing_exactly_10m(self):
+        history = [
+            {
+                "Timestamp": self.now - timedelta(minutes=10),
+                "HistorySummary": "State updated from OK to ALARM",
+            }
+        ]
+
+        result = self.checker._build_alarm_result(
+            alarm_name="example-alarm",
+            alarm_state="ALARM",
+            threshold_text="> 75 %",
+            reason="high cpu",
+            history=history,
+            now_utc=self.now,
+        )
+
+        self.assertTrue(result["should_report"])
+        self.assertEqual("REPORT_NOW", result["recommended_action"])
+        self.assertEqual(10, result["ongoing_minutes"])
 
     def test_no_report_when_alarm_recovered_after_10m(self):
         history = [
@@ -87,6 +109,7 @@ class AlarmVerificationCheckerTests(unittest.TestCase):
         self.assertFalse(result["should_report"])
         self.assertEqual("NO_REPORT_RECOVERED", result["recommended_action"])
         self.assertEqual(12, result["breach_duration_minutes"])
+        self.assertEqual("OK", result["current_state"])
 
     def test_no_report_when_alarm_recovered_under_10m(self):
         history = [
