@@ -194,8 +194,8 @@ def build_whatsapp_backup(date_str, all_results):
     ).strip()
 
 
-def build_whatsapp_rds(all_results):
-    """Build compact and visually richer WhatsApp-ready RDS report message."""
+def build_whatsapp_rds_compact(all_results):
+    """Build compact WhatsApp-ready RDS report message."""
 
     now_jkt = datetime.now(timezone(timedelta(hours=7)))
     if 5 <= now_jkt.hour < 11:
@@ -276,6 +276,11 @@ def build_whatsapp_rds(all_results):
         lines.extend(action_queue[:5])
 
     return "\n".join(lines)
+
+
+def build_whatsapp_rds(all_results):
+    """Build default client-facing WhatsApp-ready RDS report message."""
+    return build_whatsapp_rds_client(all_results)
 
 
 def build_whatsapp_rds_client(all_results):

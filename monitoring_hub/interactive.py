@@ -441,7 +441,7 @@ def run_cloudwatch_cost_report():
 
 
 def run_arbel_check():
-    """Run Arbel-specific checks with quick and custom flows."""
+    """Run Arbel-specific checks with clearer account/alarm selection."""
     print_mini_banner()
     print_section_header("Arbel Check (RDS Utilization)", ICONS["arbel"])
 
@@ -524,22 +524,22 @@ def run_arbel_check():
         )
 
         quick_panel = Panel(
-            "[bold cyan]RDS Harian (3h)[/bold cyan]\n"
-            "RDS utilization untuk akun default\n\n"
-            "[bold cyan]Alarm Harian[/bold cyan]\n"
-            "Semua alarm default akun default",
-            title="⚡ Aksi Harian",
+            "[bold cyan]RDS Monitoring[/bold cyan]\n"
+            "Pilih akun lalu window 1h / 3h / 12h\n\n"
+            "[bold cyan]Alarm Verification[/bold cyan]\n"
+            "Pilih akun lalu alarm yang mau dicek",
+            title="⚙️ Flow Utama",
             border_style="cyan",
             box=box.ROUNDED,
             padding=(1, 2),
         )
 
         custom_panel = Panel(
-            "[bold magenta]Custom RDS[/bold magenta]\n"
-            "Pilih akun + window 1h/3h/12h\n\n"
-            "[bold magenta]Custom Alarm[/bold magenta]\n"
-            "Pilih akun + nama alarm spesifik",
-            title="🧩 Aksi Kustom",
+            "[bold magenta]Backup[/bold magenta]\n"
+            "Report backup semua akun Aryanoble\n\n"
+            "[bold magenta]Defaults[/bold magenta]\n"
+            "dermies-max, cis-erha, connect-prod",
+            title="🗂️ Ops Tambahan",
             border_style="magenta",
             box=box.ROUNDED,
             padding=(1, 2),
@@ -554,8 +554,8 @@ def run_arbel_check():
         )
 
         legend_panel = Panel(
-            "[bold]1[/bold] pilih mode  [dim]•[/dim]  [bold]Space[/bold] centang  [dim]•[/dim]  [bold]Enter[/bold] jalankan\n"
-            "[bold yellow]Tip:[/bold yellow] gunakan [bold]RDS Harian[/bold] untuk cek rutin",
+            "[bold]1[/bold] pilih mode  [dim]•[/dim]  [bold]2[/bold] pilih akun  [dim]•[/dim]  [bold]3[/bold] jalankan report\n"
+            "[bold yellow]Tip:[/bold yellow] centang akun default lalu tambah akun jika perlu",
             title="⌨️ Keyboard",
             border_style="bright_black",
             box=box.ROUNDED,
@@ -570,25 +570,13 @@ def run_arbel_check():
         console.print()
 
     def _pick_arbel_profiles():
-        try:
-            use_default = questionary.confirm(
-                "Gunakan akun default (dermies-max, cis-erha, connect-prod)?",
-                default=True,
-                style=CUSTOM_STYLE,
-            ).ask()
-        except KeyboardInterrupt:
-            _handle_interrupt(exit_direct=True)
-            return None
-
-        if use_default:
-            return list(default_profiles)
-
         profile_choices = [
             questionary.Choice(p, value=p, checked=(p in default_profiles))
             for p in arbel_profiles
         ]
         selected = _checkbox_prompt(
-            f"{ICONS['check']} Pilih akun Arbel", profile_choices
+            f"{ICONS['check']} Pilih akun Arbel (default sudah tercentang)",
+            profile_choices,
         )
         return selected or []
 
@@ -603,25 +591,13 @@ def run_arbel_check():
                 candidate_alarm_names.append(alarm_name)
 
         if candidate_alarm_names:
-            try:
-                use_all = questionary.confirm(
-                    "Gunakan semua alarm dari akun terpilih?",
-                    default=True,
-                    style=CUSTOM_STYLE,
-                ).ask()
-            except KeyboardInterrupt:
-                _handle_interrupt(exit_direct=True)
-                return []
-
-            if use_all:
-                return candidate_alarm_names
-
             alarm_choices = [
                 questionary.Choice(alarm_name, value=alarm_name, checked=True)
                 for alarm_name in candidate_alarm_names
             ]
             selected_alarm_names = _checkbox_prompt(
-                f"{ICONS['alarm']} Pilih nama alarm", alarm_choices
+                f"{ICONS['alarm']} Pilih nama alarm (default semua tercentang)",
+                alarm_choices,
             )
             return selected_alarm_names or []
 
@@ -638,10 +614,8 @@ def run_arbel_check():
     _render_arbel_dashboard()
 
     arbel_choices = [
-        questionary.Choice("⚡ RDS Harian (3h, akun default)", value="quick-rds-3h"),
-        questionary.Choice("⚡ Alarm Harian (akun default)", value="quick-alarm"),
-        questionary.Choice("🧩 RDS Kustom", value="custom-rds"),
-        questionary.Choice("🧩 Alarm Kustom (berdasarkan nama)", value="alarm-name"),
+        questionary.Choice("🗄️ RDS Monitoring", value="rds"),
+        questionary.Choice("⏱️ Alarm Verification", value="alarm-name"),
         questionary.Choice(f"{ICONS['backup']} Backup", value="backup"),
     ]
 
@@ -654,33 +628,6 @@ def run_arbel_check():
     if choice == "backup":
         profiles = list(PROFILE_GROUPS["Aryanoble"].keys())
         run_group_specific("backup", profiles, region, group_name="Aryanoble")
-        return
-
-    if choice == "quick-rds-3h":
-        run_group_specific(
-            "daily-arbel",
-            default_profiles,
-            region,
-            group_name="Aryanoble (3 Hours - Default)",
-            check_kwargs={"window_hours": 3},
-        )
-        return
-
-    if choice == "quick-alarm":
-        alarm_names = _collect_alarm_names(default_profiles)
-        if not alarm_names:
-            print_error("Nama alarm wajib diisi.")
-            return
-        run_group_specific(
-            "alarm_verification",
-            default_profiles,
-            region,
-            group_name="Aryanoble Alarm (Default)",
-            check_kwargs={
-                "alarm_names": alarm_names,
-                "min_duration_minutes": 10,
-            },
-        )
         return
 
     selected_profiles = _pick_arbel_profiles()
