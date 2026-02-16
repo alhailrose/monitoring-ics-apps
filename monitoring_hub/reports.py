@@ -195,48 +195,38 @@ def build_whatsapp_backup(date_str, all_results):
 
 
 def build_whatsapp_rds(all_results):
-    """Build WhatsApp-ready RDS report message."""
+    """Build compact and visually richer WhatsApp-ready RDS report message."""
 
     now_jkt = datetime.now(timezone(timedelta(hours=7)))
-    # Perbaiki greeting: Pagi (5-11), Siang (11-15), Sore (15-18), Malam (18-5)
     if 5 <= now_jkt.hour < 11:
         greeting = "Selamat Pagi"
-        waktu = "Pagi"
     elif 11 <= now_jkt.hour < 15:
         greeting = "Selamat Siang"
-        waktu = "Siang"
     elif 15 <= now_jkt.hour < 18:
         greeting = "Selamat Sore"
-        waktu = "Sore"
     else:
         greeting = "Selamat Malam"
-        waktu = "Malam"
 
-    date_str = now_jkt.strftime("%d-%m-%Y")
     time_str = now_jkt.strftime("%H:%M WIB")
 
-    messages = []
+    account_blocks = []
+    warn_accounts = 0
+    total_warn_metrics = 0
+    action_queue = []
+
     for profile, checks in all_results.items():
         res = checks.get("daily-arbel")
         if not res or res.get("status") in ["skipped", "error"]:
             continue
+
         acct_id = res.get("account_id", get_account_id(profile))
         acct_name = res.get("account_name", profile)
-
-        lines = [f"{greeting} Team,"]
-
-        # Tambahkan info monitoring window
         window_hours = res.get("window_hours", 12)
-        lines.append(
-            f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini (Data per {time_str}, monitoring {window_hours} jam terakhir)"
-        )
 
-        lines.extend([date_str, "", "Summary:"])
-
+        account_warn = 0
+        top_warn_lines = []
         instances = res.get("instances", {})
         for role, data in instances.items():
-            lines.append("")
-            lines.append(f"{role.capitalize()}:")
             metrics = data.get("metrics", {})
             for m in [
                 "ACUUtilization",
@@ -245,16 +235,119 @@ def build_whatsapp_rds(all_results):
                 "DatabaseConnections",
             ]:
                 info = metrics.get(m, {})
-                msg = info.get("message", f"{m}: Data tidak tersedia")
-                lines.append(f"* {msg}")
+                if info.get("status") == "warn":
+                    account_warn += 1
+                    total_warn_metrics += 1
+                    top_warn_lines.append(
+                        f"  • {role.capitalize()} - {info.get('message', m)}"
+                    )
 
-        messages.append("\n".join(lines))
+        if account_warn > 0:
+            warn_accounts += 1
+            status_line = f"⚠️ {acct_name} ({acct_id}) | {account_warn} warning"
+            action_queue.append(f"- {acct_name}: cek metrik warning dan follow-up")
+        else:
+            status_line = f"✅ {acct_name} ({acct_id}) | normal"
 
-    if not messages:
+        block_lines = [
+            status_line,
+            f"  ⏱️ Window: {window_hours}h",
+        ]
+        block_lines.extend(top_warn_lines[:3])
+        if len(top_warn_lines) > 3:
+            block_lines.append(f"  • ... {len(top_warn_lines) - 3} warning lain")
+        account_blocks.append("\n".join(block_lines))
+
+    if not account_blocks:
         return "Tidak ada data RDS untuk profil Aryanoble yang terkonfigurasi."
 
-    sep = "\n" + ("-" * 70) + "\n\n"
-    return sep.join(messages)
+    lines = [
+        f"{greeting} Team 👋",
+        f"*Arbel RDS Snapshot* | {time_str}",
+        "",
+        f"📊 Summary: {warn_accounts} akun warning | {total_warn_metrics} metric warning",
+        "",
+        "🧾 Detail:",
+        "\n\n".join(account_blocks),
+    ]
+
+    if action_queue:
+        lines.extend(["", "🎯 Need Action:"])
+        lines.extend(action_queue[:5])
+
+    return "\n".join(lines)
+
+
+def build_whatsapp_alarm(all_results):
+    """Build WhatsApp-ready alarm verification summary."""
+
+    now_jkt = datetime.now(timezone(timedelta(hours=7)))
+    if 5 <= now_jkt.hour < 11:
+        greeting = "Selamat Pagi"
+    elif 11 <= now_jkt.hour < 15:
+        greeting = "Selamat Siang"
+    elif 15 <= now_jkt.hour < 18:
+        greeting = "Selamat Sore"
+    else:
+        greeting = "Selamat Malam"
+
+    time_str = now_jkt.strftime("%H:%M WIB")
+
+    report_now = []
+    monitor = []
+    recovered = []
+    not_found = []
+
+    for profile, checks in all_results.items():
+        res = checks.get("alarm_verification")
+        if not res or res.get("status") in ["skipped", "error"]:
+            continue
+
+        acct = res.get("account_id", get_account_id(profile))
+        for alarm in res.get("alarms", []):
+            name = alarm.get("alarm_name", "N/A")
+            action = alarm.get("recommended_action", "MONITOR")
+            if alarm.get("status") == "not-found":
+                not_found.append(f"- {name} ({profile}/{acct})")
+                continue
+
+            if action == "REPORT_NOW":
+                report_now.append(
+                    f"- {name} ({profile}) | {alarm.get('ongoing_minutes', 0)}m ongoing"
+                )
+            elif action == "MONITOR":
+                monitor.append(
+                    f"- {name} ({profile}) | {alarm.get('ongoing_minutes', 0)}m ongoing"
+                )
+            elif action == "NO_REPORT_RECOVERED":
+                recovered.append(
+                    f"- {name} ({profile}) | recovered {alarm.get('breach_duration_minutes', 0)}m"
+                )
+
+    lines = [
+        f"{greeting} Team 👋",
+        f"*Arbel Alarm Verification* | {time_str}",
+        "",
+        f"📊 Summary: REPORT_NOW={len(report_now)} | MONITOR={len(monitor)} | RECOVERED={len(recovered)}",
+    ]
+
+    if report_now:
+        lines.extend(["", "🚨 REPORT NOW:"])
+        lines.extend(report_now[:8])
+    if monitor:
+        lines.extend(["", "⏳ MONITOR:"])
+        lines.extend(monitor[:8])
+    if recovered:
+        lines.extend(["", "✅ RECOVERED (no report):"])
+        lines.extend(recovered[:8])
+    if not_found:
+        lines.extend(["", "❓ NOT FOUND:"])
+        lines.extend(not_found[:5])
+
+    if not report_now and not monitor and not recovered and not not_found:
+        return "Tidak ada data alarm verification yang relevan."
+
+    return "\n".join(lines)
 
 
 def generate_whatsapp_message(all_results):

@@ -51,6 +51,20 @@ class AlarmVerificationChecker(BaseChecker):
                 return item.get("Timestamp") or item.get("timestamp")
         return None
 
+    def _find_start_before_end(
+        self, history: List[Dict], end_time: datetime
+    ) -> Optional[datetime]:
+        for item in history:
+            summary = item.get("HistorySummary") or item.get("history_summary") or ""
+            ts = item.get("Timestamp") or item.get("timestamp")
+            if ts is None:
+                continue
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if "from OK to ALARM" in summary and ts <= end_time:
+                return ts
+        return None
+
     def _threshold_text(self, alarm: Dict) -> str:
         operator = OPERATOR_MAP.get(alarm.get("ComparisonOperator", ""), "")
         threshold = alarm.get("Threshold")
@@ -78,6 +92,73 @@ class AlarmVerificationChecker(BaseChecker):
             f"{self._greeting()}, izin menginformasikan pada *{alarm_name}* sedang melewati "
             f"threshold {threshold_text} sejak {_format_wib(start_time)} (status: ongoing)."
         )
+
+    def _build_alarm_result(
+        self,
+        alarm_name: str,
+        alarm_state: str,
+        threshold_text: str,
+        reason: str,
+        history: List[Dict],
+        now_utc: datetime,
+    ) -> Dict:
+        start_time = None
+        end_time = None
+        ongoing_minutes = 0
+        breach_duration_minutes = 0
+        should_report = False
+        message = ""
+        action = "MONITOR"
+
+        if alarm_state == "ALARM":
+            start_time = self._find_transition(history, "from OK to ALARM")
+            if start_time is None:
+                start_time = self._find_transition(history, "to ALARM")
+
+            if start_time is not None:
+                if start_time.tzinfo is None:
+                    start_time = start_time.replace(tzinfo=timezone.utc)
+                ongoing_minutes = max(
+                    1, int((now_utc - start_time).total_seconds() // 60)
+                )
+
+            should_report = ongoing_minutes >= self.min_duration_minutes
+            action = "REPORT_NOW" if should_report else "MONITOR"
+            if should_report and start_time is not None:
+                message = self._ongoing_message(alarm_name, threshold_text, start_time)
+        else:
+            end_time = self._find_transition(history, "from ALARM to OK")
+            if end_time is not None:
+                if end_time.tzinfo is None:
+                    end_time = end_time.replace(tzinfo=timezone.utc)
+                start_time = self._find_start_before_end(history, end_time)
+                if start_time is not None:
+                    if start_time.tzinfo is None:
+                        start_time = start_time.replace(tzinfo=timezone.utc)
+                    breach_duration_minutes = max(
+                        1, int((end_time - start_time).total_seconds() // 60)
+                    )
+
+            action = (
+                "NO_REPORT_RECOVERED"
+                if breach_duration_minutes >= self.min_duration_minutes
+                else "NO_REPORT_TRANSIENT"
+            )
+
+        return {
+            "alarm_name": alarm_name,
+            "status": "ok",
+            "alarm_state": alarm_state,
+            "threshold_text": threshold_text,
+            "breach_start_time": _format_wib(start_time),
+            "breach_end_time": _format_wib(end_time),
+            "ongoing_minutes": ongoing_minutes,
+            "breach_duration_minutes": breach_duration_minutes,
+            "should_report": should_report,
+            "recommended_action": action,
+            "reason": reason,
+            "message": message,
+        }
 
     def check(self, profile, account_id):
         if not self.alarm_names:
@@ -116,52 +197,23 @@ class AlarmVerificationChecker(BaseChecker):
                 alarm = metric_alarms[0]
                 alarm_state = alarm.get("StateValue", "INSUFFICIENT_DATA")
                 threshold_text = self._threshold_text(alarm)
-                breach_start = None
-                ongoing_minutes = 0
-                should_report = False
-                message = ""
-
-                if alarm_state == "ALARM":
-                    history = cw.describe_alarm_history(
-                        AlarmName=alarm_name,
-                        HistoryItemType="StateUpdate",
-                        StartDate=history_start,
-                        EndDate=now_utc,
-                        ScanBy="TimestampDescending",
-                    ).get("AlarmHistoryItems", [])
-
-                    breach_start = self._find_transition(history, "from OK to ALARM")
-                    if breach_start is None:
-                        breach_start = self._find_transition(history, "to ALARM")
-
-                    if breach_start is not None:
-                        if breach_start.tzinfo is None:
-                            breach_start = breach_start.replace(tzinfo=timezone.utc)
-                        ongoing_minutes = max(
-                            1, int((now_utc - breach_start).total_seconds() // 60)
-                        )
-
-                    should_report = ongoing_minutes >= self.min_duration_minutes
-                    if should_report and breach_start is not None:
-                        message = self._ongoing_message(
-                            alarm_name, threshold_text, breach_start
-                        )
+                history = cw.describe_alarm_history(
+                    AlarmName=alarm_name,
+                    HistoryItemType="StateUpdate",
+                    StartDate=history_start,
+                    EndDate=now_utc,
+                    ScanBy="TimestampDescending",
+                ).get("AlarmHistoryItems", [])
 
                 alarms_result.append(
-                    {
-                        "alarm_name": alarm_name,
-                        "status": "ok",
-                        "alarm_state": alarm_state,
-                        "threshold_text": threshold_text,
-                        "breach_start_time": _format_wib(breach_start),
-                        "ongoing_minutes": ongoing_minutes,
-                        "should_report": should_report,
-                        "recommended_action": "REPORT_NOW"
-                        if should_report
-                        else "MONITOR",
-                        "reason": alarm.get("StateReason", ""),
-                        "message": message,
-                    }
+                    self._build_alarm_result(
+                        alarm_name=alarm_name,
+                        alarm_state=alarm_state,
+                        threshold_text=threshold_text,
+                        reason=alarm.get("StateReason", ""),
+                        history=history,
+                        now_utc=now_utc,
+                    )
                 )
 
             return {
@@ -190,7 +242,7 @@ class AlarmVerificationChecker(BaseChecker):
             return "No alarm data."
 
         lines = [
-            f"ALARM VERIFICATION (threshold {results.get('min_alarm_minutes', 10)} menit)"
+            f"ALARM VERIFICATION (threshold {results.get('min_alarm_minutes', 10)} menit, history 24 jam)"
         ]
         for item in alarms:
             lines.append("")
@@ -201,9 +253,17 @@ class AlarmVerificationChecker(BaseChecker):
             if item.get("status") == "not-found":
                 lines.append("  alarm tidak ditemukan di akun/region ini")
                 continue
-            lines.append(
-                f"  ongoing={item.get('ongoing_minutes', 0)} menit | start={item.get('breach_start_time', 'unknown')}"
-            )
+            if item.get("alarm_state") == "ALARM":
+                lines.append(
+                    f"  ongoing={item.get('ongoing_minutes', 0)} menit | range={item.get('breach_start_time', 'unknown')} - now"
+                )
+            else:
+                lines.append(
+                    f"  last_breach_range={item.get('breach_start_time', 'unknown')} - {item.get('breach_end_time', 'unknown')}"
+                )
+                lines.append(
+                    f"  last_breach_duration={item.get('breach_duration_minutes', 0)} menit"
+                )
             if item.get("message"):
                 lines.append(f"  message: {item.get('message')}")
 
