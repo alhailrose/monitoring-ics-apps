@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from .base import BaseChecker
+from monitoring_hub.customers.loader import find_customer_account
 
 
 JKT = ZoneInfo("Asia/Jakarta")
@@ -204,6 +205,25 @@ class DailyArbelChecker(BaseChecker):
 
         return results
 
+    def _resolve_account_config(self, profile, account_id):
+        customer_account = None
+        try:
+            customer_account = find_customer_account("aryanoble", account_id)
+        except Exception:
+            customer_account = None
+
+        if customer_account:
+            daily = customer_account.get("daily_arbel") or {}
+            return {
+                "account_name": customer_account.get("display_name", profile),
+                "cluster_id": daily.get("cluster_id"),
+                "instances": daily.get("instances", {}),
+                "metrics": daily.get("metrics", []),
+                "thresholds": daily.get("thresholds", {}),
+            }
+
+        return ACCOUNT_CONFIG.get(profile)
+
     def _breach_detail(self, info, thresholds, metric, comparator, profile=None):
         """Return list of breach periods with (start_time, end_time, peak_val)."""
         vals = info.get("values", [])
@@ -387,7 +407,8 @@ class DailyArbelChecker(BaseChecker):
         return "no-data", f"{metric}: Data tidak tersedia"
 
     def check(self, profile, account_id):
-        if profile not in ACCOUNT_CONFIG:
+        cfg = self._resolve_account_config(profile, account_id)
+        if not cfg:
             return {
                 "status": "skipped",
                 "reason": "profile not configured",
@@ -395,7 +416,6 @@ class DailyArbelChecker(BaseChecker):
                 "account_id": account_id,
             }
 
-        cfg = ACCOUNT_CONFIG[profile]
         try:
             session = boto3.Session(profile_name=profile, region_name=self.region)
             rds = session.client("rds", region_name=self.region)

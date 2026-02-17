@@ -6,7 +6,7 @@ import unittest
 
 
 def _load_build_whatsapp_alarm():
-    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
     mh_dir = repo_root / "monitoring_hub"
 
     if "monitoring_hub" not in sys.modules:

@@ -1,0 +1,7 @@
+customer_id: aryanoble
+display_name: Aryanoble
+source_file: configs/customers/aryanoble.yaml
+notes: |
+  Runtime loader currently reads the canonical file from configs/customers/aryanoble.yaml.
+  This file exists to preserve target src layout and will become the canonical default
+  after full migration.

@@ -2,6 +2,11 @@
 
 CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, CloudWatch, Cost Anomaly, Backup, RDS, EC2 list) dengan menu interaktif.
 
+## Architecture roadmap
+- Folder structure roadmap: `docs/architecture/folder-structure.md`
+- Migration status: `docs/architecture/migration-status.md`
+- Target structure contract: `docs/architecture/target-structure-contract.md`
+
 ## Quick Start (3 langkah)
 1) Install aplikasi via pipx:
    ```bash
@@ -70,6 +75,14 @@ pipx reinstall "git+ssh://git@github.com/alhailrose/monitoring-ics-apps.git@main
 
 Daftar check valid untuk `--check`:
 `health`, `cost`, `guardduty`, `cloudwatch`, `notifications`, `backup`, `daily-arbel`, `ec2list`.
+
+## Test layout
+- Unit tests: `tests/unit/`
+- Integration tests: `tests/integration/`
+- Run all tests:
+  ```bash
+  uv run --with pytest pytest
+  ```
 
 ## Prasyarat
 - Python 3.9+

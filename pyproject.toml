@@ -15,8 +15,8 @@ dependencies = [
 [project.scripts]
 monitoring-hub = "monitoring_hub.cli:main"
 
-[tool.setuptools]
-packages = ["monitoring_hub", "checks"]
+[tool.setuptools.packages.find]
+include = ["monitoring_hub*", "checks*", "src*"]
 
 [build-system]
 requires = ["setuptools>=61", "wheel"]
