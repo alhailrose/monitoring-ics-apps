@@ -1,10 +1,6 @@
-"""CLI adapter for future src-first migration."""
+"""CLI entrypoints for src-first runtime."""
 
-
-def main():
-    from monitoring_hub.cli import main as legacy_main
-
-    return legacy_main()
+from src.app.cli.bootstrap import main
 
 
 def run_cli():

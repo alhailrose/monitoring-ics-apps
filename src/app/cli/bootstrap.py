@@ -4,20 +4,20 @@
 import argparse
 import sys
 
-from monitoring_hub.config import PROFILE_GROUPS, DEFAULT_WORKERS
-from monitoring_hub.config_loader import (
+from src.core.runtime.config import PROFILE_GROUPS, DEFAULT_WORKERS
+from src.core.runtime.config_loader import (
     create_sample_config,
     get_config,
     CONFIG_FILE,
     get_sample_config_content,
 )
-from monitoring_hub.utils import resolve_region
-from monitoring_hub.runners import (
+from src.core.runtime.utils import resolve_region
+from src.core.runtime.runners import (
     run_individual_check,
     run_all_checks,
     run_group_specific,
 )
-from monitoring_hub.ui import (
+from src.core.runtime.ui import (
     VERSION,
     console,
     print_success,

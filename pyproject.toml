@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-monitoring-hub = "monitoring_hub.cli:main"
+monitoring-hub = "src.app.cli.main:main"
 
 [tool.setuptools.packages.find]
 include = ["monitoring_hub*", "checks*", "src*"]

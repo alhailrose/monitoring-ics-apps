@@ -5,7 +5,7 @@ def test_resolve_account_config_uses_customer_mapping_by_account_id(monkeypatch)
     checker = DailyArbelChecker(region="ap-southeast-3", window_hours=3)
 
     monkeypatch.setattr(
-        "checks.daily_arbel.find_customer_account",
+        "src.checks.aryanoble.daily_arbel.find_customer_account",
         lambda customer_id, account_id: {
             "account_id": account_id,
             "display_name": "Custom Alias",

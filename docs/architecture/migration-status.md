@@ -1,32 +1,32 @@
 # Migration Status
 
-This repository is in progressive migration to the target scalable layout under `src/`.
-
 Reference contract: `docs/architecture/target-structure-contract.md`
 
-## Completed in this phase
+## Full src-first runtime state (current)
 
-- Created full target directory skeleton:
-  - `src/app/*`, `src/core/*`, `src/providers/aws/*`, `src/checks/*`, `src/configs/*`
-- Added non-breaking adapter modules in the new layout.
-- Added customer config schema/default placeholders in `src/configs`.
-- Added and validated canonical runner/core/config modules under `src/`.
-- Moved test suite into `tests/unit` and `tests/integration`.
-- Switched checks registry imports to `src.checks.*` paths.
-- Moved CLI canonical bootstrap to `src/app/cli/bootstrap.py` with stable legacy wrapper.
-- Verified post-refactor behavior for both CLI and TUI, including `pipx` reinstall smoke checks.
+- Runtime entrypoint is now src-first:
+  - `monitoring-hub` console script -> `src.app.cli.main:main`
+- Canonical runtime modules live under `src/`:
+  - CLI/TUI: `src/app/*`
+  - Runtime shared logic: `src/core/runtime/*`
+  - Checks: `src/checks/*`
+  - Config/provider/core models remain under `src/configs`, `src/providers`, `src/core`
+- `src/` runtime code has no imports from `monitoring_hub.*` or `checks.*`.
 
-## Current runtime source of truth
+## Compatibility posture
 
-- Canonical source path is now `src/` for app/core/providers/config/check registry entry imports.
-- Legacy modules remain as compatibility wrappers to protect existing command usage.
+- Legacy top-level packages are retained as compatibility shims:
+  - `monitoring_hub/*` wrappers re-export from `src.*`
+  - `checks/*` wrappers re-export from `src.checks.*`
+- Existing command behavior is preserved for CLI/TUI while runtime source of truth is `src/`.
 
-## Next migration steps
+## Validation coverage
 
-1. Continue replacing remaining adapter files with direct implementations under `src/`.
-2. Remove legacy wrappers after zero remaining runtime imports.
-3. Add API implementation under `src/app/api` for dashboard phase.
+- Integration guardrail enforces no legacy imports in src runtime tree.
+- CLI entrypoint integration test enforces src-first script target.
+- Existing unit/integration suites remain in `tests/unit` and `tests/integration`.
 
-## Checkpoint
+## Remaining follow-up (non-blocking)
 
-Migration checkpoint is **green** for continuing structured development.
+1. Remove legacy wrapper packages in a future major version after downstream import consumers are migrated.
+2. Continue planned API/dashboard implementation under `src/app/api`.
