@@ -1,9 +1,6 @@
-"""Slack adapter facade for centralized runner commands.
+"""Slack adapter facade for centralized runner commands."""
 
-This module keeps Slack SDK concerns isolated from command parsing logic.
-"""
-
-from monitoring_hub.integrations.slack.commands import dispatch_slack_command
+from src.integrations.slack.commands import dispatch_slack_command
 
 
 class SlackCommandService:

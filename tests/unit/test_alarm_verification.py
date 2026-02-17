@@ -1,40 +1,6 @@
-import importlib.util
-import pathlib
-import sys
-import types
 import unittest
 from datetime import datetime, timedelta, timezone
-
-
-def _load_checker_class():
-    repo_root = pathlib.Path(__file__).resolve().parents[2]
-    checks_dir = repo_root / "checks"
-
-    if "boto3" not in sys.modules:
-        sys.modules["boto3"] = types.ModuleType("boto3")
-
-    if "checks" not in sys.modules:
-        pkg = types.ModuleType("checks")
-        pkg.__path__ = [str(checks_dir)]
-        sys.modules["checks"] = pkg
-
-    base_spec = importlib.util.spec_from_file_location(
-        "checks.base", checks_dir / "base.py"
-    )
-    base_mod = importlib.util.module_from_spec(base_spec)
-    sys.modules["checks.base"] = base_mod
-    base_spec.loader.exec_module(base_mod)
-
-    alarm_spec = importlib.util.spec_from_file_location(
-        "checks.alarm_verification", checks_dir / "alarm_verification.py"
-    )
-    alarm_mod = importlib.util.module_from_spec(alarm_spec)
-    sys.modules["checks.alarm_verification"] = alarm_mod
-    alarm_spec.loader.exec_module(alarm_mod)
-    return alarm_mod.AlarmVerificationChecker
-
-
-AlarmVerificationChecker = _load_checker_class()
+from src.checks.aryanoble.alarm_verification import AlarmVerificationChecker
 
 
 class AlarmVerificationCheckerTests(unittest.TestCase):

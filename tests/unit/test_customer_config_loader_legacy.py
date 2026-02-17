@@ -1,4 +1,4 @@
-from monitoring_hub.customers.loader import load_customer_config, find_customer_account
+from src.configs.loader import load_customer_config, find_customer_account
 
 
 def test_load_customer_config_reads_aryanoble_yaml():

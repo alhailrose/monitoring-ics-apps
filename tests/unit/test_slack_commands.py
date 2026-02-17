@@ -1,4 +1,4 @@
-from monitoring_hub.integrations.slack.commands import (
+from src.integrations.slack.commands import (
     dispatch_slack_command,
     parse_slack_command,
 )

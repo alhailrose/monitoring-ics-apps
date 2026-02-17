@@ -15,10 +15,10 @@ Reference contract: `docs/architecture/target-structure-contract.md`
 
 ## Compatibility posture
 
-- Legacy top-level packages are retained as compatibility shims:
-  - `monitoring_hub/*` wrappers re-export from `src.*`
-  - `checks/*` wrappers re-export from `src.checks.*`
-- Existing command behavior is preserved for CLI/TUI while runtime source of truth is `src/`.
+- Legacy top-level packages have been removed from repository runtime surface:
+  - removed: `monitoring_hub/*`
+  - removed: `checks/*`
+- Runtime code and packaging now point only to `src/*` modules.
 
 ## Validation coverage
 
@@ -28,5 +28,4 @@ Reference contract: `docs/architecture/target-structure-contract.md`
 
 ## Remaining follow-up (non-blocking)
 
-1. Remove legacy wrapper packages in a future major version after downstream import consumers are migrated.
-2. Continue planned API/dashboard implementation under `src/app/api`.
+1. Continue planned API/dashboard implementation under `src/app/api`.

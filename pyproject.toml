@@ -16,7 +16,7 @@ dependencies = [
 monitoring-hub = "src.app.cli.main:main"
 
 [tool.setuptools.packages.find]
-include = ["monitoring_hub*", "checks*", "src*"]
+include = ["src*"]
 
 [build-system]
 requires = ["setuptools>=61", "wheel"]

@@ -1,4 +1,4 @@
-from checks.daily_arbel import ACCOUNT_CONFIG, DailyArbelChecker
+from src.checks.aryanoble.daily_arbel import ACCOUNT_CONFIG, DailyArbelChecker
 from datetime import datetime, timedelta, timezone
 
 

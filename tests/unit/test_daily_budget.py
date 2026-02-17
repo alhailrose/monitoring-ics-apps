@@ -1,6 +1,6 @@
-import checks.daily_budget as daily_budget
-from checks.daily_budget import DailyBudgetChecker
-from monitoring_hub.reports import build_whatsapp_budget
+import src.checks.aryanoble.daily_budget as daily_budget
+from src.checks.aryanoble.daily_budget import DailyBudgetChecker
+from src.core.runtime.reports import build_whatsapp_budget
 
 
 class _BudgetsClientStub:

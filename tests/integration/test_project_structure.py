@@ -47,3 +47,8 @@ def test_src_runtime_has_no_legacy_imports():
     assert not violations, "src runtime imports legacy modules:\n" + "\n".join(
         violations
     )
+
+
+def test_legacy_top_level_packages_removed():
+    assert not Path("monitoring_hub").exists()
+    assert not Path("checks").exists()

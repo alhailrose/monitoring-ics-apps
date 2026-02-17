@@ -6,8 +6,8 @@ This is a development helper script to validate parser + job plumbing.
 
 from pathlib import Path
 
-from monitoring_hub.integrations.slack.app import SlackCommandService
-from monitoring_hub.runner.job_store import JobStore
+from src.integrations.slack.app import SlackCommandService
+from src.core.engine.job_store import JobStore
 
 
 def main():

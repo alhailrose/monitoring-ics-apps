@@ -1,4 +1,4 @@
-from checks.daily_arbel import DailyArbelChecker
+from src.checks.aryanoble.daily_arbel import DailyArbelChecker
 
 
 def test_resolve_account_config_uses_customer_mapping_by_account_id(monkeypatch):

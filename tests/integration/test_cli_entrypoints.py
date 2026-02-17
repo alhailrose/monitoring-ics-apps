@@ -1,22 +1,10 @@
-import monitoring_hub.cli as legacy_cli
 import src.app.cli.bootstrap as src_cli_bootstrap
 import src.app.tui.bootstrap as src_tui_bootstrap
 from pathlib import Path
 
 
-def test_legacy_cli_main_delegates_to_src_bootstrap(monkeypatch):
-    called = {"ok": False}
-
-    def _fake_main():
-        called["ok"] = True
-        return 0
-
-    monkeypatch.setattr(src_cli_bootstrap, "main", _fake_main)
-
-    result = legacy_cli.main()
-
-    assert called["ok"] is True
-    assert result == 0
+def test_src_cli_bootstrap_exposes_main():
+    assert callable(src_cli_bootstrap.main)
 
 
 def test_src_tui_bootstrap_exposes_entrypoints():

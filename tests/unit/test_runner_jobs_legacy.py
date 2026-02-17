@@ -1,10 +1,11 @@
-from monitoring_hub.runner.executor import JobExecutor
-from monitoring_hub.runner.job_store import JobStore
+from src.core.engine.executor import JobExecutor
+from src.core.engine.job_store import JobStore
 
 
 def test_job_store_persists_created_job(tmp_path):
     store = JobStore(tmp_path / "jobs.db")
     created = store.create_job("arbel-rds", {"window": "12h"}, requested_by="slack")
+    assert created is not None
 
     loaded = store.get_job(created.job_id)
 
@@ -17,6 +18,7 @@ def test_job_store_persists_created_job(tmp_path):
 def test_job_executor_moves_job_to_completed(tmp_path):
     store = JobStore(tmp_path / "jobs.db")
     created = store.create_job("arbel-budget", {"group": "Aryanoble"})
+    assert created is not None
 
     def _handler(payload):
         return f"ok:{payload['group']}"
@@ -35,6 +37,7 @@ def test_job_executor_moves_job_to_completed(tmp_path):
 def test_job_executor_moves_job_to_failed_on_exception(tmp_path):
     store = JobStore(tmp_path / "jobs.db")
     created = store.create_job("arbel-rds", {"window": "1h"})
+    assert created is not None
 
     def _handler(_payload):
         raise RuntimeError("boom")
