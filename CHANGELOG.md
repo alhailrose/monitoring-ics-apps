@@ -9,6 +9,11 @@ All notable changes to this project will be documented in this file.
 - Tambah pengujian:
   - `tests/test_alarm_verification.py` untuk batas durasi 10 menit dan status terkini.
   - `tests/test_whatsapp_alarm_report.py` untuk validasi format WhatsApp klien.
+- Struktur target aplikasi `src/` untuk layer `app`, `core`, `providers`, `checks`, dan `configs`.
+- Modul runner core kanonik di `src/core/engine` + model di `src/core/models`.
+- Loader konfigurasi customer kanonik di `src/configs/loader.py`.
+- Integrasi Slack command runner di `monitoring_hub/integrations/slack`.
+- Penataan test suite ke `tests/unit` dan `tests/integration`.
 
 ### Changed
 - Arbel flow di menu interaktif disederhanakan menjadi 3 mode utama: `RDS Monitoring`, `Alarm Verification`, `Backup`.
@@ -16,6 +21,8 @@ All notable changes to this project will be documented in this file.
 - Format `build_whatsapp_rds` dikembalikan ke format klien yang lebih detail; format ringkas dipindah ke `build_whatsapp_rds_compact`.
 - Pesan WhatsApp alarm format klien diperjelas dengan penggabungan metrik yang naik dalam satu kalimat agar tidak membingungkan penerima.
 - Dokumentasi README diperbarui untuk mencakup semua fitur (single/all/arbel/nabati/cost report) beserta ringkasan command CLI.
+- Registry checks sekarang mengarah ke namespace `src.checks.*` sebagai jalur migrasi kanonik.
+- Entrypoint CLI legacy sekarang bertindak sebagai wrapper ke `src/app/cli/bootstrap.py`.
 
 ### Fixed
 - Kasus alarm yang sudah kembali `OK` sekarang tetap ditampilkan dengan history rentang waktu dan durasi breach.

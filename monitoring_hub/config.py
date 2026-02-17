@@ -6,15 +6,15 @@ Uses external config loader with fallback to built-in defaults.
 from rich.console import Console
 from questionary import Style
 
-from checks.health_events import HealthChecker
-from checks.cost_anomalies import CostAnomalyChecker
-from checks.guardduty import GuardDutyChecker
-from checks.cloudwatch_alarms import CloudWatchAlarmChecker
-from checks.notifications import NotificationChecker
-from checks.backup_status import BackupStatusChecker
-from checks.daily_arbel import DailyArbelChecker
-from checks.ec2_list import EC2ListChecker
-from checks.alarm_verification import AlarmVerificationChecker
+from src.checks.generic.health_events import HealthChecker
+from src.checks.generic.cost_anomalies import CostAnomalyChecker
+from src.checks.generic.guardduty import GuardDutyChecker
+from src.checks.generic.cloudwatch_alarms import CloudWatchAlarmChecker
+from src.checks.generic.notifications import NotificationChecker
+from src.checks.generic.backup_status import BackupStatusChecker
+from src.checks.aryanoble.daily_arbel import DailyArbelChecker
+from src.checks.generic.ec2_list import EC2ListChecker
+from src.checks.aryanoble.alarm_verification import AlarmVerificationChecker
 
 from .config_loader import (
     get_profile_groups,

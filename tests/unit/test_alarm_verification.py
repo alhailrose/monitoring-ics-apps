@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 
 def _load_checker_class():
-    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
     checks_dir = repo_root / "checks"
 
     if "boto3" not in sys.modules:
