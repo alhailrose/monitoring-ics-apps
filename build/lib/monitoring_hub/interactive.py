@@ -13,6 +13,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from rich.panel import Panel
 from rich.table import Table
 from rich import box
+from rich.columns import Columns
 
 from checks import cloudwatch_cost_report as cw_cost_report
 
@@ -40,6 +41,37 @@ from .ui import (
     ICONS,
     VERSION,
 )
+
+
+UI_MODES = {
+    "dense": "Dense Ops",
+    "compact": "Compact",
+}
+_current_ui_mode = "compact"
+
+
+def _is_dense_mode() -> bool:
+    return _current_ui_mode == "dense"
+
+
+def _render_footer_hints(context: str = "global"):
+    """Render consistent keyboard/action hints."""
+    if context == "global":
+        text = "↑↓ pilih menu  •  Enter jalankan  •  Esc/Ctrl+C kembali  •  Ctrl+C dua kali keluar"
+    elif context == "select":
+        text = "↑↓ navigasi  •  Space centang  •  Enter konfirmasi"
+    else:
+        text = "↑↓ navigasi  •  Enter pilih"
+
+    console.print(
+        Panel(
+            text,
+            title="⌨️ Shortcuts",
+            border_style="bright_black",
+            box=box.ROUNDED,
+            padding=(0, 1),
+        )
+    )
 
 
 def _handle_interrupt(context="Kembali ke menu utama", exit_direct=False):
@@ -218,53 +250,146 @@ def _pause():
 
 
 def _render_main_dashboard():
-    """Render compact top bar for main menu."""
-    quick = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-    quick.add_column("k", style="dim")
-    quick.add_column("v")
-    quick.add_row("Core", "Single Check  |  All Checks  |  Arbel Check")
-    quick.add_row("Support", "Cost Report  |  Settings")
-    quick.add_row("Keys", "↑↓ navigate  •  Enter select  •  Ctrl+C exit")
+    """Render dashboard for main menu."""
+    if not _is_dense_mode():
+        quick = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        quick.add_column("k", style="dim")
+        quick.add_column("v")
+        quick.add_row("Core", "Single Check  |  All Checks  |  Arbel Check")
+        quick.add_row("Support", "Cost Report  |  Settings")
+        console.print(
+            Panel(
+                quick,
+                title="🧭 Control Center",
+                border_style="cyan",
+                box=box.ROUNDED,
+                padding=(0, 1),
+            )
+        )
+        console.print()
+        return
 
+    ops = Panel(
+        "[bold cyan]Single Check[/bold cyan]\nVerifikasi detail per akun\n\n"
+        "[bold cyan]All Checks[/bold cyan]\nMonitoring paralel multi-akun\n\n"
+        "[bold cyan]Arbel Check[/bold cyan]\nFlow RDS/Alarm/Backup",
+        title="🛠️ Operations",
+        border_style="cyan",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    insight = Panel(
+        "[bold magenta]Cost Report[/bold magenta]\nCloudWatch cost snapshot\n\n"
+        "[bold magenta]Settings[/bold magenta]\nConfig, workers, UI mode",
+        title="📊 Insights",
+        border_style="magenta",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    stats = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+    stats.add_column("k", style="dim")
+    stats.add_column("v")
+    stats.add_row("UI Mode", UI_MODES.get(_current_ui_mode, _current_ui_mode))
+    stats.add_row("Focus", "Security + Ops + Cost")
+    stats.add_row("Engine", "Parallel runner")
     console.print(
-        Panel(
-            quick,
-            title="🧭 Control Center",
-            border_style="cyan",
-            box=box.ROUNDED,
-            padding=(0, 1),
+        Columns(
+            [
+                ops,
+                insight,
+                Panel(
+                    stats,
+                    title="📈 Status",
+                    border_style="green",
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                ),
+            ],
+            expand=True,
         )
     )
     console.print()
 
 
 def _render_single_check_dashboard():
-    """Render compact single-check helper."""
-    console.print(
-        Panel(
-            f"{ICONS['health']} Health  •  {ICONS['guardduty']} GuardDuty  •  {ICONS['cloudwatch']} CloudWatch  •  "
-            f"{ICONS['backup']} Backup  •  {ICONS['rds']} Daily Arbel  •  {ICONS['alarm']} Alarm  •  "
-            f"{ICONS['cost']} Cost  •  {ICONS['notifications']} Notifications  •  {ICONS['ec2list']} EC2 List",
-            title="🔍 Available Checks",
-            border_style="cyan",
-            box=box.ROUNDED,
-            padding=(0, 1),
+    """Render single-check helper."""
+    if not _is_dense_mode():
+        console.print(
+            Panel(
+                f"{ICONS['health']} Health  •  {ICONS['guardduty']} GuardDuty  •  {ICONS['cloudwatch']} CloudWatch  •  "
+                f"{ICONS['backup']} Backup  •  {ICONS['rds']} Daily Arbel  •  {ICONS['alarm']} Alarm  •  "
+                f"{ICONS['cost']} Cost  •  {ICONS['notifications']} Notifications  •  {ICONS['ec2list']} EC2 List",
+                title="🔍 Available Checks",
+                border_style="cyan",
+                box=box.ROUNDED,
+                padding=(0, 1),
+            )
         )
+        console.print()
+        return
+
+    security = Panel(
+        f"{ICONS['health']} Health Events\n{ICONS['guardduty']} GuardDuty Findings\n{ICONS['cloudwatch']} CloudWatch Alarms",
+        title="🔐 Security",
+        border_style="red",
+        box=box.ROUNDED,
+        padding=(1, 2),
     )
+    operations = Panel(
+        f"{ICONS['backup']} Backup Status\n{ICONS['rds']} Daily Arbel\n{ICONS['alarm']} Alarm Verification",
+        title="⚙️ Operations",
+        border_style="green",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    utility = Panel(
+        f"{ICONS['cost']} Cost Anomalies\n{ICONS['notifications']} Notifications\n{ICONS['ec2list']} EC2 List",
+        title="🧰 Utility",
+        border_style="yellow",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    console.print(Columns([security, operations, utility], expand=True))
     console.print()
 
 
 def _render_all_checks_dashboard(profile_count: int):
-    """Render compact all-checks helper."""
-    console.print(
-        Panel(
-            f"Target: [bold]{profile_count} akun[/bold]  •  Mode: parallel  •  Focus: Cost / GuardDuty / CloudWatch / Notifications",
-            title="📋 All Checks Plan",
-            border_style="cyan",
-            box=box.ROUNDED,
-            padding=(0, 1),
+    """Render all-checks helper."""
+    if not _is_dense_mode():
+        console.print(
+            Panel(
+                f"Target: [bold]{profile_count} akun[/bold]  •  Mode: parallel  •  Focus: Cost / GuardDuty / CloudWatch / Notifications",
+                title="📋 All Checks Plan",
+                border_style="cyan",
+                box=box.ROUNDED,
+                padding=(0, 1),
+            )
         )
+        console.print()
+        return
+
+    run_panel = Panel(
+        f"Target accounts: [bold]{profile_count}[/bold]\nMode: Parallel checks\nOutput: Executive summary + detail",
+        title="🚀 Run Plan",
+        border_style="cyan",
+        box=box.ROUNDED,
+        padding=(1, 2),
     )
+    focus_panel = Panel(
+        "Cost anomalies\nGuardDuty\nCloudWatch\nNotifications",
+        title="🎯 Focus Areas",
+        border_style="magenta",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    hint_panel = Panel(
+        "Gunakan group profiles untuk coverage penuh\nGunakan region default jika tidak yakin",
+        title="💡 Hint",
+        border_style="bright_black",
+        box=box.ROUNDED,
+        padding=(1, 2),
+    )
+    console.print(Columns([run_panel, focus_panel, hint_panel], expand=True))
     console.print()
 
 
@@ -309,7 +434,8 @@ def run_cloudwatch_cost_report():
     console.print(
         Panel(
             "[bold]Tujuan:[/bold] ringkasan biaya CloudWatch lintas akun\n"
-            "[bold]Output:[/bold] table / markdown / plain text",
+            "[bold]Output:[/bold] table / markdown / plain text\n"
+            "[bold yellow]Scope:[/bold yellow] source profile tetap [bold]ksni-master[/bold] (NABATI-KSNI)",
             title="📉 Cost Dashboard",
             border_style="cyan",
             box=box.ROUNDED,
@@ -319,6 +445,7 @@ def run_cloudwatch_cost_report():
     console.print()
 
     profile = "ksni-master"
+    print_info(f"Source profile cost report: {profile} (NABATI-KSNI)")
     region = _choose_region([]) or "ap-southeast-3"
 
     format_choices = [
@@ -454,24 +581,50 @@ def run_arbel_check():
         mode.add_row("Alarm Verification", "pilih akun -> pilih alarm -> run")
         mode.add_row("Backup", "langsung run semua akun Aryanoble")
 
-        console.print(
-            Panel(
-                top,
-                title="🏥 Arbel Monitoring Center",
+        if _is_dense_mode():
+            flow_panel = Panel(
+                "[bold cyan]RDS Monitoring[/bold cyan]\nPilih akun lalu window 1h / 3h / 12h\n\n"
+                "[bold cyan]Alarm Verification[/bold cyan]\nPilih akun lalu alarm yang mau dicek\n\n"
+                "[bold cyan]Backup[/bold cyan]\nLaporan backup semua akun Arbel",
+                title="⚙️ Flow Utama",
                 border_style="cyan",
                 box=box.ROUNDED,
-                padding=(0, 1),
+                padding=(1, 2),
             )
-        )
-        console.print(
-            Panel(
-                mode,
-                title="🧭 Flow",
+            scope_panel = Panel(
+                top,
+                title="📌 Scope",
                 border_style="green",
                 box=box.ROUNDED,
-                padding=(0, 1),
+                padding=(1, 2),
             )
-        )
+            mode_panel = Panel(
+                mode,
+                title="🧭 Steps",
+                border_style="magenta",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+            console.print(Columns([flow_panel, scope_panel, mode_panel], expand=True))
+        else:
+            console.print(
+                Panel(
+                    top,
+                    title="🏥 Arbel Monitoring Center",
+                    border_style="cyan",
+                    box=box.ROUNDED,
+                    padding=(0, 1),
+                )
+            )
+            console.print(
+                Panel(
+                    mode,
+                    title="🧭 Flow",
+                    border_style="green",
+                    box=box.ROUNDED,
+                    padding=(0, 1),
+                )
+            )
         console.print()
 
     def _pick_arbel_profiles():
@@ -521,6 +674,7 @@ def run_arbel_check():
     arbel_choices = [
         questionary.Choice("🗄️ RDS Monitoring", value="rds"),
         questionary.Choice("⏱️ Alarm Verification", value="alarm-name"),
+        questionary.Choice("💵 Daily Budget", value="budget"),
         questionary.Choice(f"{ICONS['backup']} Backup", value="backup"),
     ]
 
@@ -538,6 +692,15 @@ def run_arbel_check():
     selected_profiles = _pick_arbel_profiles()
     if not selected_profiles:
         print_error("Tidak ada akun dipilih.")
+        return
+
+    if choice == "budget":
+        run_group_specific(
+            "daily-budget",
+            selected_profiles,
+            region,
+            group_name="Aryanoble Budget",
+        )
         return
 
     if choice == "alarm-name":
@@ -710,6 +873,8 @@ def _display_nabati_results(data: dict):
 
 def run_settings_menu():
     """Settings and configuration menu."""
+    global _current_ui_mode
+
     print_mini_banner()
     print_section_header("Settings & Info", ICONS["settings"])
     console.print(
@@ -742,6 +907,7 @@ def run_settings_menu():
     info_table.add_row("Default Region", config.default_region)
     info_table.add_row("Parallel Workers", str(config.default_workers))
     info_table.add_row("Profile Groups", str(len(list(PROFILE_GROUPS.keys()))))
+    info_table.add_row("UI Mode", UI_MODES.get(_current_ui_mode, _current_ui_mode))
 
     console.print(info_table)
     console.print()
@@ -749,6 +915,9 @@ def run_settings_menu():
     settings_choices = [
         questionary.Choice(
             f"{ICONS['settings']} Create sample config", value="create_config"
+        ),
+        questionary.Choice(
+            f"{ICONS['sparkle']} Toggle UI mode (Dense/Compact)", value="toggle_ui"
         ),
         questionary.Choice(f"{ICONS['info']} Show config path", value="show_path"),
         questionary.Choice(f"{ICONS['arrow']} Back to main menu", value="back"),
@@ -763,6 +932,11 @@ def run_settings_menu():
             path = create_sample_config()
             print_success(f"Config sample dibuat di {path}")
             print_info("Edit file tersebut untuk menambah/mengubah profile groups.")
+    elif choice == "toggle_ui":
+        _current_ui_mode = "compact" if _current_ui_mode == "dense" else "dense"
+        print_success(
+            f"UI mode aktif: {UI_MODES.get(_current_ui_mode, _current_ui_mode)}"
+        )
     elif choice == "show_path":
         print_info(f"Config path: {CONFIG_FILE}")
 
@@ -847,7 +1021,7 @@ def run_interactive():
 
     while True:
         console.clear()
-        print_banner()
+        print_banner(show_tips=False)
         _render_main_dashboard()
 
         main_choice = _select_prompt(f"{ICONS['star']} Menu Utama", main_choices)

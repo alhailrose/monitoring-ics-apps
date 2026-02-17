@@ -169,27 +169,28 @@ def print_banner(show_version: bool = True, show_tips: bool = True):
         Panel(
             "\n".join(banner_lines),
             border_style="cyan",
-            box=box.DOUBLE,
+            box=box.ROUNDED,
             padding=(0, 2),
         )
     )
 
-    # Keyboard shortcuts
-    shortcuts = Text()
-    shortcuts.append("  ⌨️  ", style="dim")
-    shortcuts.append("Esc", style="bold cyan")
-    shortcuts.append("/", style="dim")
-    shortcuts.append("Ctrl+C", style="bold cyan")
-    shortcuts.append(": kembali   ", style="dim")
-    shortcuts.append("•", style="dim")
-    shortcuts.append("   ", style="dim")
-    shortcuts.append("Space", style="bold cyan")
-    shortcuts.append(": pilih   ", style="dim")
-    shortcuts.append("•", style="dim")
-    shortcuts.append("   ", style="dim")
-    shortcuts.append("Enter", style="bold cyan")
-    shortcuts.append(": konfirmasi", style="dim")
-    console.print(shortcuts)
+    if show_tips:
+        # Keyboard shortcuts
+        shortcuts = Text()
+        shortcuts.append("  ⌨️  ", style="dim")
+        shortcuts.append("Esc", style="bold cyan")
+        shortcuts.append("/", style="dim")
+        shortcuts.append("Ctrl+C", style="bold cyan")
+        shortcuts.append(": kembali   ", style="dim")
+        shortcuts.append("•", style="dim")
+        shortcuts.append("   ", style="dim")
+        shortcuts.append("Space", style="bold cyan")
+        shortcuts.append(": pilih   ", style="dim")
+        shortcuts.append("•", style="dim")
+        shortcuts.append("   ", style="dim")
+        shortcuts.append("Enter", style="bold cyan")
+        shortcuts.append(": konfirmasi", style="dim")
+        console.print(shortcuts)
     console.print()
 
 

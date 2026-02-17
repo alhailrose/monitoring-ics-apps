@@ -67,7 +67,9 @@ pipx reinstall "git+ssh://git@github.com/alhailrose/monitoring-ics-apps.git@main
   - `--check alarm_verification` (via Arbel flow) -> summary report now/monitor/ok-now
 
 ## Ringkasan command CLI
-- Interaktif: `monitoring-hub`
+- Interaktif (default, UI v2): `monitoring-hub`
+- Paksa UI v2 (opsional): `monitoring-hub --ui2`
+- Pakai legacy UI: `monitoring-hub --legacy-ui`
 - Cek spesifik: `monitoring-hub --check <nama_check> --profile <profil>`
 - Semua check: `monitoring-hub --all --group <group>`
 - Include backup+rds di mode all: `monitoring-hub --all --group <group> --include-backup-rds`
@@ -83,6 +85,10 @@ Daftar check valid untuk `--check`:
   ```bash
   uv run --with pytest pytest
   ```
+
+Catatan UI migration:
+- UI v2 sekarang menjadi default untuk pengalaman split dashboard.
+- UI lama tetap tersedia via `--legacy-ui` untuk fallback operasional.
 
 ## Prasyarat
 - Python 3.9+

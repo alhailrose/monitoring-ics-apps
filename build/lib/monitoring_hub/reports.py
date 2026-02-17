@@ -526,6 +526,52 @@ def build_whatsapp_alarm(all_results):
     return "\n".join(lines)
 
 
+def build_whatsapp_budget(all_results):
+    """Build budget threshold summary grouped by account."""
+    grouped = []
+    for _, checks in all_results.items():
+        res = checks.get("daily-budget")
+        if not res or res.get("status") in ["error", "skipped"]:
+            continue
+
+        items = [
+            x
+            for x in res.get("items", [])
+            if x.get("threshold_hits") or x.get("is_over_budget")
+        ]
+        if not items:
+            continue
+
+        grouped.append(
+            {
+                "account_id": res.get("account_id", ""),
+                "account_name": res.get("account_name", res.get("profile", "")),
+                "items": items,
+                "max_percent": max(x.get("percent", 0) for x in items),
+            }
+        )
+
+    if not grouped:
+        return "Tidak ada budget melewati alert threshold."
+
+    grouped.sort(key=lambda x: x["max_percent"], reverse=True)
+    lines = []
+    for idx, entry in enumerate(grouped, start=1):
+        lines.append(f"{idx}) Account {entry['account_id']} - {entry['account_name']}")
+        for it in entry["items"]:
+            line = (
+                f"- {it['budget_name']}: ${it['actual']:.2f} / ${it['limit']:.2f} "
+                f"({it['percent']:.2f}%)"
+            )
+            if it.get("is_over_budget"):
+                line += f" -> Over ${it['over_amount']:.2f}"
+            else:
+                hits = ", ".join(f"{h:.0f}%" for h in it.get("threshold_hits", []))
+                line += f" -> Exceeded alert threshold ({hits})"
+            lines.append(line)
+    return "\n".join(lines)
+
+
 def generate_whatsapp_message(all_results):
     """Generate a WhatsApp-ready text focusing on Backup and RDS for Aryanoble."""
     now_jkt = datetime.now(timezone(timedelta(hours=7)))

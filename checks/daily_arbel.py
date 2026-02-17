@@ -31,6 +31,11 @@ ACCOUNT_CONFIG = {
             "CPUUtilization": 75,
             "DatabaseConnections": 1500,
         },
+        "alarm_thresholds": {
+            "writer": {
+                "FreeableMemory": "noncis-prod-rds-freeable-memory-alarm",
+            }
+        },
     },
     "cis-erha": {
         "account_name": "CIS ERHA",
@@ -50,6 +55,14 @@ ACCOUNT_CONFIG = {
             "ACUUtilization": 75,
             "CPUUtilization": 75,
             "DatabaseConnections": 3000,
+        },
+        "alarm_thresholds": {
+            "writer": {
+                "FreeableMemory": "cis-prod-rds-memory-writer-alarm",
+            },
+            "reader": {
+                "FreeableMemory": "cis-prod-rds-memory-reader-alarm",
+            },
         },
     },
     "dermies-max": {
@@ -71,6 +84,14 @@ ACCOUNT_CONFIG = {
             "CPUUtilization": 75,
             "DatabaseConnections": 1500,
         },
+        "alarm_thresholds": {
+            "writer": {
+                "FreeableMemory": "dermies-prod-rds-writer-freeable-memory-alarm",
+            },
+            "reader": {
+                "FreeableMemory": "dermies-prod-rds-reader-freeable-memory-alarm",
+            },
+        },
     },
     "erha-buddy": {
         "account_name": "ERHA BUDDY",
@@ -88,6 +109,11 @@ ACCOUNT_CONFIG = {
             "CPUUtilization": 75,
             "DatabaseConnections": 500,
             "FreeStorageSpace": 10 * 1024**3,  # 10 GB (of 178GB allocated)
+        },
+        "alarm_thresholds": {
+            "prod": {
+                "FreeableMemory": "erhabuddy-prod-rds-freeable-memory-alarm",
+            }
         },
     },
     "public-web": {
@@ -224,6 +250,140 @@ class DailyArbelChecker(BaseChecker):
 
         return ACCOUNT_CONFIG.get(profile)
 
+    def _alarm_threshold_for_role(self, cw_client, profile, role, metric_name):
+        cfg = ACCOUNT_CONFIG.get(profile, {})
+        role_alarm_map = cfg.get("alarm_thresholds", {}).get(role, {})
+        alarm_name = role_alarm_map.get(metric_name)
+        if not alarm_name:
+            return None
+
+        try:
+            resp = cw_client.describe_alarms(AlarmNames=[alarm_name])
+            alarms = resp.get("MetricAlarms", [])
+            if not alarms:
+                return None
+
+            threshold = alarms[0].get("Threshold")
+            if isinstance(threshold, (int, float)):
+                return float(threshold)
+        except Exception:
+            return None
+
+        return None
+
+    def _resolve_role_thresholds(self, cw_client, profile, role, base_thresholds):
+        resolved = dict(base_thresholds)
+        fm_threshold = self._alarm_threshold_for_role(
+            cw_client,
+            profile,
+            role,
+            "FreeableMemory",
+        )
+        if fm_threshold is not None:
+            resolved["FreeableMemory"] = fm_threshold
+        return resolved
+
+    def _alarm_name_for_role_metric(self, profile, role, metric_name):
+        cfg = ACCOUNT_CONFIG.get(profile, {})
+        return cfg.get("alarm_thresholds", {}).get(role, {}).get(metric_name)
+
+    def _extract_alarm_periods(
+        self,
+        history_items,
+        now_utc,
+        window_start_utc,
+        current_state=None,
+    ):
+        events = []
+        for item in history_items or []:
+            summary = item.get("HistorySummary", "")
+            ts = item.get("Timestamp")
+            if ts is None:
+                continue
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+
+            if "to ALARM" in summary:
+                events.append((ts, "start"))
+            elif "ALARM to OK" in summary or "to OK" in summary:
+                events.append((ts, "end"))
+
+        events.sort(key=lambda x: x[0])
+        periods = []
+        active_start = None
+
+        for ts, kind in events:
+            if kind == "start":
+                active_start = ts
+                continue
+
+            if kind == "end":
+                if active_start is None:
+                    active_start = window_start_utc
+                if ts < active_start:
+                    continue
+                duration = max(1, int((ts - active_start).total_seconds() // 60))
+                periods.append(
+                    (
+                        0.0,
+                        active_start.astimezone(JKT).strftime("%H:%M"),
+                        ts.astimezone(JKT).strftime("%H:%M"),
+                        duration,
+                    )
+                )
+                active_start = None
+
+        if active_start is not None or current_state == "ALARM":
+            if active_start is None:
+                active_start = window_start_utc
+            duration = max(1, int((now_utc - active_start).total_seconds() // 60))
+            periods.append(
+                (
+                    0.0,
+                    active_start.astimezone(JKT).strftime("%H:%M"),
+                    "now",
+                    duration,
+                )
+            )
+
+        return periods
+
+    def _resolve_role_alarm_periods(self, cw_client, profile, role):
+        now_utc = datetime.now(timezone.utc)
+        start_utc = now_utc - timedelta(hours=self.window_hours)
+        out = {}
+
+        role_metric_map = (
+            ACCOUNT_CONFIG.get(profile, {}).get("alarm_thresholds", {}).get(role, {})
+        )
+        for metric_name, alarm_name in role_metric_map.items():
+            if not alarm_name:
+                continue
+            try:
+                alarm_state = "OK"
+                described = cw_client.describe_alarms(AlarmNames=[alarm_name])
+                metric_alarms = described.get("MetricAlarms", [])
+                if metric_alarms:
+                    alarm_state = metric_alarms[0].get("StateValue", "OK")
+
+                history = cw_client.describe_alarm_history(
+                    AlarmName=alarm_name,
+                    HistoryItemType="StateUpdate",
+                    StartDate=start_utc,
+                    EndDate=now_utc,
+                    ScanBy="TimestampDescending",
+                ).get("AlarmHistoryItems", [])
+                out[metric_name] = self._extract_alarm_periods(
+                    history,
+                    now_utc,
+                    start_utc,
+                    current_state=alarm_state,
+                )
+            except Exception:
+                out[metric_name] = []
+
+        return out
+
     def _breach_detail(self, info, thresholds, metric, comparator, profile=None):
         """Return list of breach periods with (start_time, end_time, peak_val)."""
         vals = info.get("values", [])
@@ -285,7 +445,10 @@ class DailyArbelChecker(BaseChecker):
             label = (
                 "ACU Utilization" if metric == "ACUUtilization" else "CPU Utilization"
             )
-            bd = self._breach_detail(info, thresholds, metric, "above", profile)
+            alarm_periods = info.get("alarm_periods") or []
+            bd = alarm_periods or self._breach_detail(
+                info, thresholds, metric, "above", profile
+            )
             # Filter: hanya tampilkan breach >= 10 menit
             if bd:
                 bd = [p for p in bd if p[3] >= 10]
@@ -293,18 +456,34 @@ class DailyArbelChecker(BaseChecker):
             if last > thr:
                 msg = f"{label}: {last:.0f}% (di atas {int(thr)}%)"
                 if bd:
+                    if alarm_periods:
+                        breach_info = ", ".join(
+                            [
+                                f"ALARM pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                                for p in bd
+                            ]
+                        )
+                    else:
+                        breach_info = ", ".join(
+                            [
+                                f"{p[0]:.0f}% pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                                for p in bd
+                            ]
+                        )
+                    msg += f" | {breach_info}"
+                return "warn", msg
+            if bd:
+                if alarm_periods:
+                    breach_info = ", ".join(
+                        [f"ALARM pukul {p[1]}-{p[2]} WIB ({p[3]} menit)" for p in bd]
+                    )
+                else:
                     breach_info = ", ".join(
                         [
                             f"{p[0]:.0f}% pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
                             for p in bd
                         ]
                     )
-                    msg += f" | {breach_info}"
-                return "warn", msg
-            if bd:
-                breach_info = ", ".join(
-                    [f"{p[0]:.0f}% pukul {p[1]}-{p[2]} WIB ({p[3]} menit)" for p in bd]
-                )
                 return (
                     "past-warn",
                     f"{label}: {last:.0f}% (sekarang normal, sempat > {int(thr)}% | {breach_info})",
@@ -313,7 +492,10 @@ class DailyArbelChecker(BaseChecker):
 
         if metric == "FreeableMemory":
             label = "Freeable Memory"
-            bd = self._breach_detail(info, thresholds, metric, "below", profile)
+            alarm_periods = info.get("alarm_periods") or []
+            bd = alarm_periods or self._breach_detail(
+                info, thresholds, metric, "below", profile
+            )
             # Filter: hanya tampilkan breach >= 10 menit
             if bd:
                 bd = [p for p in bd if p[3] >= 10]
@@ -321,21 +503,34 @@ class DailyArbelChecker(BaseChecker):
             if last < thr:
                 msg = f"{label}: {human_bytes(last)} (rendah < {human_bytes(thr)})"
                 if bd:
+                    if alarm_periods:
+                        breach_info = ", ".join(
+                            [
+                                f"ALARM pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                                for p in bd
+                            ]
+                        )
+                    else:
+                        breach_info = ", ".join(
+                            [
+                                f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                                for p in bd
+                            ]
+                        )
+                    msg += f" | {breach_info}"
+                return "warn", msg
+            if bd:
+                if alarm_periods:
+                    breach_info = ", ".join(
+                        [f"ALARM pukul {p[1]}-{p[2]} WIB ({p[3]} menit)" for p in bd]
+                    )
+                else:
                     breach_info = ", ".join(
                         [
                             f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
                             for p in bd
                         ]
                     )
-                    msg += f" | {breach_info}"
-                return "warn", msg
-            if bd:
-                breach_info = ", ".join(
-                    [
-                        f"{human_bytes(p[0])} pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
-                        for p in bd
-                    ]
-                )
                 return (
                     "past-warn",
                     f"{label}: {human_bytes(last)} (sekarang normal, sempat < {human_bytes(thr)} | {breach_info})",
@@ -438,12 +633,22 @@ class DailyArbelChecker(BaseChecker):
                     continue
 
                 metrics_info = self._fetch_metrics(cw, inst_id, cfg["metrics"], profile)
+                role_thresholds = self._resolve_role_thresholds(
+                    cw,
+                    profile,
+                    role,
+                    cfg["thresholds"],
+                )
+                role_alarm_periods = self._resolve_role_alarm_periods(cw, profile, role)
+                for metric_name, periods in role_alarm_periods.items():
+                    if metric_name in metrics_info:
+                        metrics_info[metric_name]["alarm_periods"] = periods
                 evaluations = {}
                 for metric_name in cfg["metrics"]:
                     status, msg = self._evaluate_metric(
                         metric_name,
                         metrics_info.get(metric_name, {}),
-                        cfg["thresholds"],
+                        role_thresholds,
                         profile,
                     )
                     evaluations[metric_name] = {"status": status, "message": msg}

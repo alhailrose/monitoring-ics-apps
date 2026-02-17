@@ -25,7 +25,12 @@ from .config import (
     DEFAULT_WORKERS,
 )
 from .utils import get_account_id
-from .reports import build_whatsapp_backup, build_whatsapp_rds, build_whatsapp_alarm
+from .reports import (
+    build_whatsapp_backup,
+    build_whatsapp_rds,
+    build_whatsapp_alarm,
+    build_whatsapp_budget,
+)
 from .ui import (
     console,
     print_check_header,
@@ -273,6 +278,15 @@ def run_group_specific(
         print("WHATSAPP MESSAGE (READY TO SEND)")
         print("=" * 70)
         print("--alarm")
+        print(whatsapp)
+
+    elif check_name == "daily-budget":
+        whatsapp = build_whatsapp_budget(all_results)
+
+        print("\n" + "=" * 70)
+        print("WHATSAPP MESSAGE (READY TO SEND)")
+        print("=" * 70)
+        print("--budget")
         print(whatsapp)
 
 

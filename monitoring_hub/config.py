@@ -4,7 +4,14 @@ Uses external config loader with fallback to built-in defaults.
 """
 
 from rich.console import Console
-from questionary import Style
+
+try:
+    from questionary import Style as _QuestionaryStyle
+except ModuleNotFoundError:
+
+    def _QuestionaryStyle(style_rules):
+        return style_rules
+
 
 from src.checks.generic.health_events import HealthChecker
 from src.checks.generic.cost_anomalies import CostAnomalyChecker
@@ -15,6 +22,7 @@ from src.checks.generic.backup_status import BackupStatusChecker
 from src.checks.aryanoble.daily_arbel import DailyArbelChecker
 from src.checks.generic.ec2_list import EC2ListChecker
 from src.checks.aryanoble.alarm_verification import AlarmVerificationChecker
+from checks.daily_budget import DailyBudgetChecker
 
 from .config_loader import (
     get_profile_groups,
@@ -101,6 +109,7 @@ AVAILABLE_CHECKS = {
     "notifications": NotificationChecker,
     "backup": BackupStatusChecker,
     "daily-arbel": DailyArbelChecker,
+    "daily-budget": DailyBudgetChecker,
     "ec2list": EC2ListChecker,
     "alarm_verification": AlarmVerificationChecker,
 }
@@ -153,7 +162,7 @@ MAGENTA = "\033[35m"
 console = Console()
 
 # Custom style for cooler prompts
-CUSTOM_STYLE = Style(
+CUSTOM_STYLE = _QuestionaryStyle(
     [
         ("qmark", "fg:#00b894 bold"),
         ("question", "bold"),

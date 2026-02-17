@@ -14,6 +14,7 @@ Reference contract: `docs/architecture/target-structure-contract.md`
 - Moved test suite into `tests/unit` and `tests/integration`.
 - Switched checks registry imports to `src.checks.*` paths.
 - Moved CLI canonical bootstrap to `src/app/cli/bootstrap.py` with stable legacy wrapper.
+- Verified post-refactor behavior for both CLI and TUI, including `pipx` reinstall smoke checks.
 
 ## Current runtime source of truth
 
