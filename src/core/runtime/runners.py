@@ -82,7 +82,7 @@ def run_individual_check(check_name: str, profile: str, region: str):
 
 
 def _check_single_profile(
-    check_name: str, profile: str, region: str, check_kwargs: dict = None
+    check_name: str, profile: str, region: str, check_kwargs: Optional[dict] = None
 ) -> dict:
     """Run a single check on a profile. Used for parallel execution."""
     account_id = get_account_id(profile)
@@ -123,7 +123,7 @@ def run_group_specific(
     region: str,
     group_name: Optional[str] = None,
     workers: int = DEFAULT_WORKERS,
-    check_kwargs: dict = None,
+    check_kwargs: Optional[dict] = None,
 ):
     """Run a specific check across multiple profiles with parallel execution."""
 
@@ -192,12 +192,6 @@ def run_group_specific(
         date_str = datetime.now(timezone(timedelta(hours=7))).strftime("%d-%m-%Y")
         whatsapp = build_whatsapp_backup(date_str, all_results)
 
-        print("\n" + "=" * 70)
-        print("WHATSAPP MESSAGE (READY TO SEND)")
-        print("=" * 70)
-        print("--backup")
-        print(whatsapp)
-
         # Detailed per-account view
         print("\n" + "=" * 70)
         print("DETAIL PER ACCOUNT (BACKUP, 24H WINDOW)")
@@ -261,6 +255,12 @@ def run_group_specific(
                             f"  - {v['vault_name']}: {v.get('recovery_points_24h', 0)} RP 24h; total {v.get('total_recovery_points', 0)}"
                         )
             print("")
+
+        print("\n" + "=" * 70)
+        print("WHATSAPP MESSAGE (READY TO SEND)")
+        print("=" * 70)
+        print("--backup")
+        print(whatsapp)
 
     elif check_name == "daily-arbel":
         whatsapp = build_whatsapp_rds(all_results)

@@ -92,3 +92,11 @@ accounts:
         CPUUtilization: 75
         DatabaseConnections: 500
         FreeStorageSpace: 5368709120
+
+  - profile: dwh
+    account_id: "084056488725"
+    display_name: "DWH"
+
+  - profile: genero-empower
+    account_id: "941377160792"
+    display_name: "GENERO EMPOWER"

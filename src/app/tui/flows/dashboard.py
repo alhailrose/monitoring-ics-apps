@@ -74,7 +74,7 @@ def render_single_check_dashboard(is_dense_mode):
         console.print(
             Panel(
                 f"{ICONS['health']} Health  •  {ICONS['guardduty']} GuardDuty  •  {ICONS['cloudwatch']} CloudWatch  •  "
-                f"{ICONS['backup']} Backup  •  {ICONS['rds']} Daily Arbel  •  {ICONS['alarm']} Alarm  •  "
+                f"{ICONS['backup']} Backup  •  {ICONS['alarm']} Alarm  •  "
                 f"{ICONS['cost']} Cost  •  {ICONS['notifications']} Notifications  •  {ICONS['ec2list']} EC2 List",
                 title="🔍 Available Checks",
                 border_style="cyan",
@@ -93,7 +93,7 @@ def render_single_check_dashboard(is_dense_mode):
         padding=(1, 2),
     )
     operations = Panel(
-        f"{ICONS['backup']} Backup Status\n{ICONS['rds']} Daily Arbel\n{ICONS['alarm']} Alarm Verification",
+        f"{ICONS['backup']} Backup Status\n{ICONS['alarm']} Alarm Verification",
         title="⚙️ Operations",
         border_style="green",
         box=box.ROUNDED,

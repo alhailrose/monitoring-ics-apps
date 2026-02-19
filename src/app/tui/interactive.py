@@ -128,7 +128,6 @@ def run_interactive():
             f"{ICONS['notifications']} Notifications", value="notifications"
         ),
         questionary.Choice(f"{ICONS['backup']} Backup Status", value="backup"),
-        questionary.Choice(f"{ICONS['rds']} Daily Arbel", value="daily-arbel"),
         questionary.Choice(
             f"{ICONS['alarm']} Alarm Verification (>10m)", value="alarm_verification"
         ),
@@ -194,13 +193,6 @@ def run_interactive():
 
             if check in ["backup", "daily-arbel"] and len(profiles) > 1:
                 run_group_specific(check, profiles, region, group_name=group_choice)
-            elif check in ["cost", "guardduty", "cloudwatch", "notifications"]:
-                run_all_checks(
-                    profiles,
-                    region,
-                    group_name=group_choice,
-                    exclude_backup_rds=True,
-                )
             else:
                 run_individual_check(check, profiles[0], region)
 

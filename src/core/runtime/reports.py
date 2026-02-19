@@ -93,8 +93,8 @@ SUMMARY_MAP = {
 def build_whatsapp_backup(date_str, all_results):
     """Build WhatsApp-ready backup report message."""
     completed_lines = []
-    failed_lines = []
-    expired_lines = []
+    failed_accounts = {}
+    expired_accounts = {}
     vault_gap_lines = []
     nobackup_lines = []
 
@@ -149,10 +149,13 @@ def build_whatsapp_backup(date_str, all_results):
                     )
                     reason = job.get("reason", "No reason")
                     resource = job.get("resource_label", "N/A")
-                    failed_lines.append(f"- {display} - {acct}")
-                    failed_lines.append(f"  Resource: {resource}")
-                    failed_lines.append(f"  Time: {ts_str}")
-                    failed_lines.append(f"  Reason: {reason}")
+                    failed_accounts.setdefault((display, acct), []).append(
+                        {
+                            "resource": resource,
+                            "time": ts_str,
+                            "reason": reason,
+                        }
+                    )
 
             if expired_jobs:
                 for job in expired_jobs:
@@ -164,22 +167,45 @@ def build_whatsapp_backup(date_str, all_results):
                     )
                     reason = job.get("reason", "No reason")
                     resource = job.get("resource_label", "N/A")
-                    expired_lines.append(f"- {display} - {acct}")
-                    expired_lines.append(f"  Resource: {resource}")
-                    expired_lines.append(f"  Time: {ts_str}")
-                    expired_lines.append(f"  Reason: {reason}")
+                    expired_accounts.setdefault((display, acct), []).append(
+                        {
+                            "resource": resource,
+                            "time": ts_str,
+                            "reason": reason,
+                        }
+                    )
 
             # Other issues (vault gaps, etc)
             for i in issues:
                 if "failed" in i or "expired" in i:
                     continue
-                failed_lines.append(f"- {display} - {acct} => {i}")
+                failed_accounts.setdefault((display, acct), []).append(
+                    {
+                        "resource": "N/A",
+                        "time": "N/A",
+                        "reason": i,
+                    }
+                )
+
+    def _build_issue_block(accounts):
+        if not accounts:
+            return "- (tidak ada)"
+
+        lines = []
+        for (display, acct), entries in accounts.items():
+            lines.append(f"- {display} - {acct}")
+            for idx, entry in enumerate(entries, start=1):
+                lines.append(f"  Detail {idx}:")
+                lines.append(f"    Resource: {entry['resource']}")
+                lines.append(f"    Time: {entry['time']}")
+                lines.append(f"    Reason: {entry['reason']}")
+        return "\r\n".join(lines)
 
     completed_block = (
         "\r\n".join(completed_lines) if completed_lines else "- (tidak ada)"
     )
-    failed_block = "\r\n".join(failed_lines) if failed_lines else "- (tidak ada)"
-    expired_block = "\r\n".join(expired_lines) if expired_lines else "- (tidak ada)"
+    failed_block = _build_issue_block(failed_accounts)
+    expired_block = _build_issue_block(expired_accounts)
 
     return (
         "Selamat Pagi Team,\r\n"
