@@ -58,13 +58,18 @@ DEFAULT_PROFILE_GROUPS = {
         "erha-buddy": "486250145105",
         "centralized-s3": "533267291161",
         "backup-hris": "390403877301",
+        "dwh": "084056488725",
+        "genero-empower": "941377160792",
+    },
+    "FFI": {
+        "ffi": "315897480848",
     },
     "HungryHub": {"prod": "202255947274"},
     "Agung Sedayu": {"asg": "264887202956"},
     "Master": {
         "arbel-master": "477153214925",
         "ksni-master": "317949653982",
-               },
+    },
     "NON SSO": {
         "nikp": "038361715485",
         "sandbox": "339712808680",
@@ -83,6 +88,9 @@ DEFAULT_SETTINGS = {
 # Built-in display names for WhatsApp reports
 DEFAULT_DISPLAY_NAMES = {
     "backup-hris": "Backup HRIS",
+    "dwh": "DWH",
+    "genero-empower": "Genero Empower",
+    "ffi": "FFI",
     "HRIS": "HRIS",
     "cis-erha": "CIS Erha",
     "connect-prod": "Connect Prod",

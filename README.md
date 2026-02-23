@@ -66,17 +66,113 @@ pipx reinstall "git+ssh://git@github.com/alhailrose/monitoring-ics-apps.git@main
   - `--check daily-arbel` -> report RDS klien
   - `--check alarm_verification` (via Arbel flow) -> summary report now/monitor/ok-now
 
+## Guide: menambah account/profil
+
+Tujuan section ini: biar nambah akun baru tidak perlu tebak-tebakan.
+
+### A) Untuk pemakaian lokal (tanpa ubah repo)
+1) Pastikan profil AWS ada dan valid:
+   ```bash
+   aws configure sso --profile <nama_profil>
+   aws sso login --profile <nama_profil>
+   aws sts get-caller-identity --profile <nama_profil> --region ap-southeast-1
+   ```
+2) Tambahkan ke config lokal `~/.monitoring-hub/config.yaml`:
+   ```yaml
+   defaults:
+     region: ap-southeast-1
+     workers: 5
+
+   profile_groups:
+     Aryanoble:
+       dwh: "<ACCOUNT_ID_12_DIGITS>"
+       genero-empower: "<ACCOUNT_ID_12_DIGITS>"
+     FFI:
+       ffi: "<ACCOUNT_ID_12_DIGITS>"
+
+   display_names:
+     dwh: "DWH"
+     genero-empower: "Genero Empower"
+     ffi: "FFI"
+   ```
+3) Verifikasi di CLI:
+   ```bash
+   monitoring-hub --check backup --profile dwh --region ap-southeast-1
+   monitoring-hub --check cloudwatch --profile ffi --region ap-southeast-1
+   ```
+
+Catatan:
+- `~/.monitoring-hub/config.yaml` di-merge dengan default bawaan aplikasi.
+- `account_id` harus 12 digit string.
+
+### B) Untuk update default tim di repository
+Jika akun baru harus jadi default untuk semua user tim:
+- Edit `src/core/runtime/config_loader.py`:
+  - `DEFAULT_PROFILE_GROUPS`
+  - `DEFAULT_DISPLAY_NAMES`
+- Untuk akun customer Aryanoble (supaya report backup/daily konsisten), update juga:
+  - `configs/customers/aryanoble.yaml`
+
+Contoh update yang sudah dipakai saat ini:
+- Aryanoble: `dwh`, `genero-empower`
+- FFI group: `ffi` (single account)
+
 ## Ringkasan command CLI
 - Interaktif (default, UI v2): `monitoring-hub`
 - Paksa UI v2 (opsional): `monitoring-hub --ui2`
 - Pakai legacy UI: `monitoring-hub --legacy-ui`
 - Cek spesifik: `monitoring-hub --check <nama_check> --profile <profil>`
+- Cek spesifik + kirim ke Slack: `monitoring-hub --check <nama_check> --profile <profil> --send-slack`
 - Semua check: `monitoring-hub --all --group <group>`
 - Include backup+rds di mode all: `monitoring-hub --all --group <group> --include-backup-rds`
 - Init config sample: `monitoring-hub --init-config`
 
 Daftar check valid untuk `--check`:
 `health`, `cost`, `guardduty`, `cloudwatch`, `notifications`, `backup`, `daily-arbel`, `ec2list`.
+
+## Slack report routing (opsional)
+
+Anda bisa mengirim hasil report tertentu ke Slack berdasarkan channel route di config.
+
+1) Tambahkan konfigurasi di `~/.monitoring-hub/config.yaml`:
+```yaml
+slack:
+  enabled: true
+  reports:
+    backup:
+      webhook_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+      channel: "#aryanoble-backup"
+      username: "Monitoring Bot"
+      clients:
+        cis-erha:
+          channel: "#cis-backup"
+        connect-prod:
+          channel: "#connect-backup"
+    daily-arbel:
+      webhook_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+      channel: "#aryanoble-rds"
+      clients:
+        dermies-max:
+          channel: "#dermies-rds"
+    daily-budget:
+      webhook_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+      channel: "#aryanoble-budget"
+      clients:
+        cis-erha:
+          channel: "#cis-budget"
+        erha-buddy:
+          channel: "#buddy-budget"
+```
+
+2) Jalankan check dengan flag `--send-slack`:
+```bash
+monitoring-hub --check daily-budget --profile cis-erha --region ap-southeast-1 --send-slack
+```
+
+Catatan:
+- Jika route untuk check tersebut tidak ada, report tetap jalan lokal dan Slack akan di-skip.
+- Route key mengikuti nama check (`backup`, `daily-arbel`, `alarm_verification`, `daily-budget`, dll).
+- `clients.<profile>` bersifat override per client; jika tidak ada maka pakai route default report.
 
 ## Test layout
 - Unit tests: `tests/unit/`

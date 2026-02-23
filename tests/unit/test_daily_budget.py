@@ -96,6 +96,9 @@ def test_build_whatsapp_budget_formats_grouped_output():
                 "status": "ATTENTION REQUIRED",
                 "account_id": "620463044477",
                 "account_name": "Connect Prod (Non Cis)",
+                "data_mode": "snapshot",
+                "period_utc_date": "2026-02-19",
+                "as_of_wib": "19-02-2026 13:49 WIB",
                 "items": [
                     {
                         "budget_name": "Budget-Log-Only-CONNECT-Prod",
@@ -114,6 +117,9 @@ def test_build_whatsapp_budget_formats_grouped_output():
                 "status": "ATTENTION REQUIRED",
                 "account_id": "451916275465",
                 "account_name": "CIS Erha",
+                "data_mode": "snapshot",
+                "period_utc_date": "2026-02-19",
+                "as_of_wib": "19-02-2026 13:49 WIB",
                 "items": [
                     {
                         "budget_name": "Budget-RDS-Only-CIS-Erha",
@@ -131,6 +137,38 @@ def test_build_whatsapp_budget_formats_grouped_output():
 
     msg = build_whatsapp_budget(all_results)
 
+    assert "Data: 2026-02-19 UTC | As of: 19-02-2026 13:49 WIB | Mode: snapshot" in msg
     assert "1) Account 620463044477 - Connect Prod (Non Cis)" in msg
     assert "Budget-Log-Only-CONNECT-Prod: $9.11 / $7.00 (130.19%)" in msg
     assert "2) Account 451916275465 - CIS Erha" in msg
+
+
+def test_daily_budget_format_report_shows_period_and_as_of():
+    checker = DailyBudgetChecker()
+    results = {
+        "status": "ATTENTION REQUIRED",
+        "account_id": "451916275465",
+        "account_name": "CIS Erha",
+        "data_mode": "snapshot",
+        "period_utc_date": "2026-02-19",
+        "as_of_wib": "19-02-2026 13:49 WIB",
+        "items": [
+            {
+                "budget_name": "Aryanoble-Daily-Budget-Cost",
+                "actual": 255.98,
+                "limit": 230.0,
+                "percent": 111.3,
+                "over_amount": 25.98,
+                "is_over_budget": True,
+                "threshold_hits": [95.0, 100.0],
+            }
+        ],
+    }
+
+    text = checker.format_report(results)
+
+    assert "Data: 2026-02-19 UTC | As of: 19-02-2026 13:49 WIB | Mode: snapshot" in text
+    assert (
+        "Aryanoble-Daily-Budget-Cost: $255.98 / $230.00 (111.30%) -> Over $25.98"
+        in text
+    )

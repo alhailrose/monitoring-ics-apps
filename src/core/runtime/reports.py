@@ -555,6 +555,9 @@ def build_whatsapp_alarm(all_results):
 def build_whatsapp_budget(all_results):
     """Build budget threshold summary grouped by account."""
     grouped = []
+    meta_period_utc = None
+    meta_as_of_wib = None
+    meta_mode = None
     for _, checks in all_results.items():
         res = checks.get("daily-budget")
         if not res or res.get("status") in ["error", "skipped"]:
@@ -577,11 +580,22 @@ def build_whatsapp_budget(all_results):
             }
         )
 
+        if meta_period_utc is None:
+            meta_period_utc = res.get("period_utc_date")
+            meta_as_of_wib = res.get("as_of_wib")
+            meta_mode = res.get("data_mode")
+
     if not grouped:
         return "Tidak ada budget melewati alert threshold."
 
     grouped.sort(key=lambda x: x["max_percent"], reverse=True)
     lines = []
+    if meta_period_utc or meta_as_of_wib:
+        mode_label = meta_mode or "snapshot"
+        lines.append(
+            f"Data: {meta_period_utc or 'N/A'} UTC | As of: {meta_as_of_wib or 'N/A'} | Mode: {mode_label}"
+        )
+        lines.append("")
     for idx, entry in enumerate(grouped, start=1):
         lines.append(f"{idx}) Account {entry['account_id']} - {entry['account_name']}")
         for it in entry["items"]:

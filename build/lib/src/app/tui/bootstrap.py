@@ -1,5 +1,16 @@
 """Canonical TUI bootstrap exports."""
 
-from src.app.tui.interactive import run_interactive, run_interactive_v2
+
+def run_interactive():
+    from src.app.tui import interactive
+
+    return interactive.run_interactive()
+
+
+def run_interactive_v2():
+    from src.app.tui import interactive
+
+    return interactive.run_interactive_v2()
+
 
 __all__ = ["run_interactive", "run_interactive_v2"]

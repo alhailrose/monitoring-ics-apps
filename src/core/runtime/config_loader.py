@@ -85,6 +85,11 @@ DEFAULT_SETTINGS = {
     "workers": 5,
 }
 
+DEFAULT_SLACK = {
+    "enabled": False,
+    "reports": {},
+}
+
 # Built-in display names for WhatsApp reports
 DEFAULT_DISPLAY_NAMES = {
     "backup-hris": "Backup HRIS",
@@ -113,6 +118,7 @@ class Config:
         self._profile_groups: dict[str, dict[str, str]] = {}
         self._settings: dict[str, Any] = {}
         self._display_names: dict[str, str] = {}
+        self._slack: dict[str, Any] = {}
         self._loaded = False
 
     def _load(self):
@@ -124,6 +130,10 @@ class Config:
         self._profile_groups = DEFAULT_PROFILE_GROUPS.copy()
         self._settings = DEFAULT_SETTINGS.copy()
         self._display_names = DEFAULT_DISPLAY_NAMES.copy()
+        self._slack = {
+            "enabled": DEFAULT_SLACK["enabled"],
+            "reports": dict(DEFAULT_SLACK["reports"]),
+        }
 
         # Try to load external config
         if CONFIG_FILE.exists():
@@ -151,6 +161,15 @@ class Config:
                 display_names = external_config.get("display_names")
                 if isinstance(display_names, dict):
                     self._display_names.update(display_names)
+
+                # Merge slack routing config
+                slack = external_config.get("slack")
+                if isinstance(slack, dict):
+                    if "enabled" in slack:
+                        self._slack["enabled"] = bool(slack.get("enabled"))
+                    reports = slack.get("reports")
+                    if isinstance(reports, dict):
+                        self._slack["reports"].update(reports)
 
             except yaml.YAMLError as e:
                 print(f"Warning: Failed to parse config file: {e}")
@@ -186,6 +205,12 @@ class Config:
     def default_workers(self) -> int:
         """Get default number of parallel workers."""
         return self.settings.get("workers", 5)
+
+    @property
+    def slack(self) -> dict[str, Any]:
+        """Get slack routing configuration."""
+        self._load()
+        return self._slack
 
     def config_exists(self) -> bool:
         """Check if external config file exists."""
@@ -244,6 +269,20 @@ profile_groups:
 display_names:
   # Example:
   # my-profile: "My Friendly Name"
+
+# Optional Slack routing for reports
+slack:
+  enabled: false
+  reports:
+    # backup:
+    #   webhook_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+    #   channel: "#aryanoble-backup"
+    #   clients:
+    #     cis-erha:
+    #       channel: "#cis-backup"
+    # daily-arbel:
+    #   webhook_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+    #   channel: "#aryanoble-rds"
 """
 
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -268,6 +307,10 @@ profile_groups:
 display_names:
   prod-account: "Production"
   dev-account: "Development"
+
+slack:
+  enabled: false
+  reports: {}
 """
 
 
@@ -298,3 +341,46 @@ def get_default_region() -> str:
 def get_default_workers() -> int:
     """Convenience function to get default workers."""
     return _config.default_workers
+
+
+def get_slack_config() -> dict[str, Any]:
+    """Convenience function to get slack config."""
+    return _config.slack
+
+
+def get_slack_report_config(
+    report_name: str, client_key: str | None = None
+) -> dict[str, Any]:
+    """Get slack route for report and optional client key.
+
+    Supported route format:
+    reports:
+      daily-budget:
+        webhook_url: ...            # default route
+        channel: ...
+        clients:
+          cis-erha:
+            webhook_url: ...        # client override
+            channel: ...
+    """
+    slack = _config.slack
+    if not slack.get("enabled"):
+        return {}
+
+    reports = slack.get("reports") or {}
+    route = reports.get(report_name)
+    if not isinstance(route, dict):
+        return {}
+
+    if client_key:
+        clients = route.get("clients") or {}
+        client_route = clients.get(client_key)
+        if isinstance(client_route, dict):
+            merged = dict(route)
+            merged.update(client_route)
+            merged.pop("clients", None)
+            return merged
+
+    out = dict(route)
+    out.pop("clients", None)
+    return out

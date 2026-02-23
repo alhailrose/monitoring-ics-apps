@@ -146,6 +146,11 @@ def main():
         default=DEFAULT_WORKERS,
         help=f"Number of parallel workers (default: {DEFAULT_WORKERS})",
     )
+    parser.add_argument(
+        "--send-slack",
+        action="store_true",
+        help="Send generated report to configured Slack route",
+    )
 
     args = parser.parse_args()
 
@@ -208,6 +213,7 @@ def main():
                 resolved_region,
                 group_name=group_choice,
                 workers=args.workers,
+                send_slack=args.send_slack,
             )
         else:
             if len(profiles) > 1:
@@ -216,7 +222,12 @@ def main():
                     "Use --all for multiple profiles or use backup/rds/notifications with --group"
                 )
                 sys.exit(1)
-            run_individual_check(args.check, profiles[0], resolved_region)
+            run_individual_check(
+                args.check,
+                profiles[0],
+                resolved_region,
+                send_slack=args.send_slack,
+            )
     else:
         run_all_checks(
             profiles,

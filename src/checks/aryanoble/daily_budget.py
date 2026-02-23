@@ -1,5 +1,6 @@
 """Daily budget checker for AWS Budgets (threshold + over budget)."""
 
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import boto3
@@ -39,6 +40,9 @@ class DailyBudgetChecker(BaseChecker):
 
     def check(self, profile, account_id):
         try:
+            now_utc = datetime.now(timezone.utc)
+            now_wib = now_utc.astimezone(timezone(timedelta(hours=7)))
+
             session = boto3.Session(profile_name=profile, region_name=self.region)
             budgets = session.client("budgets", region_name="us-east-1")
 
@@ -104,6 +108,9 @@ class DailyBudgetChecker(BaseChecker):
                 "profile": profile,
                 "account_id": account_id,
                 "account_name": self._account_name(profile),
+                "data_mode": "snapshot",
+                "period_utc_date": now_utc.strftime("%Y-%m-%d"),
+                "as_of_wib": now_wib.strftime("%d-%m-%Y %H:%M WIB"),
                 "items": sorted(items, key=lambda x: x["percent"], reverse=True),
                 "threshold_exceeded_count": threshold_exceeded_count,
                 "over_budget_count": over_budget_count,
@@ -123,6 +130,9 @@ class DailyBudgetChecker(BaseChecker):
         acct = results.get("account_id", "")
         name = results.get("account_name", results.get("profile", ""))
         lines = [f"Account {acct} - {name}"]
+        lines.append(
+            f"Data: {results.get('period_utc_date', 'N/A')} UTC | As of: {results.get('as_of_wib', 'N/A')} | Mode: {results.get('data_mode', 'snapshot')}"
+        )
 
         items = [
             x

@@ -37,9 +37,12 @@ from .ui import (
     print_group_header,
     ICONS,
 )
+from src.integrations.slack.notifier import send_report_to_slack
 
 
-def run_individual_check(check_name: str, profile: str, region: str):
+def run_individual_check(
+    check_name: str, profile: str, region: str, send_slack: bool = False
+):
     """Run individual check with detailed output and beautiful UI."""
     if check_name not in AVAILABLE_CHECKS:
         console.print(
@@ -79,6 +82,13 @@ def run_individual_check(check_name: str, profile: str, region: str):
 
     console.print()
     console.print(report)
+
+    if send_slack:
+        sent, reason = send_report_to_slack(check_name, report, client_key=profile)
+        if sent:
+            console.print(f"\n[green]{ICONS['check']} Slack report sent[/green]")
+        else:
+            console.print(f"\n[yellow]{ICONS['info']} Slack skipped[/yellow]: {reason}")
 
 
 def _check_single_profile(
@@ -124,6 +134,7 @@ def run_group_specific(
     group_name: Optional[str] = None,
     workers: int = DEFAULT_WORKERS,
     check_kwargs: Optional[dict] = None,
+    send_slack: bool = False,
 ):
     """Run a specific check across multiple profiles with parallel execution."""
 
@@ -288,6 +299,44 @@ def run_group_specific(
         print("=" * 70)
         print("--budget")
         print(whatsapp)
+
+    else:
+        whatsapp = None
+
+    if send_slack:
+        checker_class = AVAILABLE_CHECKS.get(check_name)
+        sent_count = 0
+        skipped_count = 0
+
+        if checker_class is not None:
+            checker = checker_class(region=region, **(check_kwargs or {}))
+            for profile, checks in all_results.items():
+                result = checks.get(check_name)
+                if not result or result.get("status") in ["error", "skipped"]:
+                    continue
+
+                text_to_send = checker.format_report(result)
+                sent, reason = send_report_to_slack(
+                    check_name,
+                    text_to_send,
+                    client_key=profile,
+                )
+                if sent:
+                    sent_count += 1
+                else:
+                    skipped_count += 1
+                    console.print(
+                        f"[yellow]{ICONS['info']} Slack skipped for {profile}[/yellow]: {reason}"
+                    )
+
+        if sent_count > 0:
+            console.print(
+                f"\n[green]{ICONS['check']} Slack report sent[/green] to {sent_count} client route(s)"
+            )
+        elif skipped_count > 0:
+            console.print(
+                f"\n[yellow]{ICONS['info']} No Slack report delivered[/yellow] ({skipped_count} skipped)"
+            )
 
 
 def run_all_checks(
