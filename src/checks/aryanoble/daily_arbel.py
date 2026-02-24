@@ -1,12 +1,16 @@
 """Daily Arbel checker (ACU/CPU/FreeableMemory/Connections) with thresholds per account."""
 
+import logging
 import boto3
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from src.checks.common.base import BaseChecker
+from src.checks.common.aws_errors import is_credential_error
 from src.configs.loader import find_customer_account
+
+logger = logging.getLogger(__name__)
 
 
 JKT = ZoneInfo("Asia/Jakarta")
@@ -143,6 +147,8 @@ METRIC_UNITS = {
     "FreeableMemory": "Bytes",
     "DatabaseConnections": "Count",
     "FreeStorageSpace": "Bytes",
+    "ServerlessDatabaseCapacity": "Count",
+    "BufferCacheHitRatio": "Percent",
 }
 
 
@@ -163,8 +169,8 @@ def get_writer_instance(rds_client, cluster_id):
             for member in cluster["DBClusterMembers"]:
                 if member.get("IsClusterWriter"):
                     return member.get("DBInstanceIdentifier")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to detect writer instance for cluster %s: %s", cluster_id, e)
     return None
 
 
@@ -235,7 +241,10 @@ class DailyArbelChecker(BaseChecker):
         customer_account = None
         try:
             customer_account = find_customer_account("aryanoble", account_id)
-        except Exception:
+        except FileNotFoundError:
+            customer_account = None
+        except Exception as e:
+            logger.warning("Failed to load customer config for %s/%s: %s", profile, account_id, e)
             customer_account = None
 
         if customer_account:
@@ -246,6 +255,7 @@ class DailyArbelChecker(BaseChecker):
                 "instances": daily.get("instances", {}),
                 "metrics": daily.get("metrics", []),
                 "thresholds": daily.get("thresholds", {}),
+                "role_thresholds": daily.get("role_thresholds", {}),
             }
 
         return ACCOUNT_CONFIG.get(profile)
@@ -266,13 +276,18 @@ class DailyArbelChecker(BaseChecker):
             threshold = alarms[0].get("Threshold")
             if isinstance(threshold, (int, float)):
                 return float(threshold)
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to resolve alarm threshold for %s/%s/%s: %s", profile, role, metric_name, e)
             return None
 
         return None
 
-    def _resolve_role_thresholds(self, cw_client, profile, role, base_thresholds):
+    def _resolve_role_thresholds(self, cw_client, profile, role, base_thresholds, role_thresholds=None):
         resolved = dict(base_thresholds)
+        # Apply per-role overrides from customer config first
+        if role_thresholds and role in role_thresholds:
+            resolved.update(role_thresholds[role])
+        # Then try alarm-based threshold (takes priority if available)
         fm_threshold = self._alarm_threshold_for_role(
             cw_client,
             profile,
@@ -379,7 +394,8 @@ class DailyArbelChecker(BaseChecker):
                     start_utc,
                     current_state=alarm_state,
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to get alarm history for %s/%s/%s: %s", profile, role, alarm_name, e)
                 out[metric_name] = []
 
         return out
@@ -599,6 +615,98 @@ class DailyArbelChecker(BaseChecker):
                 )
             return "ok", f"{label}: {human_bytes(last)} (normal)"
 
+        if metric == "ServerlessDatabaseCapacity":
+            label = "Serverless DB Capacity"
+            alarm_periods = info.get("alarm_periods") or []
+            bd = alarm_periods or self._breach_detail(
+                info, thresholds, metric, "above", profile
+            )
+            if bd:
+                bd = [p for p in bd if p[3] >= 10]
+
+            if last > thr:
+                msg = f"{label}: {last:.1f} ACU (di atas {int(thr)} ACU)"
+                if bd:
+                    if alarm_periods:
+                        breach_info = ", ".join(
+                            [
+                                f"ALARM pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                                for p in bd
+                            ]
+                        )
+                    else:
+                        breach_info = ", ".join(
+                            [
+                                f"{p[0]:.1f} ACU pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                                for p in bd
+                            ]
+                        )
+                    msg += f" | {breach_info}"
+                return "warn", msg
+            if bd:
+                if alarm_periods:
+                    breach_info = ", ".join(
+                        [f"ALARM pukul {p[1]}-{p[2]} WIB ({p[3]} menit)" for p in bd]
+                    )
+                else:
+                    breach_info = ", ".join(
+                        [
+                            f"{p[0]:.1f} ACU pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                            for p in bd
+                        ]
+                    )
+                return (
+                    "past-warn",
+                    f"{label}: {last:.1f} ACU (sekarang normal, sempat > {int(thr)} ACU | {breach_info})",
+                )
+            return "ok", f"{label}: {last:.1f} ACU (normal)"
+
+        if metric == "BufferCacheHitRatio":
+            label = "Buffer Cache Hit Ratio"
+            alarm_periods = info.get("alarm_periods") or []
+            bd = alarm_periods or self._breach_detail(
+                info, thresholds, metric, "below", profile
+            )
+            if bd:
+                bd = [p for p in bd if p[3] >= 10]
+
+            if last < thr:
+                msg = f"{label}: {last:.1f}% (rendah < {int(thr)}%)"
+                if bd:
+                    if alarm_periods:
+                        breach_info = ", ".join(
+                            [
+                                f"ALARM pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                                for p in bd
+                            ]
+                        )
+                    else:
+                        breach_info = ", ".join(
+                            [
+                                f"{p[0]:.1f}% pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                                for p in bd
+                            ]
+                        )
+                    msg += f" | {breach_info}"
+                return "warn", msg
+            if bd:
+                if alarm_periods:
+                    breach_info = ", ".join(
+                        [f"ALARM pukul {p[1]}-{p[2]} WIB ({p[3]} menit)" for p in bd]
+                    )
+                else:
+                    breach_info = ", ".join(
+                        [
+                            f"{p[0]:.1f}% pukul {p[1]}-{p[2]} WIB ({p[3]} menit)"
+                            for p in bd
+                        ]
+                    )
+                return (
+                    "past-warn",
+                    f"{label}: {last:.1f}% (sekarang normal, sempat < {int(thr)}% | {breach_info})",
+                )
+            return "ok", f"{label}: {last:.1f}% (normal)"
+
         return "no-data", f"{metric}: Data tidak tersedia"
 
     def check(self, profile, account_id):
@@ -638,6 +746,7 @@ class DailyArbelChecker(BaseChecker):
                     profile,
                     role,
                     cfg["thresholds"],
+                    role_thresholds=cfg.get("role_thresholds"),
                 )
                 role_alarm_periods = self._resolve_role_alarm_periods(cw, profile, role)
                 for metric_name, periods in role_alarm_periods.items():
@@ -673,6 +782,8 @@ class DailyArbelChecker(BaseChecker):
             }
 
         except Exception as e:  # pragma: no cover
+            if is_credential_error(e):
+                return self._error_result(e, profile, account_id)
             return {
                 "status": "error",
                 "profile": profile,

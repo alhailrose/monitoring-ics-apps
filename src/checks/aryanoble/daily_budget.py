@@ -6,6 +6,7 @@ from decimal import Decimal
 import boto3
 
 from src.checks.common.base import BaseChecker
+from src.checks.common.aws_errors import is_credential_error
 
 
 ACCOUNT_LABELS = {
@@ -116,6 +117,8 @@ class DailyBudgetChecker(BaseChecker):
                 "over_budget_count": over_budget_count,
             }
         except Exception as exc:
+            if is_credential_error(exc):
+                return self._error_result(exc, profile, account_id)
             return {
                 "status": "error",
                 "profile": profile,

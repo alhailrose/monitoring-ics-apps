@@ -2,6 +2,7 @@
 import boto3
 from datetime import timezone, timedelta
 from src.checks.common.base import BaseChecker
+from src.checks.common.aws_errors import is_credential_error
 
 # WIB timezone (UTC+7)
 WIB = timezone(timedelta(hours=7))
@@ -41,6 +42,8 @@ class CloudWatchAlarmChecker(BaseChecker):
             }
 
         except Exception as e:
+            if is_credential_error(e):
+                return self._error_result(e, profile, account_id)
             return {
                 'status': 'error',
                 'profile': profile,

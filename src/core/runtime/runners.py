@@ -38,6 +38,7 @@ from .ui import (
     ICONS,
 )
 from src.integrations.slack.notifier import send_report_to_slack
+from src.checks.common.aws_errors import is_credential_error, friendly_credential_message
 
 
 def run_individual_check(
@@ -70,14 +71,26 @@ def run_individual_check(
             results = checker.check(profile, account_id)
             report = checker.format_report(results)
         except (BotoCoreError, ClientError) as exc:
-            console.print(
-                f"\n[bold red]{ICONS['error']} ERROR[/bold red]: Failed to run {check_name}: {exc}"
-            )
+            if is_credential_error(exc):
+                msg = friendly_credential_message(exc, profile)
+                console.print(
+                    f"\n[bold red]{ICONS['error']} CREDENTIAL ERROR[/bold red]: {msg}"
+                )
+            else:
+                console.print(
+                    f"\n[bold red]{ICONS['error']} ERROR[/bold red]: Failed to run {check_name}: {exc}"
+                )
             return
         except Exception as exc:
-            console.print(
-                f"\n[bold red]{ICONS['error']} ERROR[/bold red]: Unexpected failure: {exc}"
-            )
+            if is_credential_error(exc):
+                msg = friendly_credential_message(exc, profile)
+                console.print(
+                    f"\n[bold red]{ICONS['error']} CREDENTIAL ERROR[/bold red]: {msg}"
+                )
+            else:
+                console.print(
+                    f"\n[bold red]{ICONS['error']} ERROR[/bold red]: Unexpected failure: {exc}"
+                )
             return
 
     console.print()
@@ -102,9 +115,15 @@ def _check_single_profile(
     try:
         results = checker.check(profile, account_id)
     except (BotoCoreError, ClientError) as exc:
-        results = {"status": "error", "error": str(exc)}
+        if is_credential_error(exc):
+            results = checker._error_result(exc, profile, account_id)
+        else:
+            results = {"status": "error", "error": str(exc)}
     except Exception as exc:
-        results = {"status": "error", "error": str(exc)}
+        if is_credential_error(exc):
+            results = checker._error_result(exc, profile, account_id)
+        else:
+            results = {"status": "error", "error": str(exc)}
 
     return results
 
@@ -119,9 +138,15 @@ def _check_all_for_profile(profile: str, region: str, checks: dict) -> dict:
         try:
             results = checker.check(profile, account_id)
         except (BotoCoreError, ClientError) as exc:
-            results = {"status": "error", "error": str(exc)}
+            if is_credential_error(exc):
+                results = checker._error_result(exc, profile, account_id)
+            else:
+                results = {"status": "error", "error": str(exc)}
         except Exception as exc:
-            results = {"status": "error", "error": str(exc)}
+            if is_credential_error(exc):
+                results = checker._error_result(exc, profile, account_id)
+            else:
+                results = {"status": "error", "error": str(exc)}
         profile_results[check_name] = results
 
     return profile_results
@@ -180,7 +205,10 @@ def run_group_specific(
                 try:
                     results = future.result()
                 except Exception as exc:
-                    results = {"status": "error", "error": str(exc)}
+                    if is_credential_error(exc):
+                        results = {"status": "error", "error": friendly_credential_message(exc, profile), "is_credential_error": True}
+                    else:
+                        results = {"status": "error", "error": str(exc)}
 
                 all_results[profile] = {check_name: results}
                 progress.update(task, advance=1, current=profile)
@@ -402,9 +430,15 @@ def run_all_checks(
                 try:
                     profile_results = future.result()
                 except Exception as exc:
-                    profile_results = {
-                        name: {"status": "error", "error": str(exc)} for name in checks
-                    }
+                    if is_credential_error(exc):
+                        err_msg = friendly_credential_message(exc, profile)
+                        profile_results = {
+                            name: {"status": "error", "error": err_msg, "is_credential_error": True} for name in checks
+                        }
+                    else:
+                        profile_results = {
+                            name: {"status": "error", "error": str(exc)} for name in checks
+                        }
 
                 all_results[profile] = profile_results
                 progress.update(task, advance=1, current=profile)

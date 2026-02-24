@@ -1,9 +1,13 @@
 """AWS Backup status checker (jobs + vault activity + optional RDS snapshots)."""
+import logging
 import boto3
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from src.checks.common.base import BaseChecker
+from src.checks.common.aws_errors import is_credential_error
+
+logger = logging.getLogger(__name__)
 
 
 # Jakarta timezone for display
@@ -49,8 +53,8 @@ class BackupStatusChecker(BaseChecker):
                 for item in page.get("BackupPlansList", []):
                     if item.get("BackupPlanName"):
                         names.append(item["BackupPlanName"])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to list backup plans: %s", e)
         return names
 
     def _resource_label(self, arn: str) -> str:
@@ -205,6 +209,8 @@ class BackupStatusChecker(BaseChecker):
             }
 
         except Exception as e:  # pragma: no cover
+            if is_credential_error(e):
+                return self._error_result(e, profile, account_id)
             return {
                 "status": "error",
                 "profile": profile,

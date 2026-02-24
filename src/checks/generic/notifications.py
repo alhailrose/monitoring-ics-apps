@@ -2,12 +2,13 @@
 import boto3
 from datetime import datetime
 from src.checks.common.base import BaseChecker
+from src.checks.common.aws_errors import is_credential_error
 
 
 class NotificationChecker(BaseChecker):
-    def __init__(self, region=None):
+    def __init__(self, region=None, **kwargs):
         # Notification Center is only in us-east-1; ignore custom region
-        super().__init__('us-east-1')
+        super().__init__('us-east-1', **kwargs)
 
     def check(self, profile, account_id):
         """Check AWS User Notifications (Notification Center)"""
@@ -39,6 +40,8 @@ class NotificationChecker(BaseChecker):
             }
 
         except Exception as e:
+            if is_credential_error(e):
+                return self._error_result(e, profile, account_id)
             return {
                 'status': 'error',
                 'profile': profile,

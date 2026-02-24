@@ -1,13 +1,17 @@
 """AWS Cost Anomalies Checker"""
 
+import logging
 import boto3
 from datetime import datetime, timedelta
 from src.checks.common.base import BaseChecker
+from src.checks.common.aws_errors import is_credential_error
+
+logger = logging.getLogger(__name__)
 
 
 class CostAnomalyChecker(BaseChecker):
-    def __init__(self, region="us-east-1"):
-        super().__init__(region)
+    def __init__(self, region="us-east-1", **kwargs):
+        super().__init__(region, **kwargs)
 
     def check(self, profile, account_id):
         """Check cost anomalies"""
@@ -38,7 +42,13 @@ class CostAnomalyChecker(BaseChecker):
                         anomaly["MonitorName"] = monitor["MonitorName"]
                         all_anomalies.append(anomaly)
                 except Exception as e:
-                    pass
+                    if is_credential_error(e):
+                        raise
+                    logger.warning(
+                        "Failed to get anomalies for monitor %s: %s",
+                        monitor.get("MonitorName", monitor_arn),
+                        e,
+                    )
 
             today_anomaly_count = 0
             yesterday_anomaly_count = 0
@@ -62,6 +72,8 @@ class CostAnomalyChecker(BaseChecker):
             }
 
         except Exception as e:
+            if is_credential_error(e):
+                return self._error_result(e, profile, account_id)
             return {
                 "status": "error",
                 "profile": profile,
@@ -192,7 +204,7 @@ class CostAnomalyChecker(BaseChecker):
                         start = datetime.strptime(start_date, "%Y-%m-%d")
                         end = datetime.strptime(end_date, "%Y-%m-%d")
                         duration_days = (end - start).days + 1
-                    except:
+                    except (ValueError, TypeError):
                         duration_days = 0
 
                 lines.append(f"\n• Anomaly #{idx}: {anomaly.get('MonitorName', 'N/A')}")

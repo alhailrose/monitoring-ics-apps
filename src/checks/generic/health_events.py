@@ -1,11 +1,15 @@
 """AWS Health Events Checker"""
+import logging
 import boto3
 from datetime import datetime
 from src.checks.common.base import BaseChecker
+from src.checks.common.aws_errors import is_credential_error
+
+logger = logging.getLogger(__name__)
 
 class HealthChecker(BaseChecker):
-    def __init__(self, region='us-east-1'):
-        super().__init__(region)
+    def __init__(self, region='us-east-1', **kwargs):
+        super().__init__(region, **kwargs)
         
     def check(self, profile, account_id):
         """Check AWS Health events"""
@@ -26,14 +30,16 @@ class HealthChecker(BaseChecker):
                     details = health.describe_event_details(eventArns=[event_arn])
                     event_details = details.get('successfulSet', [{}])[0]
                     description = event_details.get('eventDescription', {}).get('latestDescription', 'N/A')
-                except:
+                except Exception as e:
+                    logger.warning("Failed to get event details for %s: %s", event_arn, e)
                     description = 'N/A'
                 
                 # Get affected entities
                 try:
                     entities = health.describe_affected_entities(filter={'eventArns': [event_arn]})
                     affected = entities.get('entities', [])
-                except:
+                except Exception as e:
+                    logger.warning("Failed to get affected entities for %s: %s", event_arn, e)
                     affected = []
                 
                 detailed_events.append({
@@ -52,6 +58,8 @@ class HealthChecker(BaseChecker):
             }
             
         except Exception as e:
+            if is_credential_error(e):
+                return self._error_result(e, profile, account_id)
             error_msg = str(e)
             if 'SubscriptionRequiredException' in error_msg:
                 error_msg = 'AWS Health API requires Business or Enterprise Support plan'

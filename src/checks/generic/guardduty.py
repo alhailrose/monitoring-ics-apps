@@ -1,7 +1,11 @@
 """AWS GuardDuty checker"""
+import logging
 import boto3
 from datetime import datetime, timezone, timedelta
 from src.checks.common.base import BaseChecker
+from src.checks.common.aws_errors import is_credential_error
+
+logger = logging.getLogger(__name__)
 
 # WIB timezone (UTC+7)
 WIB = timezone(timedelta(hours=7))
@@ -57,7 +61,8 @@ class GuardDutyChecker(BaseChecker):
                             dt = datetime.fromisoformat(updated_time.replace('Z', '+00:00'))
                             dt_wib = dt.astimezone(WIB)
                             updated_str = dt_wib.strftime('%Y-%m-%d %H:%M WIB')
-                        except:
+                        except (ValueError, TypeError):
+                            logger.warning("Failed to parse GuardDuty timestamp: %s", updated_time)
                             updated_str = updated_time
                     else:
                         # datetime object, convert to WIB
@@ -90,6 +95,8 @@ class GuardDutyChecker(BaseChecker):
             }
 
         except Exception as e:
+            if is_credential_error(e):
+                return self._error_result(e, profile, account_id)
             return {
                 'status': 'error',
                 'profile': profile,

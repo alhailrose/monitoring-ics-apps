@@ -70,6 +70,39 @@ def init_config():
     return True
 
 
+def _handle_customer_subcommand(argv):
+    """Handle 'monitoring-hub customer <action> [args]' subcommands."""
+    from src.app.cli.customer_commands import customer_init, customer_list, customer_validate
+
+    if not argv:
+        print_error("Usage: monitoring-hub customer <init|list|validate> [customer_id]")
+        sys.exit(1)
+
+    action = argv[0]
+
+    if action == "list":
+        customer_list()
+        return
+
+    if action == "init":
+        if len(argv) < 2:
+            print_error("Usage: monitoring-hub customer init <customer_id>")
+            sys.exit(1)
+        success = customer_init(argv[1])
+        sys.exit(0 if success else 1)
+
+    if action == "validate":
+        if len(argv) < 2:
+            print_error("Usage: monitoring-hub customer validate <customer_id>")
+            sys.exit(1)
+        success = customer_validate(argv[1])
+        sys.exit(0 if success else 1)
+
+    print_error(f"Unknown customer action: {action}")
+    print_info("Available: init, list, validate")
+    sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="AWS Monitoring Hub - Centralized AWS monitoring",
@@ -89,6 +122,14 @@ def main():
 
   # Run all checks with custom workers
   monitoring-hub --all --group nabati --workers 10
+
+  # Run checks for a customer (with Slack prompt)
+  monitoring-hub --customer aryanoble
+
+  # Customer management
+  monitoring-hub customer init nabati-ksni
+  monitoring-hub customer list
+  monitoring-hub customer validate aryanoble
 
   # Initialize config file
   monitoring-hub --init-config
@@ -122,6 +163,10 @@ def main():
     parser.add_argument(
         "--interactive", action="store_true", help="Run interactive mode with menu"
     )
+    parser.add_argument(
+        "--customer",
+        help="Run configured checks for a customer (reads configs/customers/<id>.yaml)",
+    )
     parser.add_argument("--profile", help="AWS profile name(s), comma-separated")
     parser.add_argument("--aws-profile", help="Alias for --profile")
     parser.add_argument(
@@ -152,6 +197,11 @@ def main():
         help="Send generated report to configured Slack route",
     )
 
+    # Handle "customer" subcommand before argparse
+    if len(sys.argv) >= 2 and sys.argv[1] == "customer":
+        _handle_customer_subcommand(sys.argv[2:])
+        sys.exit(0)
+
     args = parser.parse_args()
 
     if args.version:
@@ -161,6 +211,18 @@ def main():
     if args.init_config:
         success = init_config()
         sys.exit(0 if success else 1)
+
+    # Customer mode
+    if args.customer:
+        from src.core.runtime.customer_runner import run_customer_checks, prompt_and_send_slack
+
+        region = args.region or "ap-southeast-3"
+        result = run_customer_checks(
+            args.customer, region=region, workers=args.workers
+        )
+        if result:
+            prompt_and_send_slack(result)
+        sys.exit(0)
 
     if args.interactive or (not args.check and not args.all):
         _run_interactive_mode()

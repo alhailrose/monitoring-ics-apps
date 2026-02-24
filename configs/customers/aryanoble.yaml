@@ -1,6 +1,16 @@
 customer_id: aryanoble
 display_name: Aryanoble
 
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - daily-arbel
+  - daily-budget
+  - backup
+
 accounts:
   - profile: connect-prod
     account_id: "620463044477"
@@ -29,15 +39,18 @@ accounts:
         writer: cis-prod-rds-instance
         reader: cis-prod-rds-instance-reader
       metrics:
-        - ACUUtilization
-        - CPUUtilization
+        - ServerlessDatabaseCapacity
+        - BufferCacheHitRatio
         - FreeableMemory
         - DatabaseConnections
       thresholds:
+        ServerlessDatabaseCapacity: 24
+        BufferCacheHitRatio: 90
         FreeableMemory: 21474836480
-        ACUUtilization: 75
-        CPUUtilization: 75
         DatabaseConnections: 3000
+      role_thresholds:
+        reader:
+          FreeableMemory: 19327352832
 
   - profile: dermies-max
     account_id: "637423567244"

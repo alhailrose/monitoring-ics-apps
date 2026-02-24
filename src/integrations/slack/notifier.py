@@ -49,3 +49,40 @@ def send_report_to_slack(
         return False, f"network error: {exc}"
     except Exception as exc:  # pragma: no cover
         return False, f"unexpected error: {exc}"
+
+
+def send_to_webhook(
+    webhook_url: str, text: str, channel: str | None = None
+) -> tuple[bool, str]:
+    """Send text directly to a Slack webhook URL.
+
+    Used for customer-specific Slack delivery where the webhook comes
+    from the customer config rather than global routing.
+
+    Returns `(sent, reason)`.
+    """
+    if not webhook_url:
+        return False, "webhook_url is empty"
+
+    payload = {"text": text}
+    if channel:
+        payload["channel"] = channel
+
+    data = json.dumps(payload).encode("utf-8")
+    req = request.Request(
+        webhook_url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with request.urlopen(req, timeout=10) as resp:
+            status = getattr(resp, "status", 200)
+            if 200 <= status < 300:
+                return True, "ok"
+            return False, f"http {status}"
+    except error.URLError as exc:
+        return False, f"network error: {exc}"
+    except Exception as exc:  # pragma: no cover
+        return False, f"unexpected error: {exc}"
