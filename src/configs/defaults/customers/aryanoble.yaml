@@ -1,7 +1,194 @@
 customer_id: aryanoble
 display_name: Aryanoble
-source_file: configs/customers/aryanoble.yaml
-notes: |
-  Runtime loader currently reads the canonical file from configs/customers/aryanoble.yaml.
-  This file exists to preserve target src layout and will become the canonical default
-  after full migration.
+sso_session: aryanoble-sso
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - daily-arbel
+  - daily-budget
+  - backup
+
+accounts:
+  - profile: connect-prod
+    account_id: "620463044477"
+    display_name: "CONNECT Prod (Non CIS)"
+    daily_arbel:
+      cluster_id: noncis-prod-rds
+      instances:
+        writer: null
+      metrics:
+        - ACUUtilization
+        - CPUUtilization
+        - FreeableMemory
+        - DatabaseConnections
+      thresholds:
+        FreeableMemory: 10737418240
+        ACUUtilization: 75
+        CPUUtilization: 75
+        DatabaseConnections: 1500
+
+  - profile: cis-erha
+    account_id: "451916275465"
+    display_name: "CIS ERHA"
+    daily_arbel:
+      cluster_id: cis-prod-rds
+      instances:
+        writer: cis-prod-rds-instance
+        reader: cis-prod-rds-instance-reader
+      metrics:
+        - ServerlessDatabaseCapacity
+        - BufferCacheHitRatio
+        - FreeableMemory
+        - DatabaseConnections
+      thresholds:
+        ServerlessDatabaseCapacity: 24
+        BufferCacheHitRatio: 90
+        FreeableMemory: 21474836480
+        DatabaseConnections: 3000
+      role_thresholds:
+        reader:
+          FreeableMemory: 19327352832
+
+  - profile: dermies-max
+    account_id: "637423567244"
+    display_name: "DERMIES MAX"
+    daily_arbel:
+      cluster_id: dermies-prod-rds
+      instances:
+        writer: dermies-prod-rds
+        reader: dermies-prod-rds-reader
+      metrics:
+        - ACUUtilization
+        - CPUUtilization
+        - FreeableMemory
+        - DatabaseConnections
+      thresholds:
+        FreeableMemory: 10737418240
+        ACUUtilization: 75
+        CPUUtilization: 75
+        DatabaseConnections: 1500
+
+  - profile: erha-buddy
+    account_id: "486250145105"
+    display_name: "ERHA BUDDY"
+    daily_arbel:
+      instances:
+        prod: erhabuddy-prod-mysql-db
+      metrics:
+        - CPUUtilization
+        - FreeableMemory
+        - DatabaseConnections
+        - FreeStorageSpace
+      thresholds:
+        FreeableMemory: 838860800
+        CPUUtilization: 75
+        DatabaseConnections: 500
+        FreeStorageSpace: 10737418240
+
+  - profile: public-web
+    account_id: "211125667194"
+    display_name: "PUBLIC WEB"
+    daily_arbel:
+      instances:
+        mysql-prod: mysql-prod-instance
+        postgre-prod: postgre-prod-instance
+      metrics:
+        - CPUUtilization
+        - FreeableMemory
+        - DatabaseConnections
+        - FreeStorageSpace
+      thresholds:
+        FreeableMemory: 209715200
+        CPUUtilization: 75
+        DatabaseConnections: 500
+        FreeStorageSpace: 5368709120
+
+  - profile: dwh
+    account_id: "084056488725"
+    display_name: "DWH"
+
+  - profile: genero-empower
+    account_id: "941377160792"
+    display_name: "GENERO EMPOWER"
+
+  - profile: genero-manufacture
+    account_id: "798344624633"
+    display_name: "GENERO MANUFACTURE"
+
+  - profile: HRIS
+    account_id: "493314732063"
+    display_name: "HRIS"
+    daily_arbel:
+      service_type: ec2
+      instances:
+        webserver: i-053c5b7302686e05d
+        database: i-0a22fd1fc782f71dc
+        openvpn: i-00b46080f4270690d
+      instance_names:
+        i-053c5b7302686e05d: webserver
+        i-0a22fd1fc782f71dc: database
+        i-00b46080f4270690d: openvpn
+      metrics:
+        - CPUUtilization
+        - NetworkIn
+        - NetworkOut
+      thresholds:
+        CPUUtilization: 80
+
+  - profile: fee-doctor
+    account_id: "084828597777"
+    display_name: "Fee Doctor"
+
+  - profile: tgw
+    account_id: "654654394944"
+    display_name: "TGW"
+
+  - profile: iris-prod
+    account_id: "522814722913"
+    display_name: "IRIS Prod"
+
+  - profile: iris-dev
+    account_id: "522814711071"
+    display_name: "IRIS Dev"
+
+  - profile: sfa
+    account_id: "546158667544"
+    display_name: "SFA"
+    daily_arbel:
+      service_type: ec2
+      instances:
+        vm-sfa: i-0cb272299353b6831
+        vm-database: i-04c34bdd4784173d6
+        vm-jobs: i-0e94b988fa5f21e20
+        vm-dms: i-0acd6fd06f6ce6dd2
+        openvpn: i-044e682eb4257ebbc
+        openvpn-new: i-0e24e1e76f539d9f3
+      instance_names:
+        i-0cb272299353b6831: vm-sfa
+        i-04c34bdd4784173d6: vm-database
+        i-0e94b988fa5f21e20: vm-jobs
+        i-0acd6fd06f6ce6dd2: vm-dms
+        i-044e682eb4257ebbc: openvpn
+        i-0e24e1e76f539d9f3: openvpn-new
+      metrics:
+        - CPUUtilization
+        - NetworkIn
+        - NetworkOut
+      thresholds:
+        CPUUtilization: 70
+
+  - profile: centralized-s3
+    account_id: "533267291161"
+    display_name: "Centralized S3"
+
+  - profile: backup-hris
+    account_id: "390403877301"
+    display_name: "Backup HRIS"
+
+  - profile: arbel-master
+    account_id: "477153214925"
+    display_name: "Arbel Master"

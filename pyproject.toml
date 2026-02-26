@@ -19,6 +19,9 @@ monitoring-hub-dev = "src.app.cli.main:main"
 [tool.setuptools.packages.find]
 include = ["src*"]
 
+[tool.setuptools.package-data]
+"src.configs.defaults.customers" = ["*.yaml"]
+
 [build-system]
 requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"

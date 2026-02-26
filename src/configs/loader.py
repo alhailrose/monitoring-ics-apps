@@ -16,12 +16,30 @@ def _repo_root():
     return Path(__file__).resolve().parents[2]
 
 
+def _module_defaults_dir():
+    return Path(__file__).resolve().parent / "defaults" / "customers"
+
+
+def _dedupe_paths(paths):
+    out = []
+    seen = set()
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(path)
+    return out
+
+
 def _candidate_paths(customer_id):
     root = _repo_root()
-    return [
+    return _dedupe_paths([
         root / "configs" / "customers" / f"{customer_id}.yaml",
+        _module_defaults_dir() / f"{customer_id}.yaml",
         root / "src" / "configs" / "defaults" / "customers" / f"{customer_id}.yaml",
-    ]
+        Path.cwd() / "configs" / "customers" / f"{customer_id}.yaml",
+    ])
 
 
 def _find_existing_path(customer_id):
@@ -29,6 +47,22 @@ def _find_existing_path(customer_id):
         if path.exists():
             return path
     return None
+
+
+def _resolve_source_file(raw):
+    source_file = raw.get("source_file")
+    if not source_file:
+        return raw
+
+    candidates = _dedupe_paths([
+        _repo_root() / str(source_file),
+        Path.cwd() / str(source_file),
+    ])
+    for source_path in candidates:
+        if source_path.exists():
+            with open(source_path, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+    return raw
 
 
 def load_customer_config(customer_id):
@@ -39,11 +73,7 @@ def load_customer_config(customer_id):
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
-    if raw.get("source_file"):
-        source_path = _repo_root() / str(raw["source_file"])
-        if source_path.exists():
-            with open(source_path, "r", encoding="utf-8") as f:
-                raw = yaml.safe_load(f) or {}
+    raw = _resolve_source_file(raw)
 
     return validate_customer_config(raw)
 
@@ -80,44 +110,50 @@ def list_customers() -> List[dict]:
     Each entry has keys: customer_id, display_name, path, account_count.
     """
     root = _repo_root()
-    customers_dir = root / "configs" / "customers"
+    customers_dirs = _dedupe_paths([
+        root / "configs" / "customers",
+        _module_defaults_dir(),
+        root / "src" / "configs" / "defaults" / "customers",
+        Path.cwd() / "configs" / "customers",
+    ])
     results = []
 
-    if not customers_dir.exists():
-        return results
+    seen_ids = set()
+    for customers_dir in customers_dirs:
+        if not customers_dir.exists():
+            continue
+        for yaml_path in sorted(customers_dir.glob("*.yaml")):
+            customer_id = yaml_path.stem
+            if customer_id in seen_ids:
+                continue
+            seen_ids.add(customer_id)
+            try:
+                with open(yaml_path, "r", encoding="utf-8") as f:
+                    raw = yaml.safe_load(f) or {}
 
-    for yaml_path in sorted(customers_dir.glob("*.yaml")):
-        try:
-            with open(yaml_path, "r", encoding="utf-8") as f:
-                raw = yaml.safe_load(f) or {}
+                # Follow source_file redirect if present
+                raw = _resolve_source_file(raw)
 
-            # Follow source_file redirect if present
-            if raw.get("source_file"):
-                source_path = root / str(raw["source_file"])
-                if source_path.exists():
-                    with open(source_path, "r", encoding="utf-8") as f:
-                        raw = yaml.safe_load(f) or {}
-
-            results.append({
-                "customer_id": raw.get("customer_id", yaml_path.stem),
-                "display_name": raw.get("display_name", yaml_path.stem),
-                "path": str(yaml_path),
-                "account_count": len(raw.get("accounts", [])),
-                "checks": raw.get("checks", []),
-                "slack_enabled": bool(
-                    raw.get("slack", {}).get("enabled", False)
-                    and raw.get("slack", {}).get("webhook_url")
-                ),
-            })
-        except Exception:
-            results.append({
-                "customer_id": yaml_path.stem,
-                "display_name": yaml_path.stem,
-                "path": str(yaml_path),
-                "account_count": 0,
-                "checks": [],
-                "slack_enabled": False,
-                "error": "failed to parse",
-            })
+                results.append({
+                    "customer_id": raw.get("customer_id", yaml_path.stem),
+                    "display_name": raw.get("display_name", yaml_path.stem),
+                    "path": str(yaml_path),
+                    "account_count": len(raw.get("accounts", [])),
+                    "checks": raw.get("checks", []),
+                    "slack_enabled": bool(
+                        raw.get("slack", {}).get("enabled", False)
+                        and raw.get("slack", {}).get("webhook_url")
+                    ),
+                })
+            except Exception:
+                results.append({
+                    "customer_id": yaml_path.stem,
+                    "display_name": yaml_path.stem,
+                    "path": str(yaml_path),
+                    "account_count": 0,
+                    "checks": [],
+                    "slack_enabled": False,
+                    "error": "failed to parse",
+                })
 
     return results
