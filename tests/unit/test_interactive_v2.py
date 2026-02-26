@@ -113,7 +113,6 @@ def test_run_interactive_dispatches_cw_cost_flow_module(monkeypatch):
 
     selections = iter(["cw_cost", "exit"])
     calls = {"cost": 0, "pause": 0}
-
     monkeypatch.setattr(
         common, "_select_prompt", lambda *args, **kwargs: next(selections)
     )
@@ -135,41 +134,24 @@ def test_run_interactive_dispatches_cw_cost_flow_module(monkeypatch):
     assert calls["pause"] == 1
 
 
-def test_single_check_cost_runs_individual_check(monkeypatch):
+def test_quick_check_runs_individual_check(monkeypatch):
+    """Quick Check with 1 check + 1 profile should call run_individual_check."""
     from src.app.tui import common
 
-    selections = iter(["single", "cost", "exit"])
+    selections = iter(["quick", "exit"])
     calls = {"individual": 0}
 
     monkeypatch.setattr(
         common, "_select_prompt", lambda *args, **kwargs: next(selections)
     )
-    monkeypatch.setattr(
-        common, "_pick_profiles", lambda **kwargs: (["acct-a"], None, False)
-    )
-    monkeypatch.setattr(common, "_choose_region", lambda profiles: "ap-southeast-3")
     monkeypatch.setattr(common, "_pause", lambda: None)
     monkeypatch.setattr(interactive.console, "clear", lambda: None)
     monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
-    monkeypatch.setattr(interactive, "print_mini_banner", lambda: None)
-    monkeypatch.setattr(
-        interactive, "print_section_header", lambda *args, **kwargs: None
-    )
     monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
-    monkeypatch.setattr(interactive, "_render_single_check_dashboard", lambda: None)
     monkeypatch.setattr(
         interactive,
-        "run_individual_check",
-        lambda *args, **kwargs: calls.__setitem__(
-            "individual", calls["individual"] + 1
-        ),
-    )
-    monkeypatch.setattr(
-        interactive,
-        "run_all_checks",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("single check must not call run_all_checks")
-        ),
+        "_run_quick_check",
+        lambda: calls.__setitem__("individual", calls["individual"] + 1),
     )
 
     interactive.run_interactive()
@@ -177,26 +159,35 @@ def test_single_check_cost_runs_individual_check(monkeypatch):
     assert calls["individual"] == 1
 
 
-def test_single_check_menu_does_not_offer_daily_arbel(monkeypatch):
+def test_customer_report_dispatches_flow(monkeypatch):
+    """Customer Report menu should dispatch to customer flow."""
     from src.app.tui import common
 
-    captured = {"check_values": []}
-    selections = iter(["single", None, "exit"])
+    selections = iter(["customer", "exit"])
+    calls = {"customer": 0, "pause": 0}
 
-    def _fake_select(_prompt, choices, default=None):
-        if not captured["check_values"] and any(
-            hasattr(choice, "value") and choice.value == "health" for choice in choices
-        ):
-            captured["check_values"] = [choice.value for choice in choices]
-        return next(selections)
-
-    monkeypatch.setattr(common, "_select_prompt", _fake_select)
-    monkeypatch.setattr(common, "_pause", lambda: None)
+    monkeypatch.setattr(
+        common, "_select_prompt", lambda *args, **kwargs: next(selections)
+    )
+    monkeypatch.setattr(
+        common, "_pause", lambda: calls.__setitem__("pause", calls["pause"] + 1)
+    )
     monkeypatch.setattr(interactive.console, "clear", lambda: None)
     monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
     monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
-    monkeypatch.setattr(interactive, "_render_single_check_dashboard", lambda: None)
+    monkeypatch.setattr(
+        interactive,
+        "run_customer_report",
+        lambda: calls.__setitem__("customer", calls["customer"] + 1),
+    )
 
     interactive.run_interactive()
 
-    assert "daily-arbel" not in captured["check_values"]
+    assert calls["customer"] == 1
+    assert calls["pause"] == 1
+
+
+def test_check_choices_do_not_include_daily_arbel():
+    """CHECK_CHOICES should not include daily-arbel (it's customer-specific)."""
+    check_values = [c.value for c in interactive.CHECK_CHOICES]
+    assert "daily-arbel" not in check_values

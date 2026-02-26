@@ -56,6 +56,24 @@ def find_customer_account(customer_id, account_id):
     return None
 
 
+def find_customer_by_profile(profile: str) -> dict | None:
+    """Find which customer owns a given AWS profile.
+
+    Scans all customer YAML configs and returns the customer config
+    dict if the profile is found in any customer's accounts list.
+    Returns None if no customer owns this profile.
+    """
+    for customer in list_customers():
+        try:
+            cfg = load_customer_config(customer["customer_id"])
+            for account in cfg.get("accounts", []):
+                if account.get("profile") == profile:
+                    return cfg
+        except Exception:
+            continue
+    return None
+
+
 def list_customers() -> List[dict]:
     """Return list of all customer configs found in configs/customers/.
 

@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 class CostAnomalyChecker(BaseChecker):
+    report_section_title = "COST ANOMALIES"
+    issue_label = "cost anomalies"
+    recommendation_text = "COST REVIEW: Investigate cost anomalies"
+
     def __init__(self, region="us-east-1", **kwargs):
         super().__init__(region, **kwargs)
 
@@ -305,3 +309,67 @@ class CostAnomalyChecker(BaseChecker):
         lines.append("=" * 80)
 
         return "\n".join(lines)
+
+    def count_issues(self, result: dict) -> int:
+        """Count cost anomalies from a single profile's result."""
+        if result.get("status") == "error":
+            return 0
+        return int(result.get("total_anomalies", 0) or 0)
+
+    def render_section(self, all_results: dict, errors: list) -> list[str]:
+        """Render COST ANOMALIES section for consolidated report."""
+        lines = []
+        lines.append("")
+        lines.append("COST ANOMALIES")
+
+        if errors:
+            lines.append("Status: ERROR - Cost Anomaly check failed")
+            lines.append("Errors:")
+            for prof, err in errors[:5]:
+                lines.append(f"  * {prof}: {err}")
+            if len(errors) > 5:
+                lines.append(f"  ... and {len(errors) - 5} more")
+            return lines
+
+        total_anomalies = sum(self.count_issues(r) for r in all_results.values())
+
+        if total_anomalies == 0:
+            lines.append("Status: CLEAR - No cost anomalies detected")
+        else:
+            lines.append(
+                f"Status: ATTENTION REQUIRED - {total_anomalies} anomalies detected"
+            )
+            lines.append("")
+            lines.append("Detected Anomalies:")
+            for profile, cost_data in all_results.items():
+                if cost_data.get("total_anomalies", 0) > 0:
+                    account_id = cost_data.get("account_id", "Unknown")
+                    lines.append(
+                        f"  * {profile} ({account_id}): {cost_data['total_anomalies']} anomalies"
+                    )
+                    for anomaly in cost_data.get("anomalies", [])[:3]:
+                        impact = anomaly.get("Impact", {}).get("TotalImpact", "0")
+                        anomaly_start = anomaly.get("AnomalyStartDate", "N/A")
+                        anomaly_end = anomaly.get("AnomalyEndDate", "N/A")
+                        lines.append(f"    - Monitor: {anomaly.get('MonitorName', 'N/A')}")
+                        lines.append(f"    - Impact: ${impact}")
+                        lines.append(f"    - Date: {anomaly_start} to {anomaly_end}")
+
+                        root_causes = anomaly.get("RootCauses", [])
+                        if root_causes:
+                            services = list(
+                                set([rc.get("Service", "N/A") for rc in root_causes])
+                            )
+                            lines.append(
+                                f"    - Affected Services: {', '.join(services[:3])}"
+                            )
+                            if len(services) > 3:
+                                lines.append(
+                                    f"      ... and {len(services) - 3} more services"
+                                )
+                            top_cause = root_causes[0]
+                            lines.append(
+                                f"    - Top Root Cause: {top_cause.get('Service', 'N/A')} - {top_cause.get('UsageType', 'N/A')}"
+                            )
+
+        return lines

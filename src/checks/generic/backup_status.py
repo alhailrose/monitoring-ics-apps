@@ -29,6 +29,10 @@ VAULT_CONFIGS: List[Dict[str, str]] = [
 class BackupStatusChecker(BaseChecker):
     """Summarize AWS Backup health for a profile within the last 24h."""
 
+    report_section_title = "BACKUP STATUS"
+    issue_label = "backup issues"
+    recommendation_text = "BACKUP REVIEW: Investigate failed backup jobs"
+
     def __init__(self, region: str = "ap-southeast-3"):
         super().__init__(region)
 
@@ -299,3 +303,38 @@ class BackupStatusChecker(BaseChecker):
             lines.append("Status: All backup activities healthy in last 24h")
 
         return "\n".join(lines)
+
+    def count_issues(self, result: dict) -> int:
+        if result.get("status") == "error":
+            return 0
+        return int(result.get("failed_jobs", 0) or 0)
+
+    def render_section(self, all_results: dict, errors: list) -> list[str]:
+        """Render BACKUP STATUS section for consolidated report."""
+        lines = []
+        lines.append("")
+        lines.append("BACKUP STATUS")
+
+        if errors:
+            lines.append("Status: ERROR - Backup check failed")
+            for prof, err in errors[:5]:
+                lines.append(f"  * {prof}: {err}")
+            return lines
+
+        backup_issues = []
+        for profile, result in all_results.items():
+            if result.get("failed_jobs", 0) > 0 or result.get("issues"):
+                backup_issues.append(profile)
+
+        if not backup_issues:
+            lines.append("Status: All backup jobs completed successfully")
+        else:
+            lines.append(f"Status: {len(backup_issues)} accounts with backup issues")
+            for profile in backup_issues:
+                result = all_results.get(profile, {})
+                account_id = result.get("account_id", "Unknown")
+                failed = result.get("failed_jobs", 0)
+                total = result.get("total_jobs", 0)
+                lines.append(f"  * {profile} ({account_id}): {failed} failed / {total} total jobs")
+
+        return lines

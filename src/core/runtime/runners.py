@@ -373,10 +373,20 @@ def run_all_checks(
     group_name: Optional[str] = None,
     workers: int = DEFAULT_WORKERS,
     exclude_backup_rds: bool = True,
+    checks_override: Optional[dict] = None,
 ):
-    """Run all checks with parallel execution and detailed text output."""
+    """Run all checks with parallel execution and detailed text output.
 
-    checks = ALL_MODE_CHECKS_NO_BACKUP_RDS if exclude_backup_rds else ALL_MODE_CHECKS
+    Args:
+        checks_override: Optional dict of {check_name: CheckerClass} to run
+            instead of the default ALL_MODE_CHECKS sets. Useful for customer
+            reports that only need a subset of checks.
+    """
+
+    if checks_override is not None:
+        checks = checks_override
+    else:
+        checks = ALL_MODE_CHECKS_NO_BACKUP_RDS if exclude_backup_rds else ALL_MODE_CHECKS
 
     # Header
     console.print(
@@ -393,14 +403,12 @@ def run_all_checks(
     )
 
     all_results = {}
-    total_anomalies = 0
-    total_findings = 0
-    total_alarms = 0
-    total_new_notifications = 0
     check_errors = []
     clean_accounts = []
-    guardduty_disabled = []
     errors_by_check = {name: [] for name in checks.keys()}
+
+    # Instantiate checkers once for reuse
+    checkers = {name: cls(region=region) for name, cls in checks.items()}
 
     # Parallel execution with progress
     with Progress(
@@ -443,7 +451,7 @@ def run_all_checks(
                 all_results[profile] = profile_results
                 progress.update(task, advance=1, current=profile)
 
-                # Track issues
+                # Track issues generically via checker.count_issues()
                 has_issue = False
                 for chk_name, results in profile_results.items():
                     if results.get("status") == "error":
@@ -454,28 +462,9 @@ def run_all_checks(
                             (profile, results.get("error", "Unknown error"))
                         )
                         has_issue = True
-                    if chk_name == "cost":
-                        anomalies = int(results.get("total_anomalies", 0) or 0)
-                        if anomalies > 0:
-                            total_anomalies += anomalies
-                            has_issue = True
-                    elif chk_name == "guardduty":
-                        if results.get("status") == "disabled":
-                            guardduty_disabled.append(profile)
-                        else:
-                            findings = int(results.get("findings", 0) or 0)
-                            if findings > 0:
-                                total_findings += findings
-                                has_issue = True
-                    elif chk_name == "cloudwatch":
-                        alarms = int(results.get("count", 0) or 0)
-                        if alarms > 0:
-                            total_alarms += alarms
-                            has_issue = True
-                    elif chk_name == "notifications":
-                        new_notif = int(results.get("today_count", 0) or 0)
-                        if new_notif > 0:
-                            total_new_notifications += new_notif
+                    elif chk_name in checkers:
+                        issue_count = checkers[chk_name].count_issues(results)
+                        if issue_count > 0:
                             has_issue = True
 
                 if not has_issue:
@@ -483,425 +472,177 @@ def run_all_checks(
 
     console.print()
 
-    include_backup_rds = "backup" in checks or "daily-arbel" in checks
-
-    if include_backup_rds:
-        _print_detailed_report(
-            profiles=profiles,
-            all_results=all_results,
-            total_anomalies=total_anomalies,
-            total_findings=total_findings,
-            total_alarms=total_alarms,
-            check_errors=check_errors,
-            clean_accounts=clean_accounts,
-            guardduty_disabled=guardduty_disabled,
-            errors_by_check=errors_by_check,
-            region=region,
-            group_name=group_name,
-        )
-    else:
-        _print_simple_report(
-            profiles=profiles,
-            all_results=all_results,
-            total_anomalies=total_anomalies,
-            total_findings=total_findings,
-            total_alarms=total_alarms,
-            check_errors=check_errors,
-            guardduty_disabled=guardduty_disabled,
-            region=region,
-        )
+    _print_consolidated_report(
+        profiles=profiles,
+        all_results=all_results,
+        checks=checks,
+        checkers=checkers,
+        check_errors=check_errors,
+        clean_accounts=clean_accounts,
+        errors_by_check=errors_by_check,
+        region=region,
+        group_name=group_name,
+    )
 
 
-def _print_detailed_report(
+def _print_consolidated_report(
     profiles,
     all_results,
-    total_anomalies,
-    total_findings,
-    total_alarms,
+    checks,
+    checkers,
     check_errors,
     clean_accounts,
-    guardduty_disabled,
     errors_by_check,
     region,
-    group_name,
+    group_name=None,
 ):
-    """Print detailed text report for copy-paste reporting."""
+    """Print consolidated daily monitoring report using checker render_section() methods.
 
+    Replaces the old _print_simple_report and _print_detailed_report with a
+    single generic function. Output format is identical.
+    """
     now = datetime.now()
     date_str = now.strftime("%B %d, %Y")
     time_str = now.strftime("%H:%M WIB")
 
+    include_backup_rds = "backup" in checks or "daily-arbel" in checks
+
     lines = []
 
     # Header
-    lines.append("=" * 70)
-    if group_name:
-        lines.append(f"DAILY MONITORING REPORT - {group_name.upper()} GROUP")
+    if include_backup_rds:
+        lines.append("=" * 70)
+        if group_name:
+            lines.append(f"DAILY MONITORING REPORT - {group_name.upper()} GROUP")
+        else:
+            lines.append("DAILY MONITORING REPORT")
+        lines.append("=" * 70)
+        lines.append(f"Date: {date_str}")
+        lines.append(f"Time: {time_str}")
+        lines.append(f"Scope: {len(profiles)} AWS Accounts | Region: {region}")
+        lines.append("")
+        lines.append("-" * 70)
     else:
         lines.append("DAILY MONITORING REPORT")
-    lines.append("=" * 70)
-    lines.append(f"Date: {date_str}")
-    lines.append(f"Time: {time_str}")
-    lines.append(f"Scope: {len(profiles)} AWS Accounts | Region: {region}")
-    lines.append("")
+        lines.append(f"Date: {date_str}")
+        lines.append(f"Scope: {len(profiles)} AWS Accounts | Region: {region}")
+        lines.append("")
 
-    # Executive Summary
-    lines.append("-" * 70)
-    lines.append("EXECUTIVE SUMMARY")
-    lines.append("-" * 70)
+    # Executive Summary — generic via checker.count_issues()
+    if include_backup_rds:
+        lines.append("EXECUTIVE SUMMARY")
+        lines.append("-" * 70)
+    else:
+        lines.append("EXECUTIVE SUMMARY")
+
+    # Compute totals per check
+    totals = {}
+    for chk_name, checker in checkers.items():
+        total = 0
+        for profile in profiles:
+            result = all_results.get(profile, {}).get(chk_name, {})
+            total += checker.count_issues(result)
+        if total > 0:
+            totals[chk_name] = total
 
     summary_text = f"Security assessment completed across {len(profiles)} AWS accounts."
     if check_errors:
         summary_text += f" {len(check_errors)} check error(s) encountered; see CHECK ERRORS section."
-    if (
-        total_anomalies == 0
-        and total_findings == 0
-        and total_alarms == 0
-        and not check_errors
-    ):
-        summary_text += (
-            " No new security incidents detected. All systems operating normally."
-        )
-    else:
-        issues = []
+
+    if not totals and not check_errors:
+        summary_text += " No new security incidents detected. All systems operating normally."
+    elif totals:
+        issue_parts = []
         if check_errors:
-            issues.append(f"{len(check_errors)} check errors")
-        if total_anomalies > 0:
-            issues.append(f"{total_anomalies} cost anomalies")
-        if total_findings > 0:
-            issues.append(f"{total_findings} new security findings")
-        if total_alarms > 0:
-            issues.append(f"{total_alarms} infrastructure alerts")
-        summary_text += f" {' and '.join(issues)} detected requiring attention."
+            issue_parts.append(f"{len(check_errors)} check errors")
+        for chk_name, total in totals.items():
+            checker = checkers[chk_name]
+            if checker.issue_label:
+                issue_parts.append(f"{total} {checker.issue_label}")
+        if issue_parts:
+            summary_text += f" {' and '.join(issue_parts)} detected requiring attention."
+
     lines.append(summary_text)
     lines.append("")
 
     # Assessment Results
-    lines.append("-" * 70)
-    lines.append("ASSESSMENT RESULTS")
-    lines.append("-" * 70)
-
-    # Cost Anomalies Section
-    lines.append("")
-    lines.append("COST ANOMALIES")
-    if errors_by_check.get("cost"):
-        lines.append("Status: ERROR - Cost Anomaly check failed")
-        lines.append("Errors:")
-        for prof, err in errors_by_check["cost"][:5]:
-            lines.append(f"  * {prof}: {err}")
-        if len(errors_by_check["cost"]) > 5:
-            lines.append(f"  ... and {len(errors_by_check['cost']) - 5} more")
-    elif total_anomalies == 0:
-        lines.append("Status: CLEAR - No cost anomalies detected")
+    if include_backup_rds:
+        lines.append("-" * 70)
+        lines.append("ASSESSMENT RESULTS")
+        lines.append("-" * 70)
     else:
-        lines.append(
-            f"Status: ATTENTION REQUIRED - {total_anomalies} anomalies detected"
+        lines.append("ASSESSMENT RESULTS")
+        lines.append("")
+
+    # Render each check's section via checker.render_section()
+    for chk_name, checker in checkers.items():
+        if not checker.supports_consolidated:
+            continue
+        # Build per-check results dict: {profile: result_for_this_check}
+        per_check_results = {}
+        for profile in profiles:
+            per_check_results[profile] = all_results.get(profile, {}).get(chk_name, {})
+        section_lines = checker.render_section(
+            per_check_results, errors_by_check.get(chk_name, [])
         )
-        lines.append("")
-        lines.append("Detected Anomalies:")
-        for profile, results in all_results.items():
-            cost_data = results.get("cost", {})
-            if cost_data.get("total_anomalies", 0) > 0:
-                account_id = get_account_id(profile)
-                lines.append(
-                    f"  * {profile} ({account_id}): {cost_data['total_anomalies']} anomalies"
-                )
-                for anomaly in cost_data.get("anomalies", [])[:3]:
-                    impact = anomaly.get("Impact", {}).get("TotalImpact", "0")
-                    anomaly_start = anomaly.get("AnomalyStartDate", "N/A")
-                    anomaly_end = anomaly.get("AnomalyEndDate", "N/A")
-                    lines.append(f"    - Monitor: {anomaly.get('MonitorName', 'N/A')}")
-                    lines.append(f"    - Impact: ${impact}")
-                    lines.append(f"    - Date: {anomaly_start} to {anomaly_end}")
-
-                    root_causes = anomaly.get("RootCauses", [])
-                    if root_causes:
-                        services = list(
-                            set([rc.get("Service", "N/A") for rc in root_causes])
-                        )
-                        lines.append(
-                            f"    - Affected Services: {', '.join(services[:3])}"
-                        )
-                        if len(services) > 3:
-                            lines.append(
-                                f"      ... and {len(services) - 3} more services"
-                            )
-                        top_cause = root_causes[0]
-                        lines.append(
-                            f"    - Top Root Cause: {top_cause.get('Service', 'N/A')} - {top_cause.get('UsageType', 'N/A')}"
-                        )
-
-    # GuardDuty Section
-    lines.append("")
-    lines.append("GUARDDUTY FINDINGS")
-    if errors_by_check.get("guardduty"):
-        lines.append("Status: ERROR - GuardDuty check failed")
-        lines.append("Errors:")
-        for prof, err in errors_by_check["guardduty"][:5]:
-            lines.append(f"  * {prof}: {err}")
-        if len(errors_by_check["guardduty"]) > 5:
-            lines.append(f"  ... and {len(errors_by_check['guardduty']) - 5} more")
-    elif total_findings > 0 or guardduty_disabled:
-        if total_findings > 0:
-            lines.append(
-                f"Status: ATTENTION REQUIRED - {total_findings} new findings detected"
-            )
-            lines.append("")
-            lines.append("Current Findings:")
-            for profile, results in all_results.items():
-                gd_data = results.get("guardduty", {})
-                if gd_data.get("findings", 0) > 0:
-                    account_id = get_account_id(profile)
-                    lines.append(
-                        f"  * {profile} ({account_id}): {gd_data['findings']} findings"
-                    )
-                    for detail in gd_data.get("details", [])[:3]:
-                        lines.append(f"    - Type: {detail.get('type', 'N/A')}")
-                        lines.append(f"    - Severity: {detail.get('severity', 'N/A')}")
-                        lines.append(f"    - Date: {detail.get('updated', 'N/A')}")
-
-        if guardduty_disabled:
-            if total_findings > 0:
-                lines.append("")
-            lines.append("GuardDuty NOT ENABLED:")
-            for profile in guardduty_disabled:
-                account_id = get_account_id(profile)
-                lines.append(f"  * {profile} ({account_id})")
-    else:
-        lines.append("Status: CLEAR - No new security findings detected")
-
-    # CloudWatch Section
-    lines.append("")
-    lines.append("CLOUDWATCH ALARMS")
-    if errors_by_check.get("cloudwatch"):
-        lines.append("Status: ERROR - CloudWatch check failed")
-        lines.append("Errors:")
-        for prof, err in errors_by_check["cloudwatch"][:5]:
-            lines.append(f"  * {prof}: {err}")
-        if len(errors_by_check["cloudwatch"]) > 5:
-            lines.append(f"  ... and {len(errors_by_check['cloudwatch']) - 5} more")
-    elif total_alarms == 0:
-        lines.append("Status: All monitoring systems normal")
-    else:
-        lines.append(f"Status: {total_alarms} alarms in ALARM state")
-        lines.append("")
-        lines.append("Active Alarms:")
-        for profile, results in all_results.items():
-            cw_data = results.get("cloudwatch", {})
-            if cw_data.get("count", 0) > 0:
-                account_id = get_account_id(profile)
-                lines.append(
-                    f"  * {profile} ({account_id}): {cw_data['count']} active alarms"
-                )
-                for detail in cw_data.get("details", [])[:3]:
-                    lines.append(f"    - Alarm: {detail.get('name', 'N/A')}")
-                    lines.append(f"    - Reason: {detail.get('reason', 'N/A')}")
-                    lines.append(f"    - Date: {detail.get('updated', 'N/A')}")
-
-    # Notification Center Section
-    notif_data = None
-    all_notif_events = []
-    total_today = 0
-    total_managed_all = 0
-
-    for profile, results in all_results.items():
-        if "notifications" in results:
-            notif_result = results["notifications"]
-            if notif_result.get("status") == "success":
-                if notif_data is None:
-                    notif_data = notif_result
-                total_today += notif_result.get("today_count", 0)
-                total_managed_all += notif_result.get("total_managed", 0)
-                all_notif_events.extend(notif_result.get("all_events", []))
-
-    lines.append("")
-    lines.append("NOTIFICATION CENTER")
-    if errors_by_check.get("notifications"):
-        lines.append("Status: ERROR - Notification Center check failed")
-        lines.append("Errors:")
-        for prof, err in errors_by_check["notifications"][:5]:
-            lines.append(f"  * {prof}: {err}")
-        if len(errors_by_check["notifications"]) > 5:
-            lines.append(f"  ... and {len(errors_by_check['notifications']) - 5} more")
-    elif notif_data:
-        if total_today == 0:
-            lines.append(
-                f"Status: No new notifications today ({total_managed_all} existing available)"
-            )
-        else:
-            lines.append(f"Status: {total_today} new notifications detected today")
-            lines.append("")
-            lines.append("Today's Notifications:")
-            for event in notif_data.get("today_events", [])[:3]:
-                notif_event = event.get("notificationEvent", {})
-                event_type = notif_event.get("sourceEventMetadata", {}).get(
-                    "eventType", "N/A"
-                )
-                headline = notif_event.get("messageComponents", {}).get(
-                    "headline", "N/A"
-                )
-                lines.append(f"  * Event Type: {event_type}")
-                lines.append(f"    Description: {headline}")
-
-        # Show all existing notifications from all accounts
-        lines.append("")
-        lines.append(
-            f"[DEBUG] all_notif_events length: {len(all_notif_events)}, total_managed_all: {total_managed_all}"
-        )
-        if len(all_notif_events) > 0:
-            # Sort by creation time (newest first)
-            sorted_events = sorted(
-                all_notif_events, key=lambda x: x.get("creationTime", ""), reverse=True
-            )
-            lines.append("")
-            lines.append(f"All Notifications ({len(sorted_events)} total):")
-            for event in sorted_events[:5]:
-                notif_event = event.get("notificationEvent", {})
-                event_type = notif_event.get("sourceEventMetadata", {}).get(
-                    "eventType", "N/A"
-                )
-                headline = notif_event.get("messageComponents", {}).get(
-                    "headline", "N/A"
-                )
-                created = event.get("creationTime", "N/A")
-                lines.append(f"  * [{created}] {event_type}")
-                lines.append(f"    {headline[:120]}...")
-            if len(sorted_events) > 5:
-                lines.append(f"  ... and {len(sorted_events) - 5} more")
-    else:
-        lines.append("Status: No data")
-
-    # Backup Section
-    lines.append("")
-    lines.append("BACKUP STATUS")
-    if errors_by_check.get("backup"):
-        lines.append("Status: ERROR - Backup check failed")
-        for prof, err in errors_by_check["backup"][:5]:
-            lines.append(f"  * {prof}: {err}")
-    else:
-        backup_issues = []
-        for profile, results in all_results.items():
-            backup_data = results.get("backup", {})
-            if backup_data.get("failed_jobs", 0) > 0 or backup_data.get("issues"):
-                backup_issues.append(profile)
-
-        if not backup_issues:
-            lines.append("Status: All backup jobs completed successfully")
-        else:
-            lines.append(f"Status: {len(backup_issues)} accounts with backup issues")
-            for profile in backup_issues:
-                backup_data = all_results.get(profile, {}).get("backup", {})
-                account_id = get_account_id(profile)
-                failed = backup_data.get("failed_jobs", 0)
-                total = backup_data.get("total_jobs", 0)
-                lines.append(
-                    f"  * {profile} ({account_id}): {failed} failed / {total} total jobs"
-                )
-
-    # Daily Arbel Section
-    lines.append("")
-    lines.append("DAILY ARBEL METRICS")
-    if errors_by_check.get("daily-arbel"):
-        lines.append("Status: ERROR - Daily Arbel check failed")
-        for prof, err in errors_by_check["daily-arbel"][:5]:
-            lines.append(f"  * {prof}: {err}")
-    else:
-        rds_warnings = []
-        for profile, results in all_results.items():
-            rds_data = results.get("daily-arbel", {})
-            if rds_data.get("status") == "skipped":
-                continue
-            instances = rds_data.get("instances", {})
-            warn_count = 0
-            for data in instances.values():
-                for m in data.get("metrics", {}).values():
-                    if m.get("status") == "warn":
-                        warn_count += 1
-            if warn_count > 0:
-                rds_warnings.append((profile, warn_count))
-
-        if not rds_warnings:
-            lines.append("Status: All RDS metrics normal")
-        else:
-            lines.append(f"Status: {len(rds_warnings)} accounts with RDS warnings")
-            for profile, warn_count in rds_warnings:
-                account_id = get_account_id(profile)
-                lines.append(
-                    f"  * {profile} ({account_id}): {warn_count} metric warnings"
-                )
+        lines.extend(section_lines)
 
     # Account Coverage
     lines.append("")
-    lines.append("-" * 70)
+    if include_backup_rds:
+        lines.append("-" * 70)
     lines.append("ACCOUNT COVERAGE")
-    lines.append("-" * 70)
+    if include_backup_rds:
+        lines.append("-" * 70)
     lines.append(f"Total Assessed: {len(profiles)} accounts")
-    lines.append(f"Clean Accounts: {len(clean_accounts)}")
-    lines.append(f"Accounts with Issues: {len(profiles) - len(clean_accounts)}")
+    if include_backup_rds:
+        lines.append(f"Clean Accounts: {len(clean_accounts)}")
+        lines.append(f"Accounts with Issues: {len(profiles) - len(clean_accounts)}")
     if check_errors:
-        lines.append(f"Check Errors: {len(check_errors)} (see below)")
-
-    if check_errors:
+        if include_backup_rds:
+            lines.append(f"Check Errors: {len(check_errors)} (see below)")
         lines.append("")
         lines.append("CHECK ERRORS:")
         for profile, chk, err in check_errors:
-            lines.append(f"  - {profile} | {chk}: {err}")
+            prefix = "  - " if include_backup_rds else "- "
+            lines.append(f"{prefix}{profile} | {chk}: {err}")
 
-    # Recommendations
-    lines.append("")
-    lines.append("-" * 70)
-    lines.append("RECOMMENDATIONS")
-    lines.append("-" * 70)
-    rec_count = 1
+    # Recommendations (detailed mode only)
+    if include_backup_rds:
+        lines.append("")
+        lines.append("-" * 70)
+        lines.append("RECOMMENDATIONS")
+        lines.append("-" * 70)
+        rec_count = 1
 
-    if check_errors:
-        lines.append(
-            f"{rec_count}. INVESTIGATE CHECK ERRORS: Resolve authentication/permission/session issues"
-        )
-        lines.append("   Affected:")
-        for profile, chk, err in check_errors[:5]:
-            lines.append(f"   - {profile} ({chk}): {err}")
-        if len(check_errors) > 5:
-            lines.append(f"   ... and {len(check_errors) - 5} more")
-        rec_count += 1
+        if check_errors:
+            lines.append(
+                f"{rec_count}. INVESTIGATE CHECK ERRORS: Resolve authentication/permission/session issues"
+            )
+            lines.append("   Affected:")
+            for profile, chk, err in check_errors[:5]:
+                lines.append(f"   - {profile} ({chk}): {err}")
+            if len(check_errors) > 5:
+                lines.append(f"   ... and {len(check_errors) - 5} more")
+            rec_count += 1
 
-    if total_anomalies > 0:
-        lines.append(f"{rec_count}. COST REVIEW: Investigate cost anomalies")
-        affected = [
-            p
-            for p, r in all_results.items()
-            if r.get("cost", {}).get("total_anomalies", 0) > 0
-        ]
-        lines.append(f"   Affected accounts: {', '.join(affected)}")
-        rec_count += 1
+        for chk_name, total in totals.items():
+            checker = checkers[chk_name]
+            if checker.recommendation_text:
+                lines.append(f"{rec_count}. {checker.recommendation_text}")
+                affected = [
+                    p for p in profiles
+                    if checker.count_issues(all_results.get(p, {}).get(chk_name, {})) > 0
+    ]
+                if affected:
+                    lines.append(f"   Affected accounts: {', '.join(affected)}")
+                rec_count += 1
 
-    if total_findings > 0:
-        lines.append(
-            f"{rec_count}. IMMEDIATE ACTION REQUIRED: Investigate GuardDuty findings"
-        )
-        affected = [
-            p
-            for p, r in all_results.items()
-            if r.get("guardduty", {}).get("findings", 0) > 0
-        ]
-        lines.append(f"   Affected accounts: {', '.join(affected)}")
-        rec_count += 1
+        if rec_count == 1:
+            lines.append("1. ROUTINE MONITORING: Continue assessment schedule")
 
-    if total_alarms > 0:
-        lines.append(f"{rec_count}. INFRASTRUCTURE REVIEW: Address CloudWatch alarms")
-        affected = [
-            p
-            for p, r in all_results.items()
-            if r.get("cloudwatch", {}).get("count", 0) > 0
-        ]
-        lines.append(f"   Affected accounts: {', '.join(affected)}")
-        rec_count += 1
-
-    if rec_count == 1:
-        lines.append("1. ROUTINE MONITORING: Continue assessment schedule")
-
-    # WhatsApp messages for aryanoble
-    if group_name == "Aryanoble":
+    # WhatsApp messages for aryanoble (detailed mode)
+    if include_backup_rds and group_name == "Aryanoble":
         date_str_wa = datetime.now(timezone(timedelta(hours=7))).strftime("%d-%m-%Y")
 
         lines.append("")
@@ -909,209 +650,20 @@ def _print_detailed_report(
         lines.append("WHATSAPP MESSAGE (READY TO SEND)")
         lines.append("=" * 70)
         lines.append("--backup")
-        lines.append(build_whatsapp_backup(date_str_wa, all_results))
+        lines.append(build_whatsapp_backup(date_str_wa, {
+            p: {chk: all_results.get(p, {}).get(chk, {}) for chk in checks}
+            for p in profiles
+        }))
         lines.append("")
         lines.append("--rds")
-        lines.append(build_whatsapp_rds(all_results))
+        lines.append(build_whatsapp_rds({
+            p: {chk: all_results.get(p, {}).get(chk, {}) for chk in checks}
+            for p in profiles
+        }))
 
     lines.append("")
     lines.append("=" * 70)
     lines.append("END OF REPORT")
     lines.append("=" * 70)
-
-    # Print the detailed report
-    print("\n" + "\n".join(lines))
-
-
-def _print_simple_report(
-    profiles,
-    all_results,
-    total_anomalies,
-    total_findings,
-    total_alarms,
-    check_errors,
-    guardduty_disabled,
-    region,
-):
-    """Print simplified daily report without backup/RDS sections (aryanoble style)."""
-
-    now = datetime.now()
-    date_str = now.strftime("%B %d, %Y")
-
-    lines = []
-    lines.append("DAILY MONITORING REPORT")
-    lines.append(f"Date: {date_str}")
-    lines.append(f"Scope: {len(profiles)} AWS Accounts | Region: {region}")
-    lines.append("")
-    lines.append("EXECUTIVE SUMMARY")
-
-    summary_bits = []
-    if total_findings > 0:
-        summary_bits.append(f"{total_findings} new security findings")
-    if total_alarms > 0:
-        summary_bits.append(f"{total_alarms} infrastructure alerts")
-    if total_anomalies > 0:
-        summary_bits.append(f"{total_anomalies} cost anomalies")
-
-    if summary_bits:
-        summary = "Security assessment completed across "
-        summary += f"{len(profiles)} AWS accounts. "
-        summary += " and ".join(summary_bits) + " detected requiring attention."
-    elif check_errors:
-        summary = (
-            f"Security assessment completed across {len(profiles)} AWS accounts. "
-            f"{len(check_errors)} check error(s) encountered; see CHECK ERRORS."
-        )
-    else:
-        summary = (
-            f"Security assessment completed across {len(profiles)} AWS accounts. "
-            "No new security incidents detected."
-        )
-
-    lines.append(summary)
-    lines.append("")
-    lines.append("ASSESSMENT RESULTS")
-    lines.append("")
-
-    # Cost
-    lines.append("COST ANOMALIES")
-    if check_errors:
-        error_cost = [e for e in check_errors if e[1] == "cost"]
-    else:
-        error_cost = []
-    if error_cost:
-        lines.append("Status: ERROR - Cost Anomaly check failed")
-    elif total_anomalies == 0:
-        lines.append("Status: CLEAR - No cost anomalies detected")
-    else:
-        lines.append(
-            f"Status: ATTENTION REQUIRED - {total_anomalies} anomalies detected"
-        )
-
-    lines.append("")
-
-    # GuardDuty
-    lines.append("GUARDDUTY FINDINGS")
-    gd_errors = [e for e in check_errors if e[1] == "guardduty"]
-    if gd_errors:
-        lines.append("Status: ERROR - GuardDuty check failed")
-    elif total_findings > 0:
-        lines.append(
-            f"Status: ATTENTION REQUIRED - {total_findings} new findings detected"
-        )
-        lines.append("")
-        lines.append("Current Findings:")
-        for profile, results in all_results.items():
-            gd_data = results.get("guardduty", {})
-            if gd_data.get("findings", 0) > 0:
-                account_id = get_account_id(profile)
-                lines.append(
-                    f"• {profile} ({account_id}): {gd_data['findings']} findings"
-                )
-                for detail in gd_data.get("details", [])[:3]:
-                    lines.append(f"  - Type: {detail.get('type', 'N/A')}")
-                    lines.append(f"  - Severity: {detail.get('severity', 'N/A')}")
-                    lines.append(f"  - Date: {detail.get('updated', 'N/A')}")
-    elif guardduty_disabled:
-        lines.append("Status: GuardDuty not enabled on some accounts")
-    else:
-        lines.append("Status: CLEAR - No new findings detected")
-
-    if guardduty_disabled:
-        lines.append("")
-        lines.append("GuardDuty NOT ENABLED:")
-        for profile in guardduty_disabled:
-            account_id = get_account_id(profile)
-            lines.append(f"• {profile} ({account_id})")
-
-    lines.append("")
-
-    # CloudWatch
-    lines.append("CLOUDWATCH ALARMS")
-    cw_errors = [e for e in check_errors if e[1] == "cloudwatch"]
-    if cw_errors:
-        lines.append("Status: ERROR - CloudWatch check failed")
-    elif total_alarms == 0:
-        lines.append("Status: All monitoring systems normal")
-    else:
-        lines.append(f"Status: {total_alarms} alarms in ALARM state")
-        lines.append("")
-        lines.append("Active Alarms:")
-        for profile, results in all_results.items():
-            cw_data = results.get("cloudwatch", {})
-            if cw_data.get("count", 0) > 0:
-                account_id = get_account_id(profile)
-                lines.append(
-                    f"• {profile} ({account_id}): {cw_data['count']} active alarms"
-                )
-                for detail in cw_data.get("details", [])[:3]:
-                    lines.append(f"  - Alarm: {detail.get('name', 'N/A')}")
-                    lines.append(f"  - Reason: {detail.get('reason', 'N/A')}")
-                    lines.append(f"  - Date: {detail.get('updated', 'N/A')}")
-
-    lines.append("")
-
-    # Notification Center
-    lines.append("NOTIFICATION CENTER")
-    notif_errors = [e for e in check_errors if e[1] == "notifications"]
-    notif_data = None
-    all_notif_events = []
-    total_today = 0
-    total_managed_all = 0
-
-    for profile, results in all_results.items():
-        if "notifications" in results:
-            notif_result = results["notifications"]
-            if notif_result.get("status") == "success":
-                if notif_data is None:
-                    notif_data = notif_result
-                total_today += notif_result.get("today_count", 0)
-                total_managed_all += notif_result.get("total_managed", 0)
-                all_notif_events.extend(notif_result.get("all_events", []))
-
-    if notif_errors:
-        lines.append("Status: ERROR - Notification Center check failed")
-    elif notif_data:
-        if total_today == 0:
-            lines.append(
-                f"Status: No new notifications today ({total_managed_all} existing available)"
-            )
-        else:
-            lines.append(f"Status: {total_today} new notifications detected today")
-
-        # Show all existing notifications from all accounts
-        if len(all_notif_events) > 0:
-            sorted_events = sorted(
-                all_notif_events, key=lambda x: x.get("creationTime", ""), reverse=True
-            )
-            lines.append("")
-            lines.append(f"All Notifications ({len(sorted_events)} total):")
-            for event in sorted_events[:5]:
-                notif_event = event.get("notificationEvent", {})
-                event_type = notif_event.get("sourceEventMetadata", {}).get(
-                    "eventType", "N/A"
-                )
-                headline = notif_event.get("messageComponents", {}).get(
-                    "headline", "N/A"
-                )
-                created = event.get("creationTime", "N/A")
-                lines.append(f"  * [{created}] {event_type}")
-                lines.append(f"    {headline[:120]}...")
-            if len(sorted_events) > 5:
-                lines.append(f"  ... and {len(sorted_events) - 5} more")
-    else:
-        lines.append("Status: No data")
-
-    lines.append("")
-
-    # Account coverage
-    lines.append("ACCOUNT COVERAGE")
-    lines.append(f"Total Assessed: {len(profiles)} accounts")
-
-    if check_errors:
-        lines.append("")
-        lines.append("CHECK ERRORS:")
-        for profile, chk, err in check_errors:
-            lines.append(f"- {profile} | {chk}: {err}")
 
     print("\n" + "\n".join(lines))

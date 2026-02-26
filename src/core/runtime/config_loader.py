@@ -60,6 +60,7 @@ DEFAULT_PROFILE_GROUPS = {
         "backup-hris": "390403877301",
         "dwh": "084056488725",
         "genero-empower": "941377160792",
+        "genero-manufacture": "798344624633",
     },
     "FFI": {
         "ffi": "315897480848",
@@ -95,6 +96,7 @@ DEFAULT_DISPLAY_NAMES = {
     "backup-hris": "Backup HRIS",
     "dwh": "DWH",
     "genero-empower": "Genero Empower",
+    "genero-manufacture": "Genero Manufacture",
     "ffi": "FFI",
     "HRIS": "HRIS",
     "cis-erha": "CIS Erha",

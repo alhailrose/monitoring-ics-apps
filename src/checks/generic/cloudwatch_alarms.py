@@ -8,6 +8,10 @@ from src.checks.common.aws_errors import is_credential_error
 WIB = timezone(timedelta(hours=7))
 
 class CloudWatchAlarmChecker(BaseChecker):
+    report_section_title = "CLOUDWATCH ALARMS"
+    issue_label = "infrastructure alerts"
+    recommendation_text = "INFRASTRUCTURE REVIEW: Address CloudWatch alarms"
+
     def check(self, profile, account_id):
         """Check CloudWatch alarms currently in ALARM state"""
         try:
@@ -61,7 +65,44 @@ class CloudWatchAlarmChecker(BaseChecker):
 
         if results['count'] == 0:
             lines.append("Status: All monitoring systems normal")
-            return "\n".join(lines)
+        return "\n".join(lines)
+
+    def count_issues(self, result: dict) -> int:
+        if result.get("status") == "error":
+            return 0
+        return int(result.get("count", 0) or 0)
+
+    def render_section(self, all_results: dict, errors: list) -> list[str]:
+        """Render CLOUDWATCH ALARMS section for consolidated report."""
+        lines = []
+        lines.append("")
+        lines.append("CLOUDWATCH ALARMS")
+
+        if errors:
+            lines.append("Status: ERROR - CloudWatch check failed")
+            lines.append("Errors:")
+            for prof, err in errors[:5]:
+                lines.append(f"  * {prof}: {err}")
+            if len(errors) > 5:
+                lines.append(f"  ... and {len(errors) - 5} more")
+            return lines
+
+        total = sum(self.count_issues(r) for r in all_results.values())
+        if total == 0:
+            lines.append("Status: All monitoring systems normal")
+        else:
+            lines.append(f"Status: {total} alarms in ALARM state")
+            lines.append("")
+            lines.append("Active Alarms:")
+            for profile, result in all_results.items():
+                if result.get("count", 0) > 0:
+                    account_id = result.get("account_id", "Unknown")
+                    lines.append(f"  * {profile} ({account_id}): {result['count']} active alarms")
+                    for detail in result.get("details", [])[:3]:
+                        lines.append(f"    - Alarm: {detail.get('name', 'N/A')}")
+                        lines.append(f"    - Reason: {detail.get('reason', 'N/A')}")
+                        lines.append(f"    - Date: {detail.get('updated', 'N/A')}")
+        return lines
 
         lines.append(f"Status: {results['count']} alarm(s) in ALARM state")
         lines.append("")

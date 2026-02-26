@@ -11,6 +11,10 @@ logger = logging.getLogger(__name__)
 WIB = timezone(timedelta(hours=7))
 
 class GuardDutyChecker(BaseChecker):
+    report_section_title = "GUARDDUTY FINDINGS"
+    issue_label = "new security findings"
+    recommendation_text = "IMMEDIATE ACTION REQUIRED: Investigate GuardDuty findings"
+
     def check(self, profile, account_id):
         """Check GuardDuty findings for the account/profile"""
         try:
@@ -160,3 +164,52 @@ class GuardDutyChecker(BaseChecker):
         lines.append("=" * 80)
 
         return "\n".join(lines)
+
+    def count_issues(self, result: dict) -> int:
+        if result.get("status") in ("error", "disabled"):
+            return 0
+        return int(result.get("findings", 0) or 0)
+
+    def render_section(self, all_results: dict, errors: list) -> list[str]:
+        """Render GUARDDUTY FINDINGS section for consolidated report."""
+        lines = []
+        lines.append("")
+        lines.append("GUARDDUTY FINDINGS")
+
+        if errors:
+            lines.append("Status: ERROR - GuardDuty check failed")
+            lines.append("Errors:")
+            for prof, err in errors[:5]:
+                lines.append(f"  * {prof}: {err}")
+            if len(errors) > 5:
+                lines.append(f"  ... and {len(errors) - 5} more")
+            return lines
+
+        total_findings = sum(self.count_issues(r) for r in all_results.values())
+        guardduty_disabled = [p for p, r in all_results.items() if r.get("status") == "disabled"]
+
+        if total_findings > 0 or guardduty_disabled:
+            if total_findings > 0:
+                lines.append(f"Status: ATTENTION REQUIRED - {total_findings} new findings detected")
+                lines.append("")
+                lines.append("Current Findings:")
+                for profile, result in all_results.items():
+                    if result.get("findings", 0) > 0:
+                        account_id = result.get("account_id", "Unknown")
+                        lines.append(f"  * {profile} ({account_id}): {result['findings']} fin")
+                        for detail in result.get("details", [])[:3]:
+                            lines.append(f"    - Type: {detail.get('type', 'N/A')}")
+                            lines.append(f"    - Severity: {detail.get('severity', 'N/A')}")
+                            lines.append(f"    - Date: {detail.get('updated', 'N/A')}")
+
+            if guardduty_disabled:
+                if total_findings > 0:
+                    lines.append("")
+                lines.append("GuardDuty NOT ENABLED:")
+                for profile in guardduty_disabled:
+                    account_id = all_results[profile].get("account_id", "Unknown")
+                    lines.append(f"  * {profile} ({account_id})")
+        else:
+            lines.append("Status: CLEAR - No new security findings detected")
+
+        return lines

@@ -254,13 +254,7 @@ def build_whatsapp_rds_compact(all_results):
         instances = res.get("instances", {})
         for role, data in instances.items():
             metrics = data.get("metrics", {})
-            for m in [
-                "ACUUtilization",
-                "CPUUtilization",
-                "FreeableMemory",
-                "DatabaseConnections",
-            ]:
-                info = metrics.get(m, {})
+            for m, info in metrics.items():
                 if info.get("status") == "warn":
                     account_warn += 1
                     total_warn_metrics += 1
@@ -350,13 +344,7 @@ def build_whatsapp_rds_client(all_results):
             lines.append("")
             lines.append(f"{role.capitalize()}:")
             metrics = data.get("metrics", {})
-            for m in [
-                "ACUUtilization",
-                "CPUUtilization",
-                "FreeableMemory",
-                "DatabaseConnections",
-            ]:
-                info = metrics.get(m, {})
+            for m, info in metrics.items():
                 msg = info.get("message", f"{m}: Data tidak tersedia")
                 lines.append(f"* {msg}")
 
