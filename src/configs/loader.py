@@ -36,9 +36,9 @@ def _candidate_paths(customer_id):
     root = _repo_root()
     return _dedupe_paths([
         root / "configs" / "customers" / f"{customer_id}.yaml",
+        Path.cwd() / "configs" / "customers" / f"{customer_id}.yaml",
         _module_defaults_dir() / f"{customer_id}.yaml",
         root / "src" / "configs" / "defaults" / "customers" / f"{customer_id}.yaml",
-        Path.cwd() / "configs" / "customers" / f"{customer_id}.yaml",
     ])
 
 
@@ -112,9 +112,9 @@ def list_customers() -> List[dict]:
     root = _repo_root()
     customers_dirs = _dedupe_paths([
         root / "configs" / "customers",
+        Path.cwd() / "configs" / "customers",
         _module_defaults_dir(),
         root / "src" / "configs" / "defaults" / "customers",
-        Path.cwd() / "configs" / "customers",
     ])
     results = []
 
