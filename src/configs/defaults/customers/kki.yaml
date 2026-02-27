@@ -1,0 +1,19 @@
+customer_id: kki
+display_name: KKI
+sso_session: sadewa-sso
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - health
+  - cost
+  - guardduty
+  - cloudwatch
+
+accounts:
+  - profile: KKI
+    account_id: "471112835466"
+    display_name: "KKI"

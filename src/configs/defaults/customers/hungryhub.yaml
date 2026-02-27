@@ -1,0 +1,20 @@
+customer_id: hungryhub
+display_name: HungryHub
+sso_session: HungryHub
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - health
+  - cost
+  - guardduty
+  - cloudwatch
+
+accounts:
+  - profile: prod-hungryhub
+    account_id: "202255947274"
+    display_name: "HungryHub Prod"
+    region: ap-southeast-1

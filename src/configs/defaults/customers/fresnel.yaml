@@ -1,0 +1,32 @@
+customer_id: fresnel
+display_name: Fresnel
+sso_session: sadewa-sso
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - health
+  - cost
+  - guardduty
+  - cloudwatch
+
+accounts:
+  - profile: fresnel-ykai
+    account_id: "339712722804"
+    display_name: "Fresnel YKAI"
+
+  - profile: fresnel-pialang
+    account_id: "510940807875"
+    display_name: "Fresnel Pialang"
+
+  - profile: fresnel-phoenix
+    account_id: "197353582440"
+    display_name: "Fresnel Phoenix"
+
+  - profile: fresnel-master
+    account_id: ""
+    display_name: "Fresnel Master"
+    sso: false

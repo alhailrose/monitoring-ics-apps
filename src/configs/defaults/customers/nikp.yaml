@@ -1,0 +1,20 @@
+customer_id: nikp
+display_name: NIKP
+sso_session: null
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - health
+  - cost
+  - guardduty
+  - cloudwatch
+
+accounts:
+  - profile: nikp
+    account_id: ""
+    display_name: "NIKP"
+    region: ap-southeast-1

@@ -1,0 +1,19 @@
+customer_id: techmeister
+display_name: Techmeister
+sso_session: sadewa-sso
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - health
+  - cost
+  - guardduty
+  - cloudwatch
+
+accounts:
+  - profile: Techmeister
+    account_id: "763944546283"
+    display_name: "Techmeister"
