@@ -7,6 +7,41 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
 - Migration status: `docs/architecture/migration-status.md`
 - Target structure contract: `docs/architecture/target-structure-contract.md`
 
+## Dual Interface Platform (TUI + API/Web)
+
+Platform sekarang mendukung fondasi dual-interface:
+- TUI existing tetap dipakai untuk operasional harian.
+- API FastAPI tersedia di `src/app/api/main.py`.
+- Worker pipeline untuk eksekusi job ada di `src/app/worker/`.
+- Scaffold web dashboard manual run + history ada di folder `web/`.
+- Stack single server tersedia di `infra/docker/docker-compose.yml`.
+
+Quick check dual-interface:
+
+```bash
+# from repository root
+python -m pytest tests/unit/test_api_jobs.py tests/unit/test_run_service.py tests/unit/test_worker_executor.py -v
+(cd web && npm test)
+docker compose -f infra/docker/docker-compose.yml config
+```
+
+### Industrial Ops Glass Web UI (foundation status)
+
+Web package saat ini berfungsi sebagai fondasi UI yang sudah tervalidasi lewat test, namun belum diposisikan sebagai runtime service produksi siap pakai (build/deploy production belum menjadi default path di repo ini):
+- **Home (`/`)**: command-center entrypoint dengan headline operasional, KPI card, dan quick actions.
+- **Jobs (`/jobs`)**: form manual run yang aksesibel, action `Run Now`, dan status queue/table dengan badge semantik.
+- **History (`/history`)**: state handling lengkap (loading, error banner, empty state `No runs yet`) plus pencarian client-side.
+- **Cross-cutting hardening**: responsive layout mobile/desktop, semantic landmarks, focus-visible styling, dan reduced-motion support.
+
+Verifikasi fondasi web + backend lokal:
+
+```bash
+# from repository root
+(cd web && npm test)
+python -m pytest tests/unit/test_api_jobs.py tests/unit/test_run_service.py tests/unit/test_worker_executor.py -v
+docker compose -f infra/docker/docker-compose.yml config
+```
+
 ## Quick Start (3 langkah)
 1) Install aplikasi via pipx:
    ```bash
@@ -128,7 +163,7 @@ Contoh update yang sudah dipakai saat ini:
 - Init config sample: `monitoring-hub --init-config`
 
 Daftar check valid untuk `--check`:
-`health`, `cost`, `guardduty`, `cloudwatch`, `notifications`, `backup`, `daily-arbel`, `ec2list`.
+`health`, `cost`, `guardduty`, `cloudwatch`, `notifications`, `backup`, `daily-arbel`, `daily-budget`, `ec2list`, `alarm_verification`.
 
 ## Slack report routing (opsional)
 
@@ -294,8 +329,8 @@ Catatan UI migration:
 ```
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-python monitoring_hub.py      # atau: monitoring_hub.py --check health --profile myprof
+pip install -e .
+monitoring-hub                # atau: monitoring-hub --check health --profile myprof
 ```
 
 ## Catatan penggunaan

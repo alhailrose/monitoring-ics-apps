@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 import boto3
 
 from src.checks.common.base import BaseChecker
+from src.checks.common.aws_errors import is_credential_error
 
 
 WIB = timezone(timedelta(hours=7))
@@ -225,6 +226,8 @@ class AlarmVerificationChecker(BaseChecker):
                 "alarms": alarms_result,
             }
         except Exception as exc:
+            if is_credential_error(exc):
+                return self._error_result(exc, profile, account_id)
             return {
                 "status": "error",
                 "profile": profile,

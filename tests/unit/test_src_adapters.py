@@ -21,4 +21,5 @@ def test_src_core_job_types_are_exported():
 
 def test_src_api_placeholder_shape():
     app = create_app()
-    assert app.get("status") == "not-implemented"
+    assert app.title == "Monitoring Hub API"
+    assert callable(app.openapi)

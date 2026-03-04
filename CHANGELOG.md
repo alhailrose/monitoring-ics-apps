@@ -7,13 +7,24 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Alarm verification sekarang menyertakan konteks status saat ini (`ALARM`/`OK`) dan history breach terbaru.
 - Tambah pengujian:
-  - `tests/test_alarm_verification.py` untuk batas durasi 10 menit dan status terkini.
-  - `tests/test_whatsapp_alarm_report.py` untuk validasi format WhatsApp klien.
+  - `tests/unit/test_alarm_verification.py` untuk batas durasi 10 menit dan status terkini.
+  - `tests/unit/test_whatsapp_alarm_report.py` untuk validasi format WhatsApp klien.
 - Struktur target aplikasi `src/` untuk layer `app`, `core`, `providers`, `checks`, dan `configs`.
 - Modul runner core kanonik di `src/core/engine` + model di `src/core/models`.
 - Loader konfigurasi customer kanonik di `src/configs/loader.py`.
-- Integrasi Slack command runner di `monitoring_hub/integrations/slack`.
+- Integrasi Slack command runner di `src/integrations/slack`.
 - Penataan test suite ke `tests/unit` dan `tests/integration`.
+- Runtime settings untuk mode `local` dan `api` (`src/app/settings.py`).
+- Model + repository penyimpanan normalized job history (`src/db/*`).
+- API endpoint manual trigger & history (`/api/v1/jobs`, `/api/v1/history`).
+- Worker execution pipeline untuk persist hasil normalized (`src/app/worker/*`).
+- Scaffold web UI untuk manual run dan history (`web/`).
+- Stack deployment single-server (`infra/docker/docker-compose.yml`, `infra/docker/nginx.conf`).
+- Industrial Ops Glass UI foundation untuk web app (tervalidasi lewat test, namun belum diposisikan sebagai runtime service produksi siap pakai):
+  - Home command-center dengan KPI + quick actions.
+  - Jobs page dengan form manual run aksesibel dan status table semantik.
+  - History page dengan loading/error/empty states dan filter client-side.
+  - Shared visual primitives + motion/accessibility hardening untuk pengalaman konsisten.
 
 ### Changed
 - Arbel flow di menu interaktif disederhanakan menjadi 3 mode utama: `RDS Monitoring`, `Alarm Verification`, `Backup`.
@@ -23,6 +34,8 @@ All notable changes to this project will be documented in this file.
 - Dokumentasi README diperbarui untuk mencakup semua fitur (single/all/arbel/nabati/cost report) beserta ringkasan command CLI.
 - Registry checks sekarang mengarah ke namespace `src.checks.*` sebagai jalur migrasi kanonik.
 - Entrypoint CLI legacy sekarang bertindak sebagai wrapper ke `src/app/cli/bootstrap.py`.
+- Requirement dependencies disejajarkan dengan `pyproject.toml` untuk runtime API/worker.
+- README diperbarui dengan status foundation Industrial Ops Glass UI dan langkah verifikasi web + backend lokal.
 
 ### Fixed
 - Kasus alarm yang sudah kembali `OK` sekarang tetap ditampilkan dengan history rentang waktu dan durasi breach.

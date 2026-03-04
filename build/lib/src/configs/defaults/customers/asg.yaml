@@ -1,0 +1,20 @@
+customer_id: asg
+display_name: ASG
+sso_session: null
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - health
+  - cost
+  - guardduty
+  - cloudwatch
+
+accounts:
+  - profile: asg
+    account_id: ""
+    display_name: "ASG"
+    region: ap-southeast-3

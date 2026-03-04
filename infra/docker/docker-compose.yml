@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-monitoring}
+      POSTGRES_USER: ${POSTGRES_USER:-monitor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-monitor}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-monitor} -d ${POSTGRES_DB:-monitoring}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: python:3.12-slim
+    working_dir: /app
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://monitor:monitor@postgres:5432/monitoring}
+      DEFAULT_REGION: ${DEFAULT_REGION:-ap-southeast-3}
+      MAX_WORKERS: ${MAX_WORKERS:-5}
+      EXECUTION_TIMEOUT: ${EXECUTION_TIMEOUT:-300}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    volumes:
+      - ../..:/app
+      - ${HOME}/.aws:/root/.aws:ro
+    command: >
+      sh -c "pip install --no-cache-dir . &&
+      uvicorn src.app.api.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

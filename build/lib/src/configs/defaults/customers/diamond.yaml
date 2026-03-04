@@ -1,0 +1,19 @@
+customer_id: diamond
+display_name: Diamond
+sso_session: sadewa-sso
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - health
+  - cost
+  - guardduty
+  - cloudwatch
+
+accounts:
+  - profile: Diamond
+    account_id: "464587839665"
+    display_name: "Diamond"

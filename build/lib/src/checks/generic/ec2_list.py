@@ -4,6 +4,7 @@ from datetime import datetime
 from botocore.exceptions import BotoCoreError, ClientError
 
 from src.checks.common.base import BaseChecker
+from src.checks.common.aws_errors import is_credential_error
 
 
 ALLOWED_SP_STATES = [
@@ -19,8 +20,8 @@ ALLOWED_SP_STATES = [
 
 
 class EC2ListChecker(BaseChecker):
-    def __init__(self, region="ap-southeast-3"):
-        super().__init__(region=region)
+    def __init__(self, region="ap-southeast-3", **kwargs):
+        super().__init__(region=region, **kwargs)
 
     def _list_savings_plans(self, session):
         client = session.client("savingsplans", region_name="us-east-1")
@@ -90,6 +91,8 @@ class EC2ListChecker(BaseChecker):
                 "instances": instances,
             }
         except (BotoCoreError, ClientError) as exc:
+            if is_credential_error(exc):
+                return self._error_result(exc, profile, account_id)
             return {
                 "status": "error",
                 "profile": profile,

@@ -15,7 +15,7 @@ def validate_customer_config(raw):
     for account in accounts:
         if not isinstance(account, dict):
             raise ValueError("account entry must be an object")
-        if not account.get("account_id"):
-            raise ValueError("account_id is required in account entry")
+        if not account.get("profile") and not account.get("account_id"):
+            raise ValueError("profile or account_id is required in account entry")
 
     return raw

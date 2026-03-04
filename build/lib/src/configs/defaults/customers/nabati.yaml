@@ -1,0 +1,85 @@
+customer_id: nabati
+display_name: Nabati
+sso_session: Nabati
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - health
+  - cost
+  - guardduty
+  - cloudwatch
+  - notifications
+  - backup
+
+accounts:
+  - profile: ksni-master
+    account_id: "317949653982"
+    display_name: "KSNI Master"
+
+  - profile: core-network-ksni
+    account_id: "207567759835"
+    display_name: "Core Network KSNI"
+
+  - profile: data-ksni
+    account_id: "563983755611"
+    display_name: "Data KSNI"
+
+  - profile: dc-trans-ksni
+    account_id: "982538789545"
+    display_name: "DC Trans KSNI"
+
+  - profile: edin-ksni
+    account_id: "288232812256"
+    display_name: "EDIN KSNI"
+
+  - profile: eds-ksni
+    account_id: "701824263187"
+    display_name: "EDS KSNI"
+
+  - profile: epc-ksni
+    account_id: "783764594649"
+    display_name: "EPC KSNI"
+
+  - profile: erp-ksni
+    account_id: "992382445286"
+    display_name: "ERP KSNI"
+
+  - profile: etl-ksni
+    account_id: "654654389300"
+    display_name: "ETL KSNI"
+
+  - profile: hc-assessment-ksni
+    account_id: "909927813600"
+    display_name: "HC Assessment KSNI"
+
+  - profile: hc-portal-ksni
+    account_id: "954030863852"
+    display_name: "HC Portal KSNI"
+
+  - profile: ngs-ksni
+    account_id: "296062577084"
+    display_name: "NGS KSNI"
+
+  - profile: outdig-ksni
+    account_id: "465455994566"
+    display_name: "Outdig KSNI"
+
+  - profile: outlet-ksni
+    account_id: "112555930839"
+    display_name: "Outlet KSNI"
+
+  - profile: q-devpro
+    account_id: "528160043048"
+    display_name: "Q DevPro"
+
+  - profile: sales-support-pma
+    account_id: "734881641265"
+    display_name: "Sales Support PMA"
+
+  - profile: website-ksni
+    account_id: "637423330091"
+    display_name: "Website KSNI"

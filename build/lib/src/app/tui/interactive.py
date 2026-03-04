@@ -3,7 +3,8 @@
 import questionary
 
 from src.app.tui import common
-from src.app.tui.flows import arbel, cloudwatch_cost, dashboard, nabati, settings
+from src.app.tui.flows import cloudwatch_cost, customer, dashboard, settings
+from src.configs.loader import load_customer_config
 from src.core.runtime.runners import (
     run_all_checks,
     run_group_specific,
@@ -42,10 +43,6 @@ def _render_main_dashboard():
     dashboard.render_main_dashboard(_is_dense_mode, _current_ui_mode, UI_MODES)
 
 
-def _render_single_check_dashboard():
-    dashboard.render_single_check_dashboard(_is_dense_mode)
-
-
 def _render_all_checks_dashboard(profile_count):
     dashboard.render_all_checks_dashboard(profile_count, _is_dense_mode)
 
@@ -54,12 +51,18 @@ def run_cloudwatch_cost_report():
     cloudwatch_cost.run_cloudwatch_cost_report()
 
 
-def run_arbel_check():
-    arbel.run_arbel_check(_is_dense_mode)
+def run_customer_report():
+    customer.run_customer_report()
 
 
-def run_nabati_check():
-    nabati.run_nabati_check()
+def run_aryanoble():
+    """Run Aryanoble sub-flow directly from main menu."""
+    try:
+        cfg = load_customer_config("aryanoble")
+    except Exception as exc:
+        print_error(f"Gagal load config aryanoble: {exc}")
+        return
+    customer._run_aryanoble_subflow(cfg)
 
 
 def run_settings_menu():
@@ -67,11 +70,83 @@ def run_settings_menu():
     _current_ui_mode = settings.run_settings_menu(_current_ui_mode, UI_MODES)
 
 
-def run_alarm_verification():
-    print_mini_banner()
-    print_section_header("Alarm Verification (>10m)", ICONS["alarm"])
+CHECK_CHOICES = [
+    questionary.Choice(f"{ICONS['health']} Health Events", value="health"),
+    questionary.Choice(f"{ICONS['cost']} Cost Anomalies", value="cost"),
+    questionary.Choice(f"{ICONS['guardduty']} GuardDuty Findings", value="guardduty"),
+    questionary.Choice(f"{ICONS['cloudwatch']} CloudWatch Alarms", value="cloudwatch"),
+    questionary.Choice(f"{ICONS['notifications']} Notifications", value="notifications"),
+    questionary.Choice(f"{ICONS['backup']} Backup Status", value="backup"),
+    questionary.Choice(f"{ICONS['alarm']} Alarm Verification (>10m)", value="alarm_verification"),
+    questionary.Choice(f"{ICONS['ec2list']} EC2 List", value="ec2list"),
+]
 
-    profiles, group_choice, back = common._pick_profiles(allow_multiple=True)
+
+def _pick_profiles_from_customers():
+    """Pick profiles from all customer configs, multi-select."""
+    from src.configs.loader import list_customers, load_customer_config
+
+    customers = list_customers()
+    if not customers:
+        print_error("Tidak ada customer config ditemukan.")
+        return [], None, False
+
+    all_profiles = []
+    for c in customers:
+        try:
+            cfg = load_customer_config(c["customer_id"])
+            for a in cfg.get("accounts", []):
+                profile = a.get("profile")
+                if profile:
+                    label = f"{a.get('display_name', profile)} [{c['display_name']}]"
+                    all_profiles.append((label, profile))
+        except Exception:
+            continue
+
+    if not all_profiles:
+        print_error("Tidak ada profil ditemukan di customer configs.")
+        return [], None, False
+
+    choices = [
+        questionary.Choice(label, value=profile, checked=True)
+        for label, profile in all_profiles
+    ]
+    selected = common._checkbox_prompt(
+        f"{ICONS['check']} Pilih Profil (multi-select)", choices
+    )
+    return selected or [], "All Customers", False
+
+
+def _run_quick_check():
+    """Quick Check flow: pick 1 check + profiles, run."""
+    print_mini_banner()
+    print_section_header("Quick Check", ICONS["single"])
+
+    # Pick 1 check
+    selected_check = common._select_prompt(
+        f"{ICONS['single']} Pilih Check", CHECK_CHOICES
+    )
+    if not selected_check:
+        return
+
+    # Pick profile source: All Customer or Local
+    source_choices = [
+        questionary.Choice(
+            f"{ICONS['star']} All Customer - Profil dari customer configs", value="customer"
+        ),
+        questionary.Choice(
+            f"{ICONS['ec2list']} Local Profiles - AWS CLI config", value="local"
+        ),
+    ]
+    source = common._select_prompt(f"{ICONS['settings']} Sumber Profil", source_choices)
+    if not source:
+        return
+
+    if source == "customer":
+        profiles, group_choice, back = _pick_profiles_from_customers()
+    else:
+        profiles, group_choice, back = common._pick_profiles(allow_multiple=True)
+
     if back:
         return
     if not profiles:
@@ -83,55 +158,34 @@ def run_alarm_verification():
         return
 
     if len(profiles) > 1:
-        run_group_specific(
-            "alarm_verification", profiles, region, group_name=group_choice
-        )
+        run_group_specific(selected_check, profiles, region, group_name=group_choice)
     else:
-        run_individual_check("alarm_verification", profiles[0], region)
+        run_individual_check(selected_check, profiles[0], region)
 
 
 def run_interactive():
     main_choices = [
         questionary.Choice(
-            f"{ICONS['single']} Single Check    Cek satu profil dengan detail",
-            value="single",
+            f"{ICONS['single']} Quick Check      Cek 1 service spesifik",
+            value="quick",
         ),
         questionary.Choice(
-            f"{ICONS['all']} All Checks      Ringkasan multi-profil (parallel)",
-            value="all",
+            f"{ICONS['arbel']} Aryanoble        RDS / Alarm / Budget / Backup",
+            value="aryanoble",
         ),
         questionary.Choice(
-            f"{ICONS['arbel']} Arbel Check     Backup & RDS untuk AryaNoble",
-            value="arbel",
+            f"{ICONS['all']} Customer Report  Daily monitoring report per customer",
+            value="customer",
         ),
         questionary.Choice(
-            f"{ICONS['cost']} Cost Report     CloudWatch cost & usage",
+            f"{ICONS['cost']} Cost Report      CloudWatch cost & usage",
             value="cw_cost",
         ),
         questionary.Choice(
-            f"{ICONS['settings']} Settings        Konfigurasi & info",
+            f"{ICONS['settings']} Settings         Konfigurasi & info",
             value="settings",
         ),
         questionary.Choice(f"{ICONS['exit']} Exit", value="exit"),
-    ]
-
-    check_choices = [
-        questionary.Choice(f"{ICONS['health']} Health Events", value="health"),
-        questionary.Choice(f"{ICONS['cost']} Cost Anomalies", value="cost"),
-        questionary.Choice(
-            f"{ICONS['guardduty']} GuardDuty Findings", value="guardduty"
-        ),
-        questionary.Choice(
-            f"{ICONS['cloudwatch']} CloudWatch Alarms", value="cloudwatch"
-        ),
-        questionary.Choice(
-            f"{ICONS['notifications']} Notifications", value="notifications"
-        ),
-        questionary.Choice(f"{ICONS['backup']} Backup Status", value="backup"),
-        questionary.Choice(
-            f"{ICONS['alarm']} Alarm Verification (>10m)", value="alarm_verification"
-        ),
-        questionary.Choice(f"{ICONS['ec2list']} EC2 List", value="ec2list"),
     ]
 
     while True:
@@ -150,13 +204,13 @@ def run_interactive():
             common._pause()
             continue
 
-        if main_choice == "arbel":
-            run_arbel_check()
+        if main_choice == "customer":
+            run_customer_report()
             common._pause()
             continue
 
-        if main_choice == "nabati":
-            run_nabati_check()
+        if main_choice == "aryanoble":
+            run_aryanoble()
             common._pause()
             continue
 
@@ -165,64 +219,8 @@ def run_interactive():
             common._pause()
             continue
 
-        if main_choice == "single":
-            print_mini_banner()
-            print_section_header("Single Check", ICONS["single"])
-            _render_single_check_dashboard()
-
-            check = common._select_prompt(
-                f"{ICONS['single']} Pilih Check", check_choices
-            )
-            if not check:
-                continue
-
-            allow_multi = check in ["backup", "daily-arbel"]
-            profiles, group_choice, back = common._pick_profiles(
-                allow_multiple=allow_multi
-            )
-            if back:
-                continue
-            if not profiles:
-                print_error("Tidak ada profil dipilih.")
-                common._pause()
-                continue
-
-            region = common._choose_region(profiles)
-            if region is None:
-                continue
-
-            if check in ["backup", "daily-arbel"] and len(profiles) > 1:
-                run_group_specific(check, profiles, region, group_name=group_choice)
-            else:
-                run_individual_check(check, profiles[0], region)
-
-            common._pause()
-            continue
-
-        if main_choice == "all":
-            print_mini_banner()
-            print_section_header("All Checks", ICONS["all"])
-
-            profiles, group_choice, back = common._pick_profiles(allow_multiple=True)
-            if back:
-                continue
-            if not profiles:
-                print_error("Tidak ada profil dipilih.")
-                common._pause()
-                continue
-
-            _render_all_checks_dashboard(len(profiles))
-
-            region = common._choose_region(profiles)
-            if region is None:
-                continue
-
-            run_all_checks(
-                profiles,
-                region,
-                group_name=group_choice,
-                exclude_backup_rds=True,
-            )
+        if main_choice == "quick":
+            _run_quick_check()
             common._pause()
             continue
 
