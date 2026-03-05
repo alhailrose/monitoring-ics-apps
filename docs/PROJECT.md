@@ -401,6 +401,20 @@ pip install -e .
 monitoring-hub
 ```
 
+Command setup customer di TUI/CLI:
+
+```bash
+monitoring-hub customer scan
+monitoring-hub customer assign <customer_id>
+monitoring-hub customer checks <customer_id>
+monitoring-hub customer validate <customer_id>
+```
+
+Perilaku selection terbaru pada Customer Report:
+- sumber akun dari customer mapping YAML
+- checks dan akun default tidak auto selected
+- tersedia search keyword + aksi pilih massal (`select all` / `clear all`)
+
 ---
 
 ## Integrasi Slack

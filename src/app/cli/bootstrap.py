@@ -72,10 +72,19 @@ def init_config():
 
 def _handle_customer_subcommand(argv):
     """Handle 'monitoring-hub customer <action> [args]' subcommands."""
-    from src.app.cli.customer_commands import customer_init, customer_list, customer_validate
+    from src.app.cli.customer_commands import (
+        customer_assign,
+        customer_checks,
+        customer_init,
+        customer_list,
+        customer_scan,
+        customer_validate,
+    )
 
     if not argv:
-        print_error("Usage: monitoring-hub customer <init|list|validate> [customer_id]")
+        print_error(
+            "Usage: monitoring-hub customer <init|list|validate|scan|assign|checks> [customer_id]"
+        )
         sys.exit(1)
 
     action = argv[0]
@@ -98,8 +107,26 @@ def _handle_customer_subcommand(argv):
         success = customer_validate(argv[1])
         sys.exit(0 if success else 1)
 
+    if action == "scan":
+        customer_scan()
+        return
+
+    if action == "assign":
+        if len(argv) < 2:
+            print_error("Usage: monitoring-hub customer assign <customer_id>")
+            sys.exit(1)
+        success = customer_assign(argv[1])
+        sys.exit(0 if success else 1)
+
+    if action == "checks":
+        if len(argv) < 2:
+            print_error("Usage: monitoring-hub customer checks <customer_id>")
+            sys.exit(1)
+        success = customer_checks(argv[1])
+        sys.exit(0 if success else 1)
+
     print_error(f"Unknown customer action: {action}")
-    print_info("Available: init, list, validate")
+    print_info("Available: init, list, validate, scan, assign, checks")
     sys.exit(1)
 
 

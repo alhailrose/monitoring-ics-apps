@@ -2,6 +2,7 @@
 
 import sys
 from time import monotonic
+from typing import Iterable
 
 import questionary
 
@@ -69,6 +70,66 @@ def _checkbox_prompt(prompt, choices):
         _handle_interrupt(exit_direct=True)
         return None
     return ans or None
+
+
+def filter_values_by_query(values: Iterable[str], query: str | None):
+    """Return values that contain query (case-insensitive)."""
+    all_values = list(values)
+    normalized_query = (query or "").strip().lower()
+    if not normalized_query:
+        return all_values
+
+    return [value for value in all_values if normalized_query in value.lower()]
+
+
+def apply_bulk_action(
+    values: Iterable[str], action: str, selected_values: Iterable[str] | None = None
+):
+    """Apply a bulk selection action to values."""
+    all_values = list(values)
+    if action == "select_all":
+        return all_values
+    if action == "clear_all":
+        return []
+    if action == "manual":
+        return list(selected_values or [])
+
+    raise ValueError(f"Unsupported bulk action: {action}")
+
+
+def _searchable_multi_select_prompt(prompt, choices, ask_search=True):
+    """Prompt user for optional search + bulk action + manual multi-select."""
+    available_choices = list(choices)
+
+    if ask_search:
+        try:
+            search_query = questionary.text(
+                "Kata kunci pencarian (opsional):",
+                style=CUSTOM_STYLE,
+                default="",
+            ).ask()
+        except KeyboardInterrupt:
+            _handle_interrupt(exit_direct=True)
+            return []
+        available_choices = filter_values_by_query(available_choices, search_query)
+
+    if not available_choices:
+        return []
+
+    action_choices = [
+        questionary.Choice("Pilih manual", value="manual"),
+        questionary.Choice("Pilih semua", value="select_all"),
+        questionary.Choice("Bersihkan semua", value="clear_all"),
+    ]
+    action = _select_prompt("Aksi pemilihan", action_choices, default="manual")
+    if not action:
+        return []
+
+    if action in {"select_all", "clear_all"}:
+        return apply_bulk_action(available_choices, action)
+
+    selected_values = _checkbox_prompt(prompt, available_choices)
+    return apply_bulk_action(available_choices, "manual", selected_values)
 
 
 def _choose_region(selected_profiles):

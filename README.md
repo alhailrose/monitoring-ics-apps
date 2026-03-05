@@ -161,6 +161,15 @@ Contoh update yang sudah dipakai saat ini:
 - Semua check: `monitoring-hub --all --group <group>`
 - Include backup+rds di mode all: `monitoring-hub --all --group <group> --include-backup-rds`
 - Init config sample: `monitoring-hub --init-config`
+- Customer setup scan mapping: `monitoring-hub customer scan`
+- Customer setup assign akun: `monitoring-hub customer assign <customer_id>`
+- Customer setup set checks: `monitoring-hub customer checks <customer_id>`
+- Validasi config customer: `monitoring-hub customer validate <customer_id>`
+
+### Catatan flow Customer Report (TUI)
+- Sumber akun menggunakan customer mapping (`configs/customers/*.yaml`), bukan local profile picker.
+- Pilihan checks dan akun default tidak auto-terpilih.
+- Sebelum pilih item tersedia keyword search + aksi `Select All` / `Clear All`.
 
 Daftar check valid untuk `--check`:
 `health`, `cost`, `guardduty`, `cloudwatch`, `notifications`, `backup`, `daily-arbel`, `daily-budget`, `ec2list`, `alarm_verification`.

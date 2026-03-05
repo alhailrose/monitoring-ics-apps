@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import boto3
 import yaml
 
 from src.configs.loader import list_customers, load_customer_config, _repo_root
 from src.configs.schema.validator import validate_customer_config
 from src.core.runtime.config import AVAILABLE_CHECKS
+from src.core.runtime.utils import list_local_profiles
 from src.core.runtime.ui import console, ICONS
 
 
@@ -23,6 +25,89 @@ SCAFFOLD_TEMPLATE = {
     "checks": [],
     "accounts": [],
 }
+
+
+def classify_profiles_by_mapping(all_profiles: list[str], customers: list[dict]) -> dict[str, list[str]]:
+    """Classify profiles as mapped/unmapped based on customer accounts."""
+    mapped_profiles = {
+        account.get("profile")
+        for customer in customers
+        for account in (customer.get("accounts") or [])
+        if account.get("profile")
+    }
+
+    mapped = [profile for profile in all_profiles if profile in mapped_profiles]
+    unmapped = [profile for profile in all_profiles if profile not in mapped_profiles]
+
+    return {"mapped": mapped, "unmapped": unmapped}
+
+
+def sanitize_checks(selected_checks: list[str]) -> list[str]:
+    """Normalize and keep only known checks from AVAILABLE_CHECKS."""
+    valid_checks = set(AVAILABLE_CHECKS.keys())
+    sanitized: list[str] = []
+    seen: set[str] = set()
+
+    for check_name in selected_checks:
+        if not isinstance(check_name, str):
+            continue
+        normalized = check_name.strip()
+        if normalized in valid_checks and normalized not in seen:
+            sanitized.append(normalized)
+            seen.add(normalized)
+
+    return sanitized
+
+
+def upsert_customer_account(
+    customer_cfg: dict,
+    profile: str,
+    account_id: str,
+    account_name: str | None = None,
+) -> dict:
+    """Append or update an account entry by profile in customer config."""
+    accounts = list(customer_cfg.get("accounts") or [])
+
+    account_entry = {
+        "profile": profile,
+        "account_id": str(account_id),
+    }
+    if account_name:
+        account_entry["account_name"] = account_name
+
+    for index, account in enumerate(accounts):
+        if account.get("profile") == profile:
+            updated = dict(account)
+            updated.update(account_entry)
+            accounts[index] = updated
+            customer_cfg["accounts"] = accounts
+            return customer_cfg
+
+    accounts.append(account_entry)
+    customer_cfg["accounts"] = accounts
+    return customer_cfg
+
+
+def ensure_profile_assignment_allowed(
+    profile: str,
+    customers: list[dict],
+    target_customer_id: str,
+    override: bool = False,
+) -> None:
+    """Raise when a profile is already assigned to another customer."""
+    if override:
+        return
+
+    for customer in customers:
+        customer_id = customer.get("customer_id")
+        if customer_id == target_customer_id:
+            continue
+
+        for account in (customer.get("accounts") or []):
+            if account.get("profile") == profile:
+                raise ValueError(
+                    f"Profile '{profile}' is already assigned to customer '{customer_id}'"
+                )
 
 
 def customer_init(customer_id: str) -> bool:
@@ -131,4 +216,235 @@ def customer_validate(customer_id: str) -> bool:
 
     console.print(f"[green]{ICONS['check']} {customer_id} ({display_name}) is valid[/green]")
     console.print(f"  Accounts: {account_count} | Checks: {', '.join(checks) or 'none'} | Slack: {slack_ok}")
+    return True
+
+
+def _customer_yaml_path(customer_id: str) -> Path:
+    return _repo_root() / "configs" / "customers" / f"{customer_id}.yaml"
+
+
+def _load_customer_yaml(customer_id: str) -> tuple[Path | None, dict | None]:
+    target = _customer_yaml_path(customer_id)
+    if not target.exists():
+        return None, None
+    with open(target, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    return target, raw
+
+
+def _save_customer_yaml(path: Path, cfg: dict) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+
+def _load_customer_configs_with_errors() -> tuple[list[dict], list[str]]:
+    configs = []
+    errors = []
+    for item in list_customers():
+        customer_id = item.get("customer_id")
+        if not customer_id:
+            continue
+        try:
+            configs.append(load_customer_config(customer_id))
+        except Exception as exc:
+            errors.append(f"{customer_id}: {exc}")
+    return configs, errors
+
+
+def _confirm(message: str, default: bool = False) -> bool:
+    try:
+        import questionary
+
+        ans = questionary.confirm(message, default=default).ask()
+        return bool(ans)
+    except (ImportError, ModuleNotFoundError):
+        default_label = "Y/n" if default else "y/N"
+        answer = input(f"{message} [{default_label}] ").strip().lower()
+        if not answer:
+            return default
+        return answer in ("y", "yes")
+
+
+def _select_many(message: str, choices: list[str], checked: set[str] | None = None) -> list[str] | None:
+    checked = checked or set()
+    if not choices:
+        return []
+
+    try:
+        import questionary
+
+        q_choices = [
+            questionary.Choice(choice, value=choice, checked=choice in checked)
+            for choice in choices
+        ]
+        return questionary.checkbox(message, choices=q_choices).ask()
+    except (ImportError, ModuleNotFoundError):
+        console.print(message)
+        for i, choice in enumerate(choices, start=1):
+            marker = "*" if choice in checked else " "
+            console.print(f"  [{i}] {choice} {marker}")
+        raw = input("Select by number (comma-separated, blank to cancel): ").strip()
+        if not raw:
+            return None
+        selected = []
+        for token in raw.split(","):
+            token = token.strip()
+            if not token.isdigit():
+                continue
+            idx = int(token)
+            if 1 <= idx <= len(choices):
+                value = choices[idx - 1]
+                if value not in selected:
+                    selected.append(value)
+        return selected
+
+
+def _detect_account_id(profile: str) -> str:
+    try:
+        session = boto3.Session(profile_name=profile)
+        identity = session.client("sts").get_caller_identity()
+        account_id = identity.get("Account")
+        return str(account_id) if account_id else "Unknown"
+    except Exception:
+        return "Unknown"
+
+
+def customer_scan() -> None:
+    """Scan local AWS profiles and show mapped/unmapped summary."""
+    profiles = sorted(list_local_profiles())
+    customers, errors = _load_customer_configs_with_errors()
+    classification = classify_profiles_by_mapping(profiles, customers)
+
+    mapped = classification["mapped"]
+    unmapped = classification["unmapped"]
+
+    console.print(f"[bold cyan]{ICONS['star']} Customer Profile Scan[/bold cyan]")
+    console.print(f"  Local profiles : {len(profiles)}")
+    console.print(f"  Mapped         : {len(mapped)}")
+    console.print(f"  Unmapped       : {len(unmapped)}")
+
+    if mapped:
+        console.print("\n[green]Mapped profiles:[/green]")
+        for profile in mapped:
+            console.print(f"  - {profile}")
+
+    if errors:
+        console.print("\n[yellow]Unreadable customer configs:[/yellow]")
+        for err in errors:
+            console.print(f"  - {err}")
+
+    if unmapped:
+        console.print("\n[yellow]Unmapped profiles:[/yellow]")
+        for profile in unmapped:
+            console.print(f"  - {profile}")
+
+
+def customer_assign(customer_id: str) -> bool:
+    """Assign one or more local unmapped profiles to a customer config."""
+    target_path, target_cfg = _load_customer_yaml(customer_id)
+    if target_path is None or target_cfg is None:
+        console.print(f"[red]{ICONS['error']} Customer config not found: {customer_id}[/red]")
+        return False
+
+    profiles = sorted(list_local_profiles())
+    customers, errors = _load_customer_configs_with_errors()
+    if errors:
+        console.print(
+            "[red]Cannot continue assignment while customer configs are unreadable:[/red]"
+        )
+        for err in errors:
+            console.print(f"  - {err}")
+        console.print("[dim]Fix invalid customer config(s) and retry.[/dim]")
+        return False
+
+    classification = classify_profiles_by_mapping(profiles, customers)
+    unmapped = classification["unmapped"]
+
+    if not unmapped:
+        console.print("[yellow]No unmapped local AWS profiles found.[/yellow]")
+        return True
+
+    selected = _select_many(
+        f"Select profile(s) to assign to '{customer_id}'",
+        unmapped,
+    )
+    if selected is None:
+        console.print("[dim]Assignment canceled.[/dim]")
+        return False
+    if not selected:
+        console.print("[yellow]No profiles selected.[/yellow]")
+        return False
+
+    changed = False
+    assigned = 0
+    skipped = 0
+
+    for profile in selected:
+        allow = True
+        try:
+            ensure_profile_assignment_allowed(
+                profile=profile,
+                customers=customers,
+                target_customer_id=customer_id,
+                override=False,
+            )
+        except ValueError as exc:
+            allow = _confirm(f"{exc}. Override and continue?", default=False)
+
+        if not allow:
+            skipped += 1
+            continue
+
+        account_id = _detect_account_id(profile)
+        if account_id == "Unknown":
+            proceed = _confirm(
+                f"Could not detect account ID for '{profile}'. Save with account_id='Unknown'?",
+                default=False,
+            )
+            if not proceed:
+                console.print(f"[yellow]Skipped '{profile}' (unknown account_id).[/yellow]")
+                skipped += 1
+                continue
+
+        upsert_customer_account(target_cfg, profile=profile, account_id=account_id)
+        assigned += 1
+        changed = True
+
+    if not changed:
+        console.print("[yellow]No changes were applied.[/yellow]")
+        return False
+
+    _save_customer_yaml(target_path, target_cfg)
+    console.print(
+        f"[green]{ICONS['check']} Updated {customer_id}: assigned {assigned} profile(s)[/green]"
+    )
+    if skipped:
+        console.print(f"[dim]Skipped {skipped} profile(s).[/dim]")
+    return True
+
+
+def customer_checks(customer_id: str) -> bool:
+    """Interactively update checks list for a customer config."""
+    target_path, target_cfg = _load_customer_yaml(customer_id)
+    if target_path is None or target_cfg is None:
+        console.print(f"[red]{ICONS['error']} Customer config not found: {customer_id}[/red]")
+        return False
+
+    check_names = sorted(AVAILABLE_CHECKS.keys())
+    existing_checks = set(target_cfg.get("checks") or [])
+    selected = _select_many(
+        f"Select checks for '{customer_id}'",
+        check_names,
+        checked=existing_checks,
+    )
+    if selected is None:
+        console.print("[dim]Checks update canceled.[/dim]")
+        return False
+
+    target_cfg["checks"] = sanitize_checks(selected)
+    _save_customer_yaml(target_path, target_cfg)
+    checks_str = ", ".join(target_cfg["checks"]) or "none"
+    console.print(
+        f"[green]{ICONS['check']} Updated checks for {customer_id}: {checks_str}[/green]"
+    )
     return True

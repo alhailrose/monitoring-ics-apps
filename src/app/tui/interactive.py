@@ -92,14 +92,17 @@ def _pick_profiles_from_customers():
         return [], None, False
 
     all_profiles = []
+    label_to_profile = {}
     for c in customers:
         try:
             cfg = load_customer_config(c["customer_id"])
             for a in cfg.get("accounts", []):
                 profile = a.get("profile")
                 if profile:
-                    label = f"{a.get('display_name', profile)} [{c['display_name']}]"
-                    all_profiles.append((label, profile))
+                    customer_label = c.get("display_name") or c.get("customer_id", "")
+                    label = f"{a.get('display_name', profile)} [{customer_label}] ({profile})"
+                    all_profiles.append(label)
+                    label_to_profile[label] = profile
         except Exception:
             continue
 
@@ -107,14 +110,22 @@ def _pick_profiles_from_customers():
         print_error("Tidak ada profil ditemukan di customer configs.")
         return [], None, False
 
-    choices = [
-        questionary.Choice(label, value=profile, checked=True)
-        for label, profile in all_profiles
-    ]
-    selected = common._checkbox_prompt(
-        f"{ICONS['check']} Pilih Profil (multi-select)", choices
+    selected_labels = common._searchable_multi_select_prompt(
+        f"{ICONS['check']} Pilih Profil (multi-select)",
+        all_profiles,
     )
-    return selected or [], "All Customers", False
+    if not selected_labels:
+        return [], "All Customers", False
+
+    selected_profiles = []
+    seen_profiles = set()
+    for label in selected_labels:
+        profile = label_to_profile.get(label)
+        if profile and profile not in seen_profiles:
+            selected_profiles.append(profile)
+            seen_profiles.add(profile)
+
+    return selected_profiles, "All Customers", False
 
 
 def _run_quick_check():
@@ -129,23 +140,7 @@ def _run_quick_check():
     if not selected_check:
         return
 
-    # Pick profile source: All Customer or Local
-    source_choices = [
-        questionary.Choice(
-            f"{ICONS['star']} All Customer - Profil dari customer configs", value="customer"
-        ),
-        questionary.Choice(
-            f"{ICONS['ec2list']} Local Profiles - AWS CLI config", value="local"
-        ),
-    ]
-    source = common._select_prompt(f"{ICONS['settings']} Sumber Profil", source_choices)
-    if not source:
-        return
-
-    if source == "customer":
-        profiles, group_choice, back = _pick_profiles_from_customers()
-    else:
-        profiles, group_choice, back = common._pick_profiles(allow_multiple=True)
+    profiles, group_choice, back = _pick_profiles_from_customers()
 
     if back:
         return

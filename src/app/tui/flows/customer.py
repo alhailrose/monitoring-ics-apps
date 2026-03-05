@@ -309,16 +309,12 @@ def _run_generic_customer(cfg):
         return None
 
     # Let operator select/deselect checks
-    check_choices = [
-        questionary.Choice(c, value=c, checked=True)
-        for c in checks
-        if c in AVAILABLE_CHECKS
-    ]
+    check_choices = [c for c in checks if c in AVAILABLE_CHECKS]
     if not check_choices:
         print_error(f"Tidak ada checks valid untuk {display_name}")
         return None
 
-    selected_checks = common._checkbox_prompt(
+    selected_checks = common._searchable_multi_select_prompt(
         f"{ICONS['check']} Checks untuk {display_name}", check_choices
     )
     if not selected_checks:
@@ -326,16 +322,9 @@ def _run_generic_customer(cfg):
         return None
 
     # Let operator select/deselect accounts
-    account_choices = [
-        questionary.Choice(
-            f"{a.get('display_name', a['profile'])} ({a.get('account_id', 'N/A')})",
-            value=a["profile"],
-            checked=True,
-        )
-        for a in accounts
-    ]
+    account_choices = [a["profile"] for a in accounts]
 
-    selected_profiles = common._checkbox_prompt(
+    selected_profiles = common._searchable_multi_select_prompt(
         f"{ICONS['check']} Akun untuk {display_name}", account_choices
     )
     if not selected_profiles:
@@ -445,13 +434,36 @@ def run_customer_report():
 
     _render_customer_dashboard(customers)
 
+    try:
+        search_query = questionary.text(
+            "Kata kunci customer (opsional):",
+            default="",
+        ).ask()
+    except KeyboardInterrupt:
+        common._handle_interrupt(exit_direct=True)
+        return
+
+    normalized_search = (search_query or "").strip().lower()
+    filtered_customers = customers
+    if normalized_search:
+        filtered_customers = [
+            c
+            for c in customers
+            if normalized_search
+            in f"{c.get('display_name', c.get('customer_id', ''))} {c.get('customer_id', '')}".lower()
+        ]
+
+    if not filtered_customers:
+        print_error("Tidak ada customer yang cocok dengan kata kunci.")
+        return
+
     # Pick customer
     customer_choices = [
         questionary.Choice(
             f"{c['display_name']} ({c['account_count']} akun)",
             value=c["customer_id"],
         )
-        for c in customers
+        for c in filtered_customers
     ]
 
     selected_id = common._select_prompt(
