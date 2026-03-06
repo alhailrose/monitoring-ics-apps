@@ -240,23 +240,28 @@ def build_huawei_legacy_consolidated_report(
 
         if not mem_has_data:
             lines.append("   Data utilisasi memory tidak tersedia pada periode ini.")
-        elif float(mem_peak) <= rise_threshold:
-            lines.append(
-                f"   Utilisasi memory tidak melewati ambang {rise_threshold:.0f}%; rata-rata 12 jam sekitar {_fmt_pct(mem_avg)} "
-                f"dengan puncak {_fmt_pct(mem_peak)} ({mem_host})."
-            )
         else:
-            behavior = classify_huawei_memory_behavior(mem_row, rise_threshold)
-            if behavior == "HIGH_STABLE":
+            if not isinstance(mem_peak, (int, float)):
+                lines.append("   Data utilisasi memory tidak tersedia pada periode ini.")
+                continue
+            mem_peak_value = mem_peak
+            if mem_peak_value <= rise_threshold:
                 lines.append(
-                    f"   Utilisasi memory berada pada level tinggi (>{rise_threshold:.0f}%) dan cenderung stabil; rata-rata 12 jam sekitar "
-                    f"{_fmt_pct(mem_avg)} dengan puncak {_fmt_pct(mem_peak)} ({mem_host})."
+                    f"   Utilisasi memory tidak melewati ambang {rise_threshold:.0f}%; rata-rata 12 jam sekitar {_fmt_pct(mem_avg)} "
+                    f"dengan puncak {_fmt_pct(mem_peak)} ({mem_host})."
                 )
             else:
-                lines.append(
-                    f"   Terdapat kenaikan signifikan memory (>{rise_threshold:.0f}%) dengan puncak {_fmt_pct(mem_peak)} pada {mem_host}, "
-                    f"dengan rentang kenaikan {huawei_time_range_short(mem_row)}."
-                )
+                behavior = classify_huawei_memory_behavior(mem_row, rise_threshold)
+                if behavior == "HIGH_STABLE":
+                    lines.append(
+                        f"   Utilisasi memory berada pada level tinggi (>{rise_threshold:.0f}%) dan cenderung stabil; rata-rata 12 jam sekitar "
+                        f"{_fmt_pct(mem_avg)} dengan puncak {_fmt_pct(mem_peak)} ({mem_host})."
+                    )
+                else:
+                    lines.append(
+                        f"   Terdapat spike sesaat pada memory dengan puncak {_fmt_pct(mem_peak)} ({mem_host}); "
+                        "tidak dijadikan alert utama."
+                    )
 
         spikes: list[str] = []
         stable: list[str] = []
@@ -272,12 +277,10 @@ def build_huawei_legacy_consolidated_report(
 
         lines.append("")
         lines.append("   [BLOCK - SPIKE / IDLE TINGGI]")
-        if spikes:
-            lines.append(f"   - SPIKE: {', '.join(spikes)}.")
         if stable:
             lines.append(f"   - HIGH-STABLE: {', '.join(stable)}.")
-        if not spikes and not stable:
-            lines.append("   - Tidak ada temuan SPIKE/HIGH-STABLE pada periode ini.")
+        if not stable:
+            lines.append("   - Tidak ada temuan HIGH-STABLE pada periode ini.")
         lines.append("   - IDLE tinggi tidak dijadikan alert utama karena laporan menggunakan metrik usage.")
         lines.append("")
 

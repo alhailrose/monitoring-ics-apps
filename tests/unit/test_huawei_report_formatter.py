@@ -118,3 +118,45 @@ def test_build_huawei_legacy_consolidated_report_summarizes_no_data_accounts_at_
     assert "Akun tanpa data utilisasi:" in text
     assert "- dh_log" in text
     assert "dh_prod_nonerp" not in text.split("Akun tanpa data utilisasi:", 1)[1]
+
+
+def test_build_huawei_legacy_consolidated_report_does_not_promote_spike_as_alert():
+    all_results = {
+        "dh_prod_nonerp-ro": {
+            "status": "success",
+            "account": "dh_prod_nonerp",
+            "rise_threshold": 70.0,
+            "util_window": {"to": "2026-03-06 10:00:00 WIB"},
+            "util": {
+                "cpu_avg_12h": 4.0,
+                "cpu_peak_overall": {"name": "app-1", "peak": 8.0},
+                "mem_avg_12h": 35.0,
+                "mem_peak_overall": {
+                    "name": "db-1",
+                    "peak": 86.1,
+                    "latest": 41.0,
+                    "avg_12h": 35.0,
+                    "rise_start_ms": 1772653500000,
+                    "peak_time_ms": 1772654100000,
+                },
+                "top_mem_hot": [
+                    {
+                        "name": "db-1",
+                        "peak": 86.1,
+                        "latest": 41.0,
+                        "avg_12h": 35.0,
+                        "behavior": "SPIKE",
+                    }
+                ],
+            },
+        }
+    }
+
+    text = build_huawei_legacy_consolidated_report(
+        all_results,
+        errors=[],
+        ordered_profiles=["dh_prod_nonerp-ro"],
+    )
+
+    assert "Terdapat kenaikan signifikan memory" not in text
+    assert "- SPIKE:" not in text
