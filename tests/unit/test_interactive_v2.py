@@ -187,6 +187,34 @@ def test_customer_report_dispatches_flow(monkeypatch):
     assert calls["pause"] == 1
 
 
+def test_huawei_utilization_dispatches_flow(monkeypatch):
+    """Huawei Utilization menu should dispatch to dedicated Huawei flow."""
+    from src.app.tui import common
+
+    selections = iter(["huawei_util", "exit"])
+    calls = {"huawei": 0, "pause": 0}
+
+    monkeypatch.setattr(
+        common, "_select_prompt", lambda *args, **kwargs: next(selections)
+    )
+    monkeypatch.setattr(
+        common, "_pause", lambda: calls.__setitem__("pause", calls["pause"] + 1)
+    )
+    monkeypatch.setattr(interactive.console, "clear", lambda: None)
+    monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
+    monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
+    monkeypatch.setattr(
+        interactive,
+        "run_huawei_utilization",
+        lambda: calls.__setitem__("huawei", calls["huawei"] + 1),
+    )
+
+    interactive.run_interactive()
+
+    assert calls["huawei"] == 1
+    assert calls["pause"] == 1
+
+
 def test_check_choices_do_not_include_daily_arbel():
     """CHECK_CHOICES should not include daily-arbel (it's customer-specific)."""
     check_values = [c.value for c in interactive.CHECK_CHOICES]

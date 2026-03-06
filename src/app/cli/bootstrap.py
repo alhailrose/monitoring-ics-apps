@@ -161,7 +161,7 @@ def main():
   # Initialize config file
   monitoring-hub --init-config
 
-{ICONS["check"]} Available checks: health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list
+{ICONS["check"]} Available checks: health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list, huawei-ecs-util
 
 {ICONS["settings"]} Config file: {CONFIG_FILE}
         """,
@@ -177,7 +177,7 @@ def main():
     )
     parser.add_argument(
         "--check",
-        help="Run specific check (health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list)",
+        help="Run specific check (health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list, huawei-ecs-util)",
     )
     parser.add_argument(
         "--all", action="store_true", help="Run all checks (summary mode)"
@@ -288,14 +288,14 @@ def main():
         print_error("No profiles resolved from provided arguments")
         sys.exit(1)
 
-    resolved_region = resolve_region(profiles, args.region)
+    if args.check == "huawei-ecs-util" and not args.region:
+        resolved_region = "ap-southeast-4"
+    else:
+        resolved_region = resolve_region(profiles, args.region)
     exclude_backup_rds = not args.include_backup_rds
 
     if args.check:
-        if (
-            args.check in ["backup", "daily-arbel", "notifications"]
-            and len(profiles) > 1
-        ):
+        if args.check in ["backup", "daily-arbel", "notifications", "huawei-ecs-util"] and len(profiles) > 1:
             run_group_specific(
                 args.check,
                 profiles,

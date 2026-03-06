@@ -23,6 +23,7 @@ from src.checks.aryanoble.daily_arbel import DailyArbelChecker
 from src.checks.generic.ec2_list import EC2ListChecker
 from src.checks.aryanoble.alarm_verification import AlarmVerificationChecker
 from src.checks.aryanoble.daily_budget import DailyBudgetChecker
+from src.checks.huawei.ecs_utilization import HuaweiECSUtilizationChecker
 
 from .config_loader import (
     get_profile_groups,
@@ -112,6 +113,7 @@ AVAILABLE_CHECKS = {
     "daily-budget": DailyBudgetChecker,
     "ec2list": EC2ListChecker,
     "alarm_verification": AlarmVerificationChecker,
+    "huawei-ecs-util": HuaweiECSUtilizationChecker,
 }
 
 # Checks to run in --all mode (excludes health only)

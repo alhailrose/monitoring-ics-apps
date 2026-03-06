@@ -1,0 +1,328 @@
+"""Huawei ECS utilization checker (Cloud Eye metrics via hcloud CLI)."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from datetime import datetime, timezone
+from typing import Any
+
+from src.checks.common.base import BaseChecker
+from src.core.formatting.reports import (
+    build_huawei_utilization_customer_report,
+    classify_huawei_memory_behavior,
+)
+
+
+def sanitize_json(raw: str) -> str:
+    start_obj = raw.find("{")
+    start_arr = raw.find("[")
+    starts = [s for s in (start_obj, start_arr) if s != -1]
+    if not starts:
+        return raw.strip()
+    return raw[min(starts) :].strip()
+
+
+def profile_to_account(profile: str) -> str:
+    return profile[:-3] if profile.endswith("-ro") else profile
+
+
+def classify_memory_behavior(row: dict[str, Any], rise_threshold: float) -> str:
+    # Compatibility alias for existing imports/tests.
+    return classify_huawei_memory_behavior(row, rise_threshold)
+
+
+class HcloudCli:
+    def run_json(self, args: list[str]) -> tuple[dict[str, Any] | list[Any] | None, str | None]:
+        try:
+            proc = subprocess.run(
+                ["hcloud", *args],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except FileNotFoundError:
+            return None, "hcloud binary not found in PATH"
+
+        out = proc.stdout or ""
+        err = proc.stderr or ""
+        cleaned = sanitize_json(out)
+        if not cleaned:
+            return None, (err.strip() or "empty response from hcloud")
+        try:
+            data = json.loads(cleaned)
+            return data, None
+        except Exception:
+            msg = err.strip() or out.strip() or "failed to parse hcloud output as json"
+            return None, msg[:500]
+
+
+class HuaweiECSUtilizationChecker(BaseChecker):
+    """Utilization-only checker for Huawei ECS (CPU/Memory)."""
+
+    def __init__(self, region: str = "ap-southeast-4", **kwargs):
+        super().__init__(region=region, **kwargs)
+        self.util_hours = int(kwargs.get("util_hours", 12))
+        self.rise_threshold = float(kwargs.get("rise_threshold", 70.0))
+        self.top = int(kwargs.get("top", 10))
+        self.cli = HcloudCli()
+
+    def _list_server_map(self, profile: str, region: str) -> tuple[dict[str, dict[str, str]], str | None]:
+        data, err = self.cli.run_json(
+            [
+                "ECS",
+                "ListServersDetails",
+                f"--cli-profile={profile}",
+                f"--cli-region={region}",
+                "--limit=1000",
+                "--cli-output=json",
+            ]
+        )
+        if not isinstance(data, dict):
+            return {}, err
+
+        out: dict[str, dict[str, str]] = {}
+        for row in data.get("servers") or []:
+            sid = str(row.get("id", ""))
+            if not sid:
+                continue
+            out[sid] = {
+                "name": str(row.get("name", "-")),
+                "status": str(row.get("status", "-")),
+            }
+        return out, None
+
+    def _list_metrics(self, profile: str, region: str, namespace: str, metric_name: str) -> list[dict[str, Any]]:
+        data, _ = self.cli.run_json(
+            [
+                "CES",
+                "ListMetrics",
+                f"--cli-profile={profile}",
+                f"--cli-region={region}",
+                "--limit=1000",
+                f"--namespace={namespace}",
+                f"--metric_name={metric_name}",
+                "--cli-output=json",
+            ]
+        )
+        if not isinstance(data, dict):
+            return []
+        return data.get("metrics") or []
+
+    def _metric_instance_ids(self, metrics: list[dict[str, Any]]) -> list[str]:
+        ids: set[str] = set()
+        for m in metrics:
+            for d in m.get("dimensions") or []:
+                if d.get("name") == "instance_id" and d.get("value"):
+                    ids.add(str(d["value"]))
+        return sorted(ids)
+
+    def _show_metric_data(
+        self,
+        profile: str,
+        region: str,
+        namespace: str,
+        metric_name: str,
+        instance_id: str,
+        from_ms: int,
+        to_ms: int,
+    ) -> tuple[float | None, float | None, int | None, int | None, int | None, float | None]:
+        data, _ = self.cli.run_json(
+            [
+                "CES",
+                "ShowMetricData",
+                f"--cli-profile={profile}",
+                f"--cli-region={region}",
+                f"--namespace={namespace}",
+                f"--metric_name={metric_name}",
+                f"--dim.0=instance_id,{instance_id}",
+                "--filter=average",
+                "--period=300",
+                f"--from={from_ms}",
+                f"--to={to_ms}",
+                "--cli-output=json",
+            ]
+        )
+        if not isinstance(data, dict):
+            return None, None, None, None, None, None
+
+        datapoints = data.get("datapoints") or []
+        if not datapoints:
+            return None, None, None, None, None, None
+
+        datapoints = sorted(datapoints, key=lambda x: x.get("timestamp", 0))
+        latest = datapoints[-1].get("average")
+        latest_ts = datapoints[-1].get("timestamp")
+
+        samples: list[tuple[int, float]] = []
+        for dp in datapoints:
+            avg = dp.get("average")
+            ts = dp.get("timestamp")
+            if isinstance(avg, (int, float)) and isinstance(ts, int):
+                samples.append((ts, float(avg)))
+
+        if not samples:
+            return (
+                float(latest) if isinstance(latest, (int, float)) else None,
+                None,
+                int(latest_ts) if isinstance(latest_ts, int) else None,
+                None,
+                None,
+                None,
+            )
+
+        peak_idx = max(range(len(samples)), key=lambda i: samples[i][1])
+        peak_ts, peak_val = samples[peak_idx]
+
+        rise_start_idx = peak_idx
+        while rise_start_idx > 0 and samples[rise_start_idx - 1][1] <= samples[rise_start_idx][1]:
+            rise_start_idx -= 1
+        rise_start_ts = samples[rise_start_idx][0] if rise_start_idx < peak_idx else None
+
+        avg_12h = sum(v for _, v in samples) / len(samples)
+        return (
+            float(latest) if isinstance(latest, (int, float)) else None,
+            peak_val,
+            int(latest_ts) if isinstance(latest_ts, int) else None,
+            peak_ts,
+            rise_start_ts,
+            avg_12h,
+        )
+
+    def _top_utilization(
+        self,
+        profile: str,
+        region: str,
+        server_map: dict[str, dict[str, str]],
+        namespace: str,
+        metric_name: str,
+        from_ms: int,
+        to_ms: int,
+    ) -> tuple[list[dict[str, Any]], float | None]:
+        metrics = self._list_metrics(profile, region, namespace=namespace, metric_name=metric_name)
+        ids = self._metric_instance_ids(metrics)
+        rows: list[dict[str, Any]] = []
+
+        for iid in ids:
+            latest, peak, latest_ts, peak_ts, rise_start_ts, avg_12h = self._show_metric_data(
+                profile,
+                region,
+                namespace,
+                metric_name,
+                iid,
+                from_ms,
+                to_ms,
+            )
+            if latest is None:
+                continue
+            meta = server_map.get(iid, {})
+            rows.append(
+                {
+                    "instance_id": iid,
+                    "name": meta.get("name", "-"),
+                    "status": meta.get("status", "-"),
+                    "latest": round(float(latest), 2),
+                    "peak": round(float(peak), 2) if peak is not None else None,
+                    "avg_12h": round(float(avg_12h), 2) if avg_12h is not None else None,
+                    "timestamp_ms": latest_ts,
+                    "peak_time_ms": peak_ts,
+                    "rise_start_ms": rise_start_ts,
+                }
+            )
+
+        rows.sort(key=lambda x: x["latest"], reverse=True)
+        avg_candidates = [float(x["avg_12h"]) for x in rows if isinstance(x.get("avg_12h"), (int, float))]
+        avg_profile = round(sum(avg_candidates) / len(avg_candidates), 2) if avg_candidates else None
+        return rows, avg_profile
+
+    @staticmethod
+    def _pick_peak_row(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+        candidates = [r for r in rows if isinstance(r.get("peak"), (int, float))]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda r: float(r["peak"]))
+
+    def check(self, profile: str, account_id: str) -> dict[str, Any]:
+        cfg_data, cfg_err = self.cli.run_json(["configure", "show", f"--cli-profile={profile}"])
+        if not isinstance(cfg_data, dict):
+            return {
+                "status": "error",
+                "profile": profile,
+                "region": self.region,
+                "error": cfg_err or "profile config not found",
+            }
+
+        cfg_region = str(cfg_data.get("region") or "")
+        resolved_region = self.region or cfg_region or "ap-southeast-4"
+
+        end_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+        start_ms = end_ms - (self.util_hours * 3600 * 1000)
+
+        server_map, err = self._list_server_map(profile, resolved_region)
+        if err and not server_map:
+            return {
+                "status": "error",
+                "profile": profile,
+                "region": resolved_region,
+                "error": err,
+            }
+
+        cpu_rows, cpu_avg_12h = self._top_utilization(
+            profile,
+            resolved_region,
+            server_map,
+            "SYS.ECS",
+            "cpu_util",
+            start_ms,
+            end_ms,
+        )
+        mem_rows, mem_avg_12h = self._top_utilization(
+            profile,
+            resolved_region,
+            server_map,
+            "AGT.ECS",
+            "mem_usedPercent",
+            start_ms,
+            end_ms,
+        )
+
+        cpu_peak = self._pick_peak_row(cpu_rows)
+        mem_peak = self._pick_peak_row(mem_rows)
+
+        hot_mem: list[dict[str, Any]] = []
+        for row in mem_rows:
+            peak = row.get("peak")
+            if isinstance(peak, (int, float)) and float(peak) > self.rise_threshold:
+                row_copy = dict(row)
+                row_copy["behavior"] = classify_memory_behavior(row_copy, self.rise_threshold)
+                hot_mem.append(row_copy)
+
+        profile_account = profile_to_account(profile)
+        sso_account_id = ((cfg_data.get("ssoAuth") or {}).get("accountId")) or account_id
+
+        return {
+            "status": "success",
+            "profile": profile,
+            "account": profile_account,
+            "account_id": sso_account_id,
+            "region": resolved_region,
+            "generated_at": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
+            "util_window": {
+                "from_ms": start_ms,
+                "to_ms": end_ms,
+                "from": datetime.fromtimestamp(start_ms / 1000).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "to": datetime.fromtimestamp(end_ms / 1000).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
+            },
+            "rise_threshold": self.rise_threshold,
+            "util": {
+                "ecs_total": len(server_map),
+                "cpu_avg_12h": cpu_avg_12h,
+                "cpu_peak_overall": cpu_peak,
+                "mem_avg_12h": mem_avg_12h,
+                "mem_peak_overall": mem_peak,
+                "top_mem_hot": hot_mem[: self.top],
+            },
+        }
+
+    def format_report(self, results: dict[str, Any]) -> str:
+        return build_huawei_utilization_customer_report(results)

@@ -54,6 +54,7 @@ ICONS = {
     "health": "❤️",
     "guardduty": "🛡️",
     "cloudwatch": "📊",
+    "huawei": "☁️",
     "backup": "💾",
     "rds": "🗄️",
     "notifications": "🔔",

@@ -158,11 +158,47 @@ def _run_quick_check():
         run_individual_check(selected_check, profiles[0], region)
 
 
+def run_huawei_utilization():
+    """Dedicated TUI flow for Huawei ECS utilization checks."""
+    print_mini_banner()
+    print_section_header("Huawei Utilization", ICONS.get("huawei", ICONS["cloudwatch"]))
+
+    profiles_raw = questionary.text(
+        "Masukkan profile Huawei (comma-separated):",
+        default="dh_prod_erp-ro,dh_prod_nonerp-ro",
+    ).ask()
+    if not profiles_raw:
+        print_error("Profile Huawei tidak boleh kosong.")
+        return
+
+    profiles = [p.strip() for p in profiles_raw.split(",") if p.strip()]
+    if not profiles:
+        print_error("Profile Huawei tidak valid.")
+        return
+
+    region = questionary.text(
+        "Region Huawei:",
+        default="ap-southeast-4",
+    ).ask()
+    if not region:
+        print_error("Region tidak boleh kosong.")
+        return
+
+    if len(profiles) > 1:
+        run_group_specific("huawei-ecs-util", profiles, region, group_name="Huawei")
+    else:
+        run_individual_check("huawei-ecs-util", profiles[0], region)
+
+
 def run_interactive():
     main_choices = [
         questionary.Choice(
             f"{ICONS['single']} Quick Check      Cek 1 service spesifik",
             value="quick",
+        ),
+        questionary.Choice(
+            f"{ICONS.get('huawei', ICONS['cloudwatch'])} Huawei Utilization  ECS CPU/MEM utilization",
+            value="huawei_util",
         ),
         questionary.Choice(
             f"{ICONS['arbel']} Aryanoble        RDS / Alarm / Budget / Backup",
@@ -206,6 +242,11 @@ def run_interactive():
 
         if main_choice == "aryanoble":
             run_aryanoble()
+            common._pause()
+            continue
+
+        if main_choice == "huawei_util":
+            run_huawei_utilization()
             common._pause()
             continue
 

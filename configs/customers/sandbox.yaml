@@ -1,0 +1,18 @@
+customer_id: sandbox
+display_name: Sandbox
+sso_session: null
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - health
+  - cost
+
+accounts:
+  - profile: sandbox
+    account_id: ""
+    display_name: "Sandbox"
+    region: us-east-1

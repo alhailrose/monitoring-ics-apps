@@ -109,9 +109,7 @@ def _check_single_profile(
 ) -> dict:
     """Run a single check on a profile. Used for parallel execution."""
     account_id = get_account_id(profile)
-    checker_class = AVAILABLE_CHECKS.get(check_name)
-    if checker_class is None:
-        return {"status": "error", "error": f"Unknown check '{check_name}'"}
+    checker_class = AVAILABLE_CHECKS[check_name]
     checker = checker_class(region=region, **(check_kwargs or {}))
 
     try:
@@ -128,21 +126,6 @@ def _check_single_profile(
             results = {"status": "error", "error": str(exc)}
 
     return results
-
-
-def run_check_headless(
-    check_name: str,
-    profile: str,
-    region: str,
-    check_kwargs: Optional[dict] = None,
-) -> dict:
-    """Run one check without UI printing for API/worker usage."""
-    return _check_single_profile(
-        check_name=check_name,
-        profile=profile,
-        region=region,
-        check_kwargs=check_kwargs,
-    )
 
 
 def _check_all_for_profile(profile: str, region: str, checks: dict) -> dict:
