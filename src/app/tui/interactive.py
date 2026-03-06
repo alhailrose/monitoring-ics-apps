@@ -5,6 +5,7 @@ import questionary
 from src.app.tui import common
 from src.app.tui.flows import cloudwatch_cost, customer, dashboard, settings
 from src.configs.loader import load_customer_config
+from src.core.runtime.config import AVAILABLE_CHECKS
 from src.core.runtime.runners import (
     run_all_checks,
     run_group_specific,
@@ -37,6 +38,21 @@ _checkbox_prompt = common._checkbox_prompt
 _choose_region = common._choose_region
 _pick_profiles = common._pick_profiles
 _pause = common._pause
+
+
+HUAWEI_FIXED_PROFILES = [
+    "dh_log-ro",
+    "dh_prod_nonerp-ro",
+    "afco_prod_erp-ro",
+    "afco_dev_erp-ro",
+    "dh_prod_network-ro",
+    "dh_prod_erp-ro",
+    "dh_hris-ro",
+    "dh_dev_erp-ro",
+    "dh_master-ro",
+    "dh_mobileapps-ro",
+]
+HUAWEI_REGION = "ap-southeast-4"
 
 
 def _render_main_dashboard():
@@ -159,35 +175,25 @@ def _run_quick_check():
 
 
 def run_huawei_utilization():
-    """Dedicated TUI flow for Huawei ECS utilization checks."""
+    """Run consolidated Huawei ECS utilization over fixed profile set."""
     print_mini_banner()
     print_section_header("Huawei Utilization", ICONS.get("huawei", ICONS["cloudwatch"]))
 
-    profiles_raw = questionary.text(
-        "Masukkan profile Huawei (comma-separated):",
-        default="dh_prod_erp-ro,dh_prod_nonerp-ro",
-    ).ask()
-    if not profiles_raw:
-        print_error("Profile Huawei tidak boleh kosong.")
-        return
+    run_all_checks(
+        profiles=HUAWEI_FIXED_PROFILES,
+        region=HUAWEI_REGION,
+        group_name="Huawei",
+        checks_override={"huawei-ecs-util": AVAILABLE_CHECKS["huawei-ecs-util"]},
+    )
 
-    profiles = [p.strip() for p in profiles_raw.split(",") if p.strip()]
-    if not profiles:
-        print_error("Profile Huawei tidak valid.")
-        return
 
-    region = questionary.text(
-        "Region Huawei:",
-        default="ap-southeast-4",
-    ).ask()
-    if not region:
-        print_error("Region tidak boleh kosong.")
-        return
-
-    if len(profiles) > 1:
-        run_group_specific("huawei-ecs-util", profiles, region, group_name="Huawei")
-    else:
-        run_individual_check("huawei-ecs-util", profiles[0], region)
+def _run_huawei_menu():
+    submenu_choice = common._select_prompt(
+        f"{ICONS.get('huawei', ICONS['cloudwatch'])} Huawei Check",
+        [questionary.Choice("Utilization", value="utilization")],
+    )
+    if submenu_choice == "utilization":
+        run_huawei_utilization()
 
 
 def run_interactive():
@@ -197,8 +203,8 @@ def run_interactive():
             value="quick",
         ),
         questionary.Choice(
-            f"{ICONS.get('huawei', ICONS['cloudwatch'])} Huawei Utilization  ECS CPU/MEM utilization",
-            value="huawei_util",
+            f"{ICONS.get('huawei', ICONS['cloudwatch'])} Huawei Check     ECS CPU/MEM utilization",
+            value="huawei_check",
         ),
         questionary.Choice(
             f"{ICONS['arbel']} Aryanoble        RDS / Alarm / Budget / Backup",
@@ -245,8 +251,8 @@ def run_interactive():
             common._pause()
             continue
 
-        if main_choice == "huawei_util":
-            run_huawei_utilization()
+        if main_choice == "huawei_check":
+            _run_huawei_menu()
             common._pause()
             continue
 

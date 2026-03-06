@@ -187,32 +187,91 @@ def test_customer_report_dispatches_flow(monkeypatch):
     assert calls["pause"] == 1
 
 
-def test_huawei_utilization_dispatches_flow(monkeypatch):
-    """Huawei Utilization menu should dispatch to dedicated Huawei flow."""
+def test_main_menu_shows_huawei_check_label(monkeypatch):
     from src.app.tui import common
 
-    selections = iter(["huawei_util", "exit"])
-    calls = {"huawei": 0, "pause": 0}
+    captured = {"values": []}
 
-    monkeypatch.setattr(
-        common, "_select_prompt", lambda *args, **kwargs: next(selections)
-    )
-    monkeypatch.setattr(
-        common, "_pause", lambda: calls.__setitem__("pause", calls["pause"] + 1)
-    )
+    def _fake_select_prompt(_message, choices):
+        captured["values"] = [choice.value for choice in choices]
+        return "exit"
+
+    monkeypatch.setattr(common, "_select_prompt", _fake_select_prompt)
+    monkeypatch.setattr(interactive.console, "clear", lambda: None)
+    monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
+    monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
+
+    interactive.run_interactive()
+
+    assert "huawei_check" in captured["values"]
+    assert "huawei_util" not in captured["values"]
+
+
+def test_selecting_huawei_menu_opens_utilization_submenu(monkeypatch):
+    from src.app.tui import common
+
+    prompt_values = []
+    selections = iter(["huawei_check", "utilization", "exit"])
+
+    def _fake_select_prompt(_message, choices):
+        available_values = [choice.value for choice in choices]
+        prompt_values.append(available_values)
+        selected = next(selections)
+        assert selected in available_values
+        return selected
+
+    monkeypatch.setattr(common, "_select_prompt", _fake_select_prompt)
+    monkeypatch.setattr(common, "_pause", lambda: None)
+    monkeypatch.setattr(interactive.console, "clear", lambda: None)
+    monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
+    monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
+
+    interactive.run_interactive()
+
+    assert any("utilization" in values for values in prompt_values)
+
+
+def test_huawei_utilization_runs_consolidated_over_fixed_profiles(monkeypatch):
+    from src.app.tui import common
+
+    expected_profiles = interactive.HUAWEI_FIXED_PROFILES
+    selections = iter(["huawei_check", "utilization", "exit"])
+    calls = []
+
+    monkeypatch.setattr(common, "_select_prompt", lambda *_args, **_kwargs: next(selections))
+    monkeypatch.setattr(common, "_pause", lambda: None)
     monkeypatch.setattr(interactive.console, "clear", lambda: None)
     monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
     monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
     monkeypatch.setattr(
         interactive,
-        "run_huawei_utilization",
-        lambda: calls.__setitem__("huawei", calls["huawei"] + 1),
+        "run_group_specific",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("run_group_specific should not be used")
+        ),
     )
+    monkeypatch.setattr(
+        interactive,
+        "run_individual_check",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("run_individual_check should not be used")
+        ),
+    )
+
+    def _fake_run_all_checks(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(interactive, "run_all_checks", _fake_run_all_checks)
 
     interactive.run_interactive()
 
-    assert calls["huawei"] == 1
-    assert calls["pause"] == 1
+    assert len(calls) == 1
+
+    call_kwargs = calls[0]
+    assert call_kwargs["profiles"] == expected_profiles
+    assert call_kwargs["group_name"] == "Huawei"
+    assert call_kwargs["region"] == "ap-southeast-4"
+    assert set(call_kwargs["checks_override"]) == {"huawei-ecs-util"}
 
 
 def test_check_choices_do_not_include_daily_arbel():

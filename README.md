@@ -189,6 +189,14 @@ Contoh update yang sudah dipakai saat ini:
 - Pilihan checks dan akun default tidak auto-terpilih.
 - Sebelum pilih item tersedia keyword search + aksi `Select All` / `Clear All`.
 
+### Catatan flow Huawei Check (TUI)
+- Menu utama: `Huawei Check`.
+- Submenu saat ini: `Utilization`.
+- Saat `Utilization` dijalankan, sistem mengeksekusi check `huawei-ecs-util` untuk 10 akun Huawei fixed sekaligus dan menampilkan satu output `DAILY MONITORING REPORT` (consolidated).
+- Akun fixed Huawei:
+  - `dh_log-ro`, `dh_prod_nonerp-ro`, `afco_prod_erp-ro`, `afco_dev_erp-ro`, `dh_prod_network-ro`,
+    `dh_prod_erp-ro`, `dh_hris-ro`, `dh_dev_erp-ro`, `dh_master-ro`, `dh_mobileapps-ro`.
+
 Daftar check valid untuk `--check`:
 `health`, `cost`, `guardduty`, `cloudwatch`, `notifications`, `backup`, `daily-arbel`, `daily-budget`, `ec2list`, `alarm_verification`.
 

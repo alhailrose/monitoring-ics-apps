@@ -415,6 +415,12 @@ Perilaku selection terbaru pada Customer Report:
 - checks dan akun default tidak auto selected
 - tersedia search keyword + aksi pilih massal (`select all` / `clear all`)
 
+Perilaku menu Huawei Check (TUI):
+- main menu: `Huawei Check`
+- submenu: `Utilization`
+- `Utilization` menjalankan check `huawei-ecs-util` untuk 10 akun Huawei fixed dan output ditampilkan sebagai satu `DAILY MONITORING REPORT` consolidated
+- akun fixed: `dh_log-ro`, `dh_prod_nonerp-ro`, `afco_prod_erp-ro`, `afco_dev_erp-ro`, `dh_prod_network-ro`, `dh_prod_erp-ro`, `dh_hris-ro`, `dh_dev_erp-ro`, `dh_master-ro`, `dh_mobileapps-ro`
+
 ---
 
 ## Integrasi Slack

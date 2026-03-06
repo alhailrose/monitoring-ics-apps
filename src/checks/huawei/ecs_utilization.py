@@ -60,6 +60,10 @@ class HcloudCli:
 class HuaweiECSUtilizationChecker(BaseChecker):
     """Utilization-only checker for Huawei ECS (CPU/Memory)."""
 
+    report_section_title = "HUAWEI ECS MEMORY HOTSPOTS"
+    issue_label = "memory hotspot findings"
+    recommendation_text = "PERFORMANCE REVIEW: Investigate ECS memory hotspot instances"
+
     def __init__(self, region: str = "ap-southeast-4", **kwargs):
         super().__init__(region=region, **kwargs)
         self.util_hours = int(kwargs.get("util_hours", 12))
@@ -326,3 +330,64 @@ class HuaweiECSUtilizationChecker(BaseChecker):
 
     def format_report(self, results: dict[str, Any]) -> str:
         return build_huawei_utilization_customer_report(results)
+
+    def count_issues(self, result: dict) -> int:
+        if result.get("status") != "success":
+            return 0
+
+        util = result.get("util")
+        if not isinstance(util, dict):
+            return 0
+
+        top_mem_hot = util.get("top_mem_hot")
+        if isinstance(top_mem_hot, list):
+            return len(top_mem_hot)
+        return 0
+
+    def render_section(self, all_results: dict, errors: list) -> list[str]:
+        lines: list[str] = ["", self.report_section_title]
+        error_profiles = {profile for profile, _ in errors}
+
+        if not all_results and not errors:
+            lines.append("Status: No data available")
+            return lines
+
+        if all_results:
+            lines.append("Accounts:")
+            for profile, result in all_results.items():
+                account_id = result.get("account_id", "Unknown") if isinstance(result, dict) else "Unknown"
+                if not isinstance(result, dict) or result.get("status") != "success":
+                    if profile in error_profiles:
+                        continue
+                    msg = result.get("error", "invalid result payload") if isinstance(result, dict) else "invalid result payload"
+                    lines.append(f"  * {profile} ({account_id}): ERROR - {msg}")
+                    continue
+
+                util = result.get("util")
+                top_mem_hot = util.get("top_mem_hot") if isinstance(util, dict) else None
+
+                if not isinstance(top_mem_hot, list) or len(top_mem_hot) == 0:
+                    lines.append(f"  * {profile} ({account_id}): no data for hot memory instances")
+                    continue
+
+                lines.append(f"  * {profile} ({account_id}): {len(top_mem_hot)} hot memory instance(s)")
+                for item in top_mem_hot:
+                    if isinstance(item, dict):
+                        name = item.get("name") or item.get("instance_id") or "unknown-instance"
+                        peak = item.get("peak")
+                        behavior = item.get("behavior")
+                        detail = f"    - {name}"
+                        if peak is not None:
+                            detail += f" peak={peak}"
+                        if behavior:
+                            detail += f" behavior={behavior}"
+                        lines.append(detail)
+                    else:
+                        lines.append(f"    - {item}")
+
+        if errors:
+            lines.append("Errors:")
+            for profile, message in errors:
+                lines.append(f"  * {profile}: ERROR - {message}")
+
+        return lines

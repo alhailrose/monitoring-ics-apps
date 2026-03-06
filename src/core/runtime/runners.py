@@ -523,6 +523,8 @@ def _print_consolidated_report(
     time_str = now.strftime("%H:%M WIB")
 
     include_backup_rds = "backup" in checks or "daily-arbel" in checks
+    is_huawei_only = set(checks.keys()) == {"huawei-ecs-util"}
+    scope_label = "Huawei Accounts" if is_huawei_only else "AWS Accounts"
 
     lines = []
 
@@ -536,13 +538,13 @@ def _print_consolidated_report(
         lines.append("=" * 70)
         lines.append(f"Date: {date_str}")
         lines.append(f"Time: {time_str}")
-        lines.append(f"Scope: {len(profiles)} AWS Accounts | Region: {region}")
+        lines.append(f"Scope: {len(profiles)} {scope_label} | Region: {region}")
         lines.append("")
         lines.append("-" * 70)
     else:
         lines.append("DAILY MONITORING REPORT")
         lines.append(f"Date: {date_str}")
-        lines.append(f"Scope: {len(profiles)} AWS Accounts | Region: {region}")
+        lines.append(f"Scope: {len(profiles)} {scope_label} | Region: {region}")
         lines.append("")
 
     # Executive Summary — generic via checker.count_issues()
@@ -562,12 +564,18 @@ def _print_consolidated_report(
         if total > 0:
             totals[chk_name] = total
 
-    summary_text = f"Security assessment completed across {len(profiles)} AWS accounts."
+    if is_huawei_only:
+        summary_text = f"Utilization assessment completed across {len(profiles)} Huawei accounts."
+    else:
+        summary_text = f"Security assessment completed across {len(profiles)} AWS accounts."
     if check_errors:
         summary_text += f" {len(check_errors)} check error(s) encountered; see CHECK ERRORS section."
 
     if not totals and not check_errors:
-        summary_text += " No new security incidents detected. All systems operating normally."
+        if is_huawei_only:
+            summary_text += " No significant utilization findings detected. All systems operating normally."
+        else:
+            summary_text += " No new security incidents detected. All systems operating normally."
     elif totals:
         issue_parts = []
         if check_errors:
