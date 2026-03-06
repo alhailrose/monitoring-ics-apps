@@ -272,6 +272,7 @@ def test_huawei_utilization_runs_consolidated_over_fixed_profiles(monkeypatch):
     assert call_kwargs["group_name"] == "Huawei"
     assert call_kwargs["region"] == "ap-southeast-4"
     assert set(call_kwargs["checks_override"]) == {"huawei-ecs-util"}
+    assert call_kwargs["output_mode"] == "huawei_legacy"
 
 
 def test_check_choices_do_not_include_daily_arbel():

@@ -79,6 +79,10 @@ def _report_date_ddmmyyyy(results: dict[str, Any]) -> str:
         return datetime.now().strftime("%d.%m.%Y")
 
 
+def _profile_to_account(profile: str) -> str:
+    return profile[:-3] if profile.endswith("-ro") else profile
+
+
 def build_huawei_utilization_customer_report(
     results: dict[str, Any],
     title: str = "Daily Monitoring Utilisasi ECS Darmahenwa",
@@ -155,11 +159,124 @@ def build_huawei_utilization_customer_report(
     return "\n".join(lines)
 
 
+def build_huawei_legacy_consolidated_report(
+    all_results: dict[str, dict[str, Any]],
+    errors: list[tuple[str, str]],
+    ordered_profiles: list[str],
+    title: str = "Daily Monitoring Utilisasi ECS Darmahenwa",
+) -> str:
+    date_source = None
+    for profile in ordered_profiles:
+        result = all_results.get(profile) or {}
+        util_window = result.get("util_window") if isinstance(result, dict) else None
+        if isinstance(util_window, dict) and util_window.get("to"):
+            date_source = str(util_window.get("to"))
+            break
+
+    if date_source:
+        date_part = date_source.split(" ")[0]
+        try:
+            report_date = datetime.strptime(date_part, "%Y-%m-%d").strftime("%d.%m.%Y")
+        except Exception:
+            report_date = datetime.now().strftime("%d.%m.%Y")
+    else:
+        report_date = datetime.now().strftime("%d.%m.%Y")
+
+    errors_by_profile = {profile: message for profile, message in errors}
+
+    lines: list[str] = [title, report_date, ""]
+
+    for idx, profile in enumerate(ordered_profiles, start=1):
+        result = all_results.get(profile) or {}
+        account = str(result.get("account") or _profile_to_account(profile))
+        lines.append(f"{idx}. {account}")
+
+        profile_error = errors_by_profile.get(profile)
+        if not profile_error and isinstance(result, dict) and result.get("status") == "error":
+            profile_error = str(result.get("error") or "unknown error")
+
+        if profile_error:
+            lines.append(f"   ERROR: {profile_error}")
+            lines.append("")
+            continue
+
+        if not isinstance(result, dict) or result.get("status") != "success":
+            lines.append("   Data utilisasi CPU tidak tersedia pada periode ini.")
+            lines.append("   Data utilisasi memory tidak tersedia pada periode ini.")
+            lines.append("")
+            continue
+
+        rise_threshold = float(result.get("rise_threshold", 70.0))
+        util = result.get("util") or {}
+
+        cpu_row = util.get("cpu_peak_overall") or {}
+        cpu_avg = util.get("cpu_avg_12h")
+        cpu_host = cpu_row.get("name", "-")
+        cpu_peak = cpu_row.get("peak")
+        if isinstance(cpu_peak, (int, float)) and isinstance(cpu_avg, (int, float)):
+            lines.append(
+                f"   Utilisasi CPU tidak melewati ambang {rise_threshold:.0f}%; rata-rata 12 jam sekitar {_fmt_pct(cpu_avg)} "
+                f"dengan puncak {_fmt_pct(cpu_peak)} ({cpu_host})."
+            )
+        else:
+            lines.append("   Data utilisasi CPU tidak tersedia pada periode ini.")
+
+        mem_row = util.get("mem_peak_overall") or {}
+        mem_avg = mem_row.get("avg_12h", util.get("mem_avg_12h"))
+        mem_peak = mem_row.get("peak")
+        mem_host = mem_row.get("name", "-")
+        if not isinstance(mem_peak, (int, float)) or not isinstance(mem_avg, (int, float)):
+            lines.append("   Data utilisasi memory tidak tersedia pada periode ini.")
+        elif float(mem_peak) <= rise_threshold:
+            lines.append(
+                f"   Utilisasi memory tidak melewati ambang {rise_threshold:.0f}%; rata-rata 12 jam sekitar {_fmt_pct(mem_avg)} "
+                f"dengan puncak {_fmt_pct(mem_peak)} ({mem_host})."
+            )
+        else:
+            behavior = classify_huawei_memory_behavior(mem_row, rise_threshold)
+            if behavior == "HIGH_STABLE":
+                lines.append(
+                    f"   Utilisasi memory berada pada level tinggi (>{rise_threshold:.0f}%) dan cenderung stabil; rata-rata 12 jam sekitar "
+                    f"{_fmt_pct(mem_avg)} dengan puncak {_fmt_pct(mem_peak)} ({mem_host})."
+                )
+            else:
+                lines.append(
+                    f"   Terdapat kenaikan signifikan memory (>{rise_threshold:.0f}%) dengan puncak {_fmt_pct(mem_peak)} pada {mem_host}, "
+                    f"dengan rentang kenaikan {huawei_time_range_short(mem_row)}."
+                )
+
+        spikes: list[str] = []
+        stable: list[str] = []
+        for row in util.get("top_mem_hot") or []:
+            if not isinstance(row, dict):
+                continue
+            item = f"{row.get('name', '-')} peak {_fmt_pct(row.get('peak'))}"
+            behavior = row.get("behavior") or classify_huawei_memory_behavior(row, rise_threshold)
+            if behavior == "SPIKE":
+                spikes.append(item)
+            elif behavior == "HIGH_STABLE":
+                stable.append(item)
+
+        lines.append("")
+        lines.append("   [BLOCK - SPIKE / IDLE TINGGI]")
+        if spikes:
+            lines.append(f"   - SPIKE: {', '.join(spikes)}.")
+        if stable:
+            lines.append(f"   - HIGH-STABLE: {', '.join(stable)}.")
+        if not spikes and not stable:
+            lines.append("   - Tidak ada temuan SPIKE/HIGH-STABLE pada periode ini.")
+        lines.append("   - IDLE tinggi tidak dijadikan alert utama karena laporan menggunakan metrik usage.")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
 __all__ = [
     "build_whatsapp_backup",
     "build_whatsapp_rds",
     "build_whatsapp_alarm",
     "build_huawei_utilization_customer_report",
+    "build_huawei_legacy_consolidated_report",
     "classify_huawei_memory_behavior",
     "huawei_time_range_short",
 ]

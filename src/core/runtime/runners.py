@@ -31,6 +31,7 @@ from .reports import (
     build_whatsapp_alarm,
     build_whatsapp_budget,
 )
+from src.core.formatting.reports import build_huawei_legacy_consolidated_report
 from .ui import (
     console,
     print_check_header,
@@ -391,6 +392,7 @@ def run_all_checks(
     workers: int = DEFAULT_WORKERS,
     exclude_backup_rds: bool = True,
     checks_override: Optional[dict] = None,
+    output_mode: str = "default",
 ):
     """Run all checks with parallel execution and detailed text output.
 
@@ -499,6 +501,7 @@ def run_all_checks(
         errors_by_check=errors_by_check,
         region=region,
         group_name=group_name,
+        output_mode=output_mode,
     )
 
 
@@ -512,6 +515,7 @@ def _print_consolidated_report(
     errors_by_check,
     region,
     group_name=None,
+    output_mode: str = "default",
 ):
     """Print consolidated daily monitoring report using checker render_section() methods.
 
@@ -525,6 +529,24 @@ def _print_consolidated_report(
     include_backup_rds = "backup" in checks or "daily-arbel" in checks
     is_huawei_only = set(checks.keys()) == {"huawei-ecs-util"}
     scope_label = "Huawei Accounts" if is_huawei_only else "AWS Accounts"
+
+    if output_mode == "huawei_legacy" and is_huawei_only:
+        huawei_results = {
+            profile: all_results.get(profile, {}).get("huawei-ecs-util", {})
+            for profile in profiles
+        }
+        huawei_errors = [
+            (profile, err)
+            for profile, chk, err in check_errors
+            if chk == "huawei-ecs-util"
+        ]
+        text = build_huawei_legacy_consolidated_report(
+            all_results=huawei_results,
+            errors=huawei_errors,
+            ordered_profiles=list(profiles),
+        )
+        print("\n" + text)
+        return
 
     lines = []
 

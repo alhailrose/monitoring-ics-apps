@@ -184,6 +184,7 @@ def run_huawei_utilization():
         region=HUAWEI_REGION,
         group_name="Huawei",
         checks_override={"huawei-ecs-util": AVAILABLE_CHECKS["huawei-ecs-util"]},
+        output_mode="huawei_legacy",
     )
 
 
