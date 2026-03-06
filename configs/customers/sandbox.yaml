@@ -8,7 +8,7 @@ slack:
   enabled: false
 
 checks:
-  - health
+  - notifications
   - cost
 
 accounts:
