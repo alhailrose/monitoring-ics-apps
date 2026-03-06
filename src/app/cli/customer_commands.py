@@ -112,8 +112,10 @@ def ensure_profile_assignment_allowed(
 
 def customer_init(customer_id: str) -> bool:
     """Scaffold a new customer config YAML."""
-    root = _repo_root()
-    customers_dir = root / "configs" / "customers"
+    from src.configs.loader import _user_config_dir
+    
+    # Use user config directory for persistence
+    customers_dir = _user_config_dir()
     customers_dir.mkdir(parents=True, exist_ok=True)
 
     target = customers_dir / f"{customer_id}.yaml"
@@ -220,7 +222,16 @@ def customer_validate(customer_id: str) -> bool:
 
 
 def _customer_yaml_path(customer_id: str) -> Path:
-    return _repo_root() / "configs" / "customers" / f"{customer_id}.yaml"
+    """Get the path to a customer YAML file, checking multiple locations."""
+    from src.configs.loader import _find_existing_path, _user_config_dir
+    
+    # First try to find existing file
+    existing = _find_existing_path(customer_id)
+    if existing:
+        return existing
+    
+    # If not found, return user config directory path (where new files will be created)
+    return _user_config_dir() / f"{customer_id}.yaml"
 
 
 def _load_customer_yaml(customer_id: str) -> tuple[Path | None, dict | None]:
@@ -448,3 +459,65 @@ def customer_checks(customer_id: str) -> bool:
         f"[green]{ICONS['check']} Updated checks for {customer_id}: {checks_str}[/green]"
     )
     return True
+
+
+def customer_sync_accounts(customer_id: str) -> bool:
+    """Fetch and update Account IDs for all profiles in a customer config."""
+    target_path, target_cfg = _load_customer_yaml(customer_id)
+    if target_path is None or target_cfg is None:
+        console.print(f"[red]{ICONS['error']} Customer config not found: {customer_id}[/red]")
+        return False
+
+    accounts = target_cfg.get("accounts", [])
+    if not accounts:
+        console.print(f"[yellow]No accounts found for customer '{customer_id}'[/yellow]")
+        return False
+
+    console.print(f"[cyan]{ICONS['star']} Syncing Account IDs for {customer_id}...[/cyan]")
+    console.print()
+
+    updated = 0
+    failed = 0
+    unchanged = 0
+
+    for account in accounts:
+        profile = account.get("profile")
+        current_id = account.get("account_id", "")
+        
+        if not profile:
+            console.print(f"  [yellow]⚠ Skipped: No profile name[/yellow]")
+            failed += 1
+            continue
+
+        console.print(f"  [dim]Fetching Account ID for profile '{profile}'...[/dim]", end=" ")
+        
+        detected_id = _detect_account_id(profile)
+        
+        if detected_id == "Unknown":
+            console.print(f"[red]Failed[/red]")
+            failed += 1
+            continue
+        
+        if current_id == detected_id:
+            console.print(f"[dim]Unchanged ({detected_id})[/dim]")
+            unchanged += 1
+            continue
+        
+        account["account_id"] = detected_id
+        console.print(f"[green]✓ {detected_id}[/green]")
+        updated += 1
+
+    if updated > 0:
+        _save_customer_yaml(target_path, target_cfg)
+        console.print()
+        console.print(
+            f"[green]{ICONS['check']} Updated {updated} account(s) for {customer_id}[/green]"
+        )
+    
+    if unchanged > 0:
+        console.print(f"[dim]  {unchanged} account(s) unchanged[/dim]")
+    
+    if failed > 0:
+        console.print(f"[yellow]  {failed} account(s) failed to fetch[/yellow]")
+
+    return updated > 0

@@ -1,0 +1,30 @@
+customer_id: Ucoal
+display_name: PT Ucoal
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - cost
+  - guardduty
+  - cloudwatch
+  - notifications
+
+accounts:
+  - profile: ucoal-prod
+    account_id: ""
+    display_name: "Ucoal Production"
+  
+  - profile: ucoal-appfuel
+    account_id: ""
+    display_name: "Ucoal AppFuel"
+  
+  - profile: ucoal-legal
+    account_id: ""
+    display_name: "Ucoal Legal"
+  
+  - profile: ucoal-minescape
+    account_id: ""
+    display_name: "Ucoal Minescape"

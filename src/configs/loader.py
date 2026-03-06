@@ -20,6 +20,15 @@ def _module_defaults_dir():
     return Path(__file__).resolve().parent / "defaults" / "customers"
 
 
+def _user_config_dir():
+    """Return user-specific config directory (~/.monitoring-hub/configs/customers/)."""
+    import os
+    config_home = os.getenv("MONITORING_HUB_CONFIG_DIR")
+    if config_home:
+        return Path(config_home) / "configs" / "customers"
+    return Path.home() / ".monitoring-hub" / "configs" / "customers"
+
+
 def _dedupe_paths(paths):
     out = []
     seen = set()
@@ -35,10 +44,11 @@ def _dedupe_paths(paths):
 def _candidate_paths(customer_id):
     root = _repo_root()
     return _dedupe_paths([
-        root / "configs" / "customers" / f"{customer_id}.yaml",
-        Path.cwd() / "configs" / "customers" / f"{customer_id}.yaml",
-        _module_defaults_dir() / f"{customer_id}.yaml",
-        root / "src" / "configs" / "defaults" / "customers" / f"{customer_id}.yaml",
+        _user_config_dir() / f"{customer_id}.yaml",  # Priority 1: User home directory
+        Path.cwd() / "configs" / "customers" / f"{customer_id}.yaml",  # Priority 2: Current directory
+        root / "configs" / "customers" / f"{customer_id}.yaml",  # Priority 3: Repo root
+        _module_defaults_dir() / f"{customer_id}.yaml",  # Priority 4: Module defaults
+        root / "src" / "configs" / "defaults" / "customers" / f"{customer_id}.yaml",  # Priority 5: Src defaults
     ])
 
 
@@ -111,10 +121,11 @@ def list_customers() -> List[dict]:
     """
     root = _repo_root()
     customers_dirs = _dedupe_paths([
-        root / "configs" / "customers",
-        Path.cwd() / "configs" / "customers",
-        _module_defaults_dir(),
-        root / "src" / "configs" / "defaults" / "customers",
+        _user_config_dir(),  # Priority 1: User home directory
+        Path.cwd() / "configs" / "customers",  # Priority 2: Current directory
+        root / "configs" / "customers",  # Priority 3: Repo root
+        _module_defaults_dir(),  # Priority 4: Module defaults
+        root / "src" / "configs" / "defaults" / "customers",  # Priority 5: Src defaults
     ])
     results = []
 

@@ -78,12 +78,13 @@ def _handle_customer_subcommand(argv):
         customer_init,
         customer_list,
         customer_scan,
+        customer_sync_accounts,
         customer_validate,
     )
 
     if not argv:
         print_error(
-            "Usage: monitoring-hub customer <init|list|validate|scan|assign|checks> [customer_id]"
+            "Usage: monitoring-hub customer <init|list|validate|scan|assign|checks|sync-accounts> [customer_id]"
         )
         sys.exit(1)
 
@@ -125,8 +126,15 @@ def _handle_customer_subcommand(argv):
         success = customer_checks(argv[1])
         sys.exit(0 if success else 1)
 
+    if action == "sync-accounts":
+        if len(argv) < 2:
+            print_error("Usage: monitoring-hub customer sync-accounts <customer_id>")
+            sys.exit(1)
+        success = customer_sync_accounts(argv[1])
+        sys.exit(0 if success else 1)
+
     print_error(f"Unknown customer action: {action}")
-    print_info("Available: init, list, validate, scan, assign, checks")
+    print_info("Available: init, list, validate, scan, assign, checks, sync-accounts")
     sys.exit(1)
 
 
