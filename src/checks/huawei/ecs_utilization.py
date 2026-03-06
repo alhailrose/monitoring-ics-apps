@@ -60,11 +60,17 @@ class HcloudCli:
         text = (message or "").lower()
         return "timed out" in text or "timeout" in text
 
+    @staticmethod
+    def _is_invalid_param_error(message: str) -> bool:
+        text = (message or "").lower()
+        return "invalid parameter" in text
+
     def run_json(self, args: list[str]) -> tuple[dict[str, Any] | list[Any] | None, str | None]:
         last_error: str | None = None
-        cmd_args = self._with_transport_flags(args)
+        use_transport_flags = True
 
         for attempt in range(self.max_attempts):
+            cmd_args = self._with_transport_flags(args) if use_transport_flags else list(args)
             try:
                 proc = subprocess.run(
                     ["hcloud", *cmd_args],
@@ -87,6 +93,10 @@ class HcloudCli:
                     last_error = (err.strip() or out.strip() or "failed to parse hcloud output as json")[:500]
             else:
                 last_error = err.strip() or "empty response from hcloud"
+
+            if use_transport_flags and self._is_invalid_param_error(last_error or ""):
+                use_transport_flags = False
+                continue
 
             should_retry = attempt < (self.max_attempts - 1) and self._is_timeout_error(last_error or "")
             if not should_retry:
