@@ -1,5 +1,6 @@
 from src.checks.huawei.ecs_utilization import (
     HuaweiECSUtilizationChecker,
+    HcloudCli,
     classify_memory_behavior,
 )
 
@@ -46,3 +47,56 @@ def test_format_report_contains_block():
     assert "Daily Monitoring Utilisasi ECS Darmahenwa" in report
     assert "[BLOCK - SPIKE / IDLE TINGGI]" in report
     assert "SPIKE" in report
+
+
+def test_hcloud_cli_injects_timeout_and_retry_flags(monkeypatch):
+    captured = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = '{"ok": true}'
+        stderr = ""
+
+    def _fake_run(cmd, stdout, stderr, text):
+        captured["cmd"] = cmd
+        return _Proc()
+
+    monkeypatch.setattr("src.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
+
+    cli = HcloudCli()
+    data, err = cli.run_json(["CES", "ListMetrics", "--cli-profile=demo"])
+
+    assert err is None
+    assert data == {"ok": True}
+    assert "--cli-read-timeout=30" in captured["cmd"]
+    assert "--cli-connect-timeout=10" in captured["cmd"]
+    assert "--cli-retry-count=2" in captured["cmd"]
+
+
+def test_hcloud_cli_retries_once_on_timeout_error(monkeypatch):
+    calls = {"count": 0}
+
+    class _ErrProc:
+        returncode = 1
+        stdout = ""
+        stderr = "[OPENAPI_ERROR] API calling timed out"
+
+    class _OkProc:
+        returncode = 0
+        stdout = '{"servers": []}'
+        stderr = ""
+
+    def _fake_run(_cmd, stdout, stderr, text):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return _ErrProc()
+        return _OkProc()
+
+    monkeypatch.setattr("src.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
+
+    cli = HcloudCli()
+    data, err = cli.run_json(["ECS", "ListServersDetails", "--cli-profile=demo"])
+
+    assert err is None
+    assert data == {"servers": []}
+    assert calls["count"] == 2

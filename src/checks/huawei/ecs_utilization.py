@@ -33,28 +33,66 @@ def classify_memory_behavior(row: dict[str, Any], rise_threshold: float) -> str:
 
 
 class HcloudCli:
-    def run_json(self, args: list[str]) -> tuple[dict[str, Any] | list[Any] | None, str | None]:
-        try:
-            proc = subprocess.run(
-                ["hcloud", *args],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-        except FileNotFoundError:
-            return None, "hcloud binary not found in PATH"
+    def __init__(
+        self,
+        read_timeout: int = 30,
+        connect_timeout: int = 10,
+        retry_count: int = 2,
+        max_attempts: int = 2,
+    ) -> None:
+        self.read_timeout = int(read_timeout)
+        self.connect_timeout = int(connect_timeout)
+        self.retry_count = int(retry_count)
+        self.max_attempts = max(1, int(max_attempts))
 
-        out = proc.stdout or ""
-        err = proc.stderr or ""
-        cleaned = sanitize_json(out)
-        if not cleaned:
-            return None, (err.strip() or "empty response from hcloud")
-        try:
-            data = json.loads(cleaned)
-            return data, None
-        except Exception:
-            msg = err.strip() or out.strip() or "failed to parse hcloud output as json"
-            return None, msg[:500]
+    def _with_transport_flags(self, args: list[str]) -> list[str]:
+        out = list(args)
+        if not any(a.startswith("--cli-read-timeout=") for a in out):
+            out.append(f"--cli-read-timeout={self.read_timeout}")
+        if not any(a.startswith("--cli-connect-timeout=") for a in out):
+            out.append(f"--cli-connect-timeout={self.connect_timeout}")
+        if not any(a.startswith("--cli-retry-count=") for a in out):
+            out.append(f"--cli-retry-count={self.retry_count}")
+        return out
+
+    @staticmethod
+    def _is_timeout_error(message: str) -> bool:
+        text = (message or "").lower()
+        return "timed out" in text or "timeout" in text
+
+    def run_json(self, args: list[str]) -> tuple[dict[str, Any] | list[Any] | None, str | None]:
+        last_error: str | None = None
+        cmd_args = self._with_transport_flags(args)
+
+        for attempt in range(self.max_attempts):
+            try:
+                proc = subprocess.run(
+                    ["hcloud", *cmd_args],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            except FileNotFoundError:
+                return None, "hcloud binary not found in PATH"
+
+            out = proc.stdout or ""
+            err = proc.stderr or ""
+            cleaned = sanitize_json(out)
+
+            if cleaned:
+                try:
+                    data = json.loads(cleaned)
+                    return data, None
+                except Exception:
+                    last_error = (err.strip() or out.strip() or "failed to parse hcloud output as json")[:500]
+            else:
+                last_error = err.strip() or "empty response from hcloud"
+
+            should_retry = attempt < (self.max_attempts - 1) and self._is_timeout_error(last_error or "")
+            if not should_retry:
+                break
+
+        return None, last_error
 
 
 class HuaweiECSUtilizationChecker(BaseChecker):
