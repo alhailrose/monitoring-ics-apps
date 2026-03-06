@@ -63,3 +63,16 @@ cli.main()
     assert result.returncode == 2
     assert "Install TUI dependencies" in combined_output
     assert "Traceback" not in combined_output
+
+
+def test_cli_help_mentions_huawei_sso_login_steps():
+    result = subprocess.run(
+        [sys.executable, "-m", "src.app.cli.bootstrap", "--help"],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "hcloud configure sso --cli-profile" in result.stdout
+    assert "sync_sso_token.sh" in result.stdout
+    assert "not bundled with monitoring-hub" in result.stdout

@@ -56,6 +56,24 @@ docker compose -f infra/docker/docker-compose.yml config
    monitoring-hub
    ```
 
+### Huawei login flow (hcloud)
+
+Untuk menjalankan check `huawei-ecs-util`, login Huawei CLI dilakukan di helper eksternal:
+
+```bash
+cd /home/heilrose/Work/Monitoring/huawei
+hcloud configure sso --cli-profile=dh_prod_erp-ro
+./sync_sso_token.sh --source dh_prod_erp-ro
+```
+
+Setelah token sinkron, jalankan check dari monitoring-hub:
+
+```bash
+monitoring-hub --check huawei-ecs-util --profile dh_prod_erp-ro --region ap-southeast-4
+```
+
+Catatan: `sync_sso_token.sh` tidak dibundel di package `monitoring-hub`; file script harus tersedia lokal.
+
 Jika update versi terbaru:
 ```bash
 pipx reinstall "git+ssh://git@github.com/alhailrose/monitoring-ics-apps.git@main"
