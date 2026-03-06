@@ -1,5 +1,5 @@
 customer_id: diamond
-display_name: Diamond
+display_name: Diamond Supermarket
 sso_session: sadewa-sso
 
 slack:
@@ -17,3 +17,6 @@ accounts:
   - profile: Diamond
     account_id: "464587839665"
     display_name: "Diamond"
+  - profile: kurnia-phileo
+    account_id: "452439730915"
+    display_name: "Kurnia Phileo Selaras - Production"

@@ -1,0 +1,16 @@
+customer_id: programa
+display_name: Programa Reka Piranti
+slack:
+  webhook_url: ''
+  channel: ''
+  enabled: false
+checks:
+  - cost
+  - guardduty
+  - cloudwatch
+  - notifications
+accounts:
+  - profile: programa
+    account_id: ""
+    display_name: "Programa Reka Piranti"
+  
