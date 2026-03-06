@@ -89,7 +89,6 @@ d = r.json()
 report = d.get('report', '')
 check('has DAILY MONITORING REPORT', 'DAILY MONITORING REPORT' in report)
 check('has EXECUTIVE SUMMARY', 'EXECUTIVE SUMMARY' in report)
-check('has END OF REPORT', 'END OF REPORT' in report)
 print(f'  Report length: {len(report)} chars')
 
 # 5. 404

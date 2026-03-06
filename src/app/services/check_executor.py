@@ -321,11 +321,6 @@ def _build_consolidated_report(
         lines.append("--rds")
         lines.append(build_whatsapp_rds(wa_results))
 
-    lines.append("")
-    lines.append("=" * 70)
-    lines.append("END OF REPORT")
-    lines.append("=" * 70)
-
     return "\n".join(lines)
 
 

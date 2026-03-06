@@ -182,7 +182,6 @@ class TestCheckExecution:
         assert "EXECUTIVE SUMMARY" in report
         assert "ASSESSMENT RESULTS" in report
         assert "ACCOUNT COVERAGE" in report
-        assert "END OF REPORT" in report
         print(f"\n  All-mode report length: {len(report)} chars")
         print(f"  First 200 chars:\n  {report[:200]}")
 

@@ -1,6 +1,6 @@
 """AWS User Notifications checker"""
 import boto3
-from datetime import datetime
+from datetime import datetime, timedelta
 from src.checks.common.base import BaseChecker
 from src.checks.common.aws_errors import is_credential_error
 
@@ -15,17 +15,18 @@ class NotificationChecker(BaseChecker):
         super().__init__('us-east-1', **kwargs)
 
     def check(self, profile, account_id):
-        """Check AWS User Notifications (Notification Center)"""
+        """Check AWS User Notifications (Notification Center) - last 12 hours"""
         try:
             session = boto3.Session(profile_name=profile)
             client = session.client('notifications', region_name=self.region)
 
-            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            today_end = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999)
+            # Get notifications from last 12 hours
+            now = datetime.now()
+            twelve_hours_ago = now - timedelta(hours=12)
 
-            today_events = client.list_managed_notification_events(
-                startTime=today_start,
-                endTime=today_end
+            recent_events = client.list_managed_notification_events(
+                startTime=twelve_hours_ago,
+                endTime=now
             ).get('managedNotificationEvents', [])
 
             all_events = client.list_managed_notification_events().get('managedNotificationEvents', [])
@@ -35,10 +36,10 @@ class NotificationChecker(BaseChecker):
                 'status': 'success',
                 'profile': profile,
                 'account_id': account_id,
-                'today_events': today_events,
+                'recent_events': recent_events,
                 'all_events': all_events,
                 'regular_events': regular_events,
-                'today_count': len(today_events),
+                'recent_count': len(recent_events),
                 'total_managed': len(all_events),
                 'regular_count': len(regular_events)
             }
@@ -59,13 +60,13 @@ class NotificationChecker(BaseChecker):
 
         lines = []
         lines.append("AWS NOTIFICATION CENTER")
-        lines.append(f"Today: {results['today_count']} new | Total: {results['total_managed']}")
+        lines.append(f"Last 12h: {results['recent_count']} new | Total: {results['total_managed']}")
 
-        # Show today's events if any
-        if results['today_events']:
+        # Show recent events if any
+        if results['recent_events']:
             lines.append("")
-            lines.append("🔴 Today's notifications:")
-            for event in results['today_events'][:5]:
+            lines.append("🔴 Recent notifications (12h):")
+            for event in results['recent_events'][:5]:
                 notif_event = event.get('notificationEvent', {})
                 event_type = notif_event.get('sourceEventMetadata', {}).get('eventType', 'N/A')
                 headline = notif_event.get('messageComponents', {}).get('headline', 'N/A')
@@ -92,7 +93,7 @@ class NotificationChecker(BaseChecker):
     def count_issues(self, result: dict) -> int:
         if result.get("status") == "error":
             return 0
-        return int(result.get("today_count", 0) or 0)
+        return int(result.get("recent_count", 0) or 0)
 
     def render_section(self, all_results: dict, errors: list) -> list[str]:
         """Render NOTIFICATION CENTER section for consolidated report."""
@@ -110,24 +111,24 @@ class NotificationChecker(BaseChecker):
             return lines
 
         # Aggregate notification data across all profiles
-        total_today = 0
+        total_recent = 0
         total_managed_all = 0
         all_notif_events = []
 
         for profile, result in all_results.items():
             if result.get("status") == "success":
-                total_today += result.get("today_count", 0)
+                total_recent += result.get("recent_count", 0)
                 total_managed_all += result.get("total_managed", 0)
                 all_notif_events.extend(result.get("all_events", []))
 
-        if not all_notif_events and total_today == 0 and total_managed_all == 0:
+        if not all_notif_events and total_recent == 0 and total_managed_all == 0:
             lines.append("Status: No data")
             return lines
 
-        if total_today == 0:
-            lines.append(f"Status: No new notifications today ({total_managed_all} existing available)")
+        if total_recent == 0:
+            lines.append(f"Status: No new notifications in last 12h ({total_managed_all} existing available)")
         else:
-            lines.append(f"Status: {total_today} new notifications detected today")
+            lines.append(f"Status: {total_recent} new notifications detected in last 12h")
 
         if all_notif_events:
             sorted_events = sorted(

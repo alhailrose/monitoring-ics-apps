@@ -708,9 +708,4 @@ def _print_consolidated_report(
             for p in profiles
         }))
 
-    lines.append("")
-    lines.append("=" * 70)
-    lines.append("END OF REPORT")
-    lines.append("=" * 70)
-
     print("\n" + "\n".join(lines))

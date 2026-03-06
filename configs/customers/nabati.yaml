@@ -8,12 +8,10 @@ slack:
   enabled: false
 
 checks:
-  - health
+  - notifications
   - cost
   - guardduty
   - cloudwatch
-  - notifications
-  - backup
 
 accounts:
   - profile: ksni-master

@@ -6,9 +6,8 @@ slack:
   webhook_url: ""
   channel: ""
   enabled: false
-
 checks:
-  - health
+  - notifications
   - cost
   - guardduty
   - cloudwatch
