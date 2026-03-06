@@ -73,19 +73,13 @@ def init_config():
 def _handle_customer_subcommand(argv):
     """Handle 'monitoring-hub customer <action> [args]' subcommands."""
     from src.app.cli.customer_commands import (
-        customer_assign,
-        customer_checks,
-        customer_init,
         customer_list,
         customer_scan,
-        customer_sync_accounts,
         customer_validate,
     )
 
     if not argv:
-        print_error(
-            "Usage: monitoring-hub customer <init|list|validate|scan|assign|checks|sync-accounts> [customer_id]"
-        )
+        print_error("Usage: monitoring-hub customer <list|scan|validate> [customer_id]")
         sys.exit(1)
 
     action = argv[0]
@@ -94,12 +88,9 @@ def _handle_customer_subcommand(argv):
         customer_list()
         return
 
-    if action == "init":
-        if len(argv) < 2:
-            print_error("Usage: monitoring-hub customer init <customer_id>")
-            sys.exit(1)
-        success = customer_init(argv[1])
-        sys.exit(0 if success else 1)
+    if action == "scan":
+        customer_scan()
+        return
 
     if action == "validate":
         if len(argv) < 2:
@@ -108,33 +99,14 @@ def _handle_customer_subcommand(argv):
         success = customer_validate(argv[1])
         sys.exit(0 if success else 1)
 
-    if action == "scan":
-        customer_scan()
-        return
-
-    if action == "assign":
-        if len(argv) < 2:
-            print_error("Usage: monitoring-hub customer assign <customer_id>")
-            sys.exit(1)
-        success = customer_assign(argv[1])
-        sys.exit(0 if success else 1)
-
-    if action == "checks":
-        if len(argv) < 2:
-            print_error("Usage: monitoring-hub customer checks <customer_id>")
-            sys.exit(1)
-        success = customer_checks(argv[1])
-        sys.exit(0 if success else 1)
-
-    if action == "sync-accounts":
-        if len(argv) < 2:
-            print_error("Usage: monitoring-hub customer sync-accounts <customer_id>")
-            sys.exit(1)
-        success = customer_sync_accounts(argv[1])
-        sys.exit(0 if success else 1)
-
     print_error(f"Unknown customer action: {action}")
-    print_info("Available: init, list, validate, scan, assign, checks, sync-accounts")
+    print_info("Available: list, scan, validate")
+    print_info("")
+    print_info("  list     - Show all customer configurations")
+    print_info("  scan     - Compare AWS profiles with customer configs")
+    print_info("  validate - Validate a customer YAML file")
+    print_info("")
+    print_info("To add/edit customers, edit YAML files in configs/customers/")
     sys.exit(1)
 
 
@@ -162,9 +134,9 @@ def main():
   monitoring-hub --customer aryanoble
 
   # Customer management
-  monitoring-hub customer init nabati-ksni
   monitoring-hub customer list
-  monitoring-hub customer validate aryanoble
+  monitoring-hub customer scan
+  monitoring-hub customer validate ucoal
 
   # Initialize config file
   monitoring-hub --init-config
