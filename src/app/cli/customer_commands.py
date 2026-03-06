@@ -32,7 +32,8 @@ def _load_customer_configs_with_errors() -> tuple[list[dict], list[str]]:
     customers = []
     errors = []
     
-    for customer_id, config_path in list_customers():
+    for customer_info in list_customers():
+        customer_id = customer_info['customer_id']
         try:
             cfg = load_customer_config(customer_id)
             if cfg:
@@ -47,31 +48,27 @@ def customer_list() -> None:
     """List all customer configurations found in the system."""
     console.print(f"[bold cyan]{ICONS['star']} Customer Configurations[/bold cyan]\n")
 
-    customers = list_customers()
+    customers = list(list_customers())
     if not customers:
         console.print("[yellow]No customer configurations found.[/yellow]")
         console.print("[dim]Create YAML files in configs/customers/ directory.[/dim]")
         return
 
-    for customer_id, config_path in customers:
-        try:
-            cfg = load_customer_config(customer_id)
-            if cfg:
-                display_name = cfg.get("display_name", customer_id)
-                accounts = cfg.get("accounts", [])
-                checks = cfg.get("checks", [])
-                
-                console.print(f"[green]●[/green] {customer_id}")
-                console.print(f"  Name: {display_name}")
-                console.print(f"  Accounts: {len(accounts)}")
-                console.print(f"  Checks: {', '.join(checks) if checks else 'none'}")
-                console.print(f"  Path: [dim]{config_path}[/dim]")
-                console.print()
-        except Exception as e:
-            console.print(f"[red]●[/red] {customer_id}")
-            console.print(f"  Error: {str(e)}")
-            console.print(f"  Path: [dim]{config_path}[/dim]")
-            console.print()
+    for customer_info in customers:
+        customer_id = customer_info['customer_id']
+        display_name = customer_info.get('display_name', customer_id)
+        account_count = customer_info.get('account_count', 0)
+        checks = customer_info.get('checks', [])
+        config_path = customer_info.get('path', 'unknown')
+        slack_enabled = customer_info.get('slack_enabled', False)
+        
+        console.print(f"[green]●[/green] {customer_id}")
+        console.print(f"  Name: {display_name}")
+        console.print(f"  Accounts: {account_count}")
+        console.print(f"  Checks: {', '.join(checks) if checks else 'none'}")
+        console.print(f"  Slack: {'enabled' if slack_enabled else 'disabled'}")
+        console.print(f"  Path: [dim]{config_path}[/dim]")
+        console.print()
 
 
 def customer_scan() -> None:
@@ -129,13 +126,12 @@ def customer_validate(customer_id: str) -> bool:
             console.print(f"[red]{ICONS['error']} Customer config not found: {customer_id}[/red]")
             return False
 
-        # Validate using schema
-        errors = validate_customer_config(cfg)
-        
-        if errors:
+        # Validate using schema - raises ValueError on error
+        try:
+            validate_customer_config(cfg)
+        except ValueError as e:
             console.print(f"[red]{ICONS['error']} Validation failed for {customer_id}:[/red]")
-            for error in errors:
-                console.print(f"  - {error}")
+            console.print(f"  {str(e)}")
             return False
         
         console.print(f"[green]{ICONS['check']} Valid: {customer_id}[/green]")
