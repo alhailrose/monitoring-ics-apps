@@ -77,3 +77,44 @@ def test_build_huawei_legacy_consolidated_report_contains_numbered_accounts_and_
     assert "1. dh_prod_nonerp" in text
     assert "2. afco_prod_erp" in text
     assert "[BLOCK - SPIKE / IDLE TINGGI]" in text
+
+
+def test_build_huawei_legacy_consolidated_report_summarizes_no_data_accounts_at_bottom():
+    all_results = {
+        "dh_log-ro": {
+            "status": "success",
+            "account": "dh_log",
+            "rise_threshold": 70.0,
+            "util_window": {"to": "2026-03-06 10:00:00 WIB"},
+            "util": {
+                "cpu_avg_12h": None,
+                "cpu_peak_overall": None,
+                "mem_avg_12h": None,
+                "mem_peak_overall": None,
+                "top_mem_hot": [],
+            },
+        },
+        "dh_prod_nonerp-ro": {
+            "status": "success",
+            "account": "dh_prod_nonerp",
+            "rise_threshold": 70.0,
+            "util_window": {"to": "2026-03-06 10:00:00 WIB"},
+            "util": {
+                "cpu_avg_12h": 3.0,
+                "cpu_peak_overall": {"name": "app-1", "peak": 10.0},
+                "mem_avg_12h": 30.0,
+                "mem_peak_overall": {"name": "db-1", "peak": 40.0, "avg_12h": 30.0},
+                "top_mem_hot": [],
+            },
+        },
+    }
+
+    text = build_huawei_legacy_consolidated_report(
+        all_results,
+        errors=[],
+        ordered_profiles=["dh_log-ro", "dh_prod_nonerp-ro"],
+    )
+
+    assert "Akun tanpa data utilisasi:" in text
+    assert "- dh_log" in text
+    assert "dh_prod_nonerp" not in text.split("Akun tanpa data utilisasi:", 1)[1]

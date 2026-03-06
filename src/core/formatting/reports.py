@@ -185,25 +185,26 @@ def build_huawei_legacy_consolidated_report(
     errors_by_profile = {profile: message for profile, message in errors}
 
     lines: list[str] = [title, report_date, ""]
+    no_data_accounts: list[str] = []
+    display_index = 1
 
-    for idx, profile in enumerate(ordered_profiles, start=1):
+    for profile in ordered_profiles:
         result = all_results.get(profile) or {}
         account = str(result.get("account") or _profile_to_account(profile))
-        lines.append(f"{idx}. {account}")
 
         profile_error = errors_by_profile.get(profile)
         if not profile_error and isinstance(result, dict) and result.get("status") == "error":
             profile_error = str(result.get("error") or "unknown error")
 
         if profile_error:
+            lines.append(f"{display_index}. {account}")
             lines.append(f"   ERROR: {profile_error}")
             lines.append("")
+            display_index += 1
             continue
 
         if not isinstance(result, dict) or result.get("status") != "success":
-            lines.append("   Data utilisasi CPU tidak tersedia pada periode ini.")
-            lines.append("   Data utilisasi memory tidak tersedia pada periode ini.")
-            lines.append("")
+            no_data_accounts.append(account)
             continue
 
         rise_threshold = float(result.get("rise_threshold", 70.0))
@@ -213,7 +214,23 @@ def build_huawei_legacy_consolidated_report(
         cpu_avg = util.get("cpu_avg_12h")
         cpu_host = cpu_row.get("name", "-")
         cpu_peak = cpu_row.get("peak")
-        if isinstance(cpu_peak, (int, float)) and isinstance(cpu_avg, (int, float)):
+        cpu_has_data = isinstance(cpu_peak, (int, float)) and isinstance(cpu_avg, (int, float))
+
+        mem_row = util.get("mem_peak_overall") or {}
+        mem_avg = mem_row.get("avg_12h", util.get("mem_avg_12h"))
+        mem_peak = mem_row.get("peak")
+        mem_host = mem_row.get("name", "-")
+        mem_has_data = isinstance(mem_peak, (int, float)) and isinstance(mem_avg, (int, float))
+
+        top_mem_hot = util.get("top_mem_hot") or []
+        if not cpu_has_data and not mem_has_data and not top_mem_hot:
+            no_data_accounts.append(account)
+            continue
+
+        lines.append(f"{display_index}. {account}")
+        display_index += 1
+
+        if cpu_has_data:
             lines.append(
                 f"   Utilisasi CPU tidak melewati ambang {rise_threshold:.0f}%; rata-rata 12 jam sekitar {_fmt_pct(cpu_avg)} "
                 f"dengan puncak {_fmt_pct(cpu_peak)} ({cpu_host})."
@@ -221,11 +238,7 @@ def build_huawei_legacy_consolidated_report(
         else:
             lines.append("   Data utilisasi CPU tidak tersedia pada periode ini.")
 
-        mem_row = util.get("mem_peak_overall") or {}
-        mem_avg = mem_row.get("avg_12h", util.get("mem_avg_12h"))
-        mem_peak = mem_row.get("peak")
-        mem_host = mem_row.get("name", "-")
-        if not isinstance(mem_peak, (int, float)) or not isinstance(mem_avg, (int, float)):
+        if not mem_has_data:
             lines.append("   Data utilisasi memory tidak tersedia pada periode ini.")
         elif float(mem_peak) <= rise_threshold:
             lines.append(
@@ -267,6 +280,11 @@ def build_huawei_legacy_consolidated_report(
             lines.append("   - Tidak ada temuan SPIKE/HIGH-STABLE pada periode ini.")
         lines.append("   - IDLE tinggi tidak dijadikan alert utama karena laporan menggunakan metrik usage.")
         lines.append("")
+
+    if no_data_accounts:
+        lines.append("Akun tanpa data utilisasi:")
+        for account in no_data_accounts:
+            lines.append(f"- {account}")
 
     return "\n".join(lines).rstrip()
 
