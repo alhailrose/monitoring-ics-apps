@@ -44,9 +44,9 @@ def _dedupe_paths(paths):
 def _candidate_paths(customer_id):
     root = _repo_root()
     return _dedupe_paths([
-        _user_config_dir() / f"{customer_id}.yaml",  # Priority 1: User home directory
-        Path.cwd() / "configs" / "customers" / f"{customer_id}.yaml",  # Priority 2: Current directory
-        root / "configs" / "customers" / f"{customer_id}.yaml",  # Priority 3: Repo root
+        Path.cwd() / "configs" / "customers" / f"{customer_id}.yaml",  # Priority 1: Current directory (git repo)
+        root / "configs" / "customers" / f"{customer_id}.yaml",  # Priority 2: Repo root (development)
+        _user_config_dir() / f"{customer_id}.yaml",  # Priority 3: User home directory (fallback)
         _module_defaults_dir() / f"{customer_id}.yaml",  # Priority 4: Module defaults
         root / "src" / "configs" / "defaults" / "customers" / f"{customer_id}.yaml",  # Priority 5: Src defaults
     ])
@@ -121,9 +121,9 @@ def list_customers() -> List[dict]:
     """
     root = _repo_root()
     customers_dirs = _dedupe_paths([
-        _user_config_dir(),  # Priority 1: User home directory
-        Path.cwd() / "configs" / "customers",  # Priority 2: Current directory
-        root / "configs" / "customers",  # Priority 3: Repo root
+        Path.cwd() / "configs" / "customers",  # Priority 1: Current directory (git repo)
+        root / "configs" / "customers",  # Priority 2: Repo root (development)
+        _user_config_dir(),  # Priority 3: User home directory (fallback)
         _module_defaults_dir(),  # Priority 4: Module defaults
         root / "src" / "configs" / "defaults" / "customers",  # Priority 5: Src defaults
     ])

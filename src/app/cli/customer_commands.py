@@ -197,8 +197,10 @@ def customer_validate(customer_id: str) -> bool:
     for i, account in enumerate(cfg.get("accounts", [])):
         if not account.get("profile"):
             issues.append(f"account[{i}] missing profile")
-        if not account.get("account_id"):
-            issues.append(f"account[{i}] missing account_id")
+        # Allow empty account_id if profile is present (will be fetched later)
+        # Only fail if both profile and account_id are missing
+        if not account.get("profile") and not account.get("account_id"):
+            issues.append(f"account[{i}] missing both profile and account_id")
 
     # Check Slack config
     slack = cfg.get("slack", {})

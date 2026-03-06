@@ -12,10 +12,14 @@ def validate_customer_config(raw):
     if not isinstance(accounts, list) or not accounts:
         raise ValueError("accounts must be a non-empty list")
 
-    for account in accounts:
+    for idx, account in enumerate(accounts):
         if not isinstance(account, dict):
             raise ValueError("account entry must be an object")
-        if not account.get("profile") and not account.get("account_id"):
-            raise ValueError("profile or account_id is required in account entry")
+        
+        profile = account.get("profile")
+        
+        # Only require profile - account_id is optional (can be filled manually or left empty)
+        if not profile:
+            raise ValueError(f"account[{idx}] missing profile")
 
     return raw
