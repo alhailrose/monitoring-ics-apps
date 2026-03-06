@@ -15,6 +15,6 @@ checks:
 
 accounts:
   - profile: asg
-    account_id: ""
+    account_id: "264887202956"
     display_name: "ASG"
     region: ap-southeast-3

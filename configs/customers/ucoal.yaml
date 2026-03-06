@@ -11,17 +11,17 @@ checks:
   - notifications
 accounts:
   - profile: ucoal-prod
-    account_id: ""
+    account_id: "637423564327"
     display_name: "Ucoal Production"
   
   - profile: ucoal-appfuel
-    account_id: ""
+    account_id: "593793048887"
     display_name: "Ucoal AppFuel"
   
   - profile: ucoal-legal
-    account_id: ""
+    account_id: "622022425112"
     display_name: "Ucoal Legal"
   
   - profile: ucoal-minescape
-    account_id: ""
+    account_id: "595985021323"
     display_name: "Ucoal Minescape"

@@ -13,6 +13,6 @@ checks:
 
 accounts:
   - profile: sandbox
-    account_id: ""
+    account_id: "339712808680"
     display_name: "Sandbox"
     region: us-east-1
