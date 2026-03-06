@@ -132,6 +132,122 @@ def _searchable_multi_select_prompt(prompt, choices, ask_search=True):
     return apply_bulk_action(available_choices, "manual", selected_values)
 
 
+def _simple_account_select(display_name, accounts):
+    """Simplified account selection with default select-all.
+    
+    Args:
+        display_name: Customer display name
+        accounts: List of account dicts with 'profile' key
+        
+    Returns:
+        List of selected profile names
+    """
+    if not accounts:
+        return []
+    
+    # Show info
+    console.print(
+        f"\n[cyan]{display_name}[/cyan] memiliki [yellow]{len(accounts)}[/yellow] akun aktif"
+    )
+    
+    # Ask: use all accounts?
+    try:
+        use_all = questionary.confirm(
+            f"{ICONS['check']} Pilih semua akun?",
+            default=True,  # Default YES
+            style=CUSTOM_STYLE,
+        ).ask()
+    except KeyboardInterrupt:
+        _handle_interrupt(exit_direct=True)
+        return []
+    
+    if use_all:
+        return [a["profile"] for a in accounts]
+    
+    # Otherwise, show checkboxes (with all pre-checked)
+    try:
+        selected = questionary.checkbox(
+            f"{ICONS['check']} Uncheck akun yang tidak ingin dipilih:",
+            choices=[
+                questionary.Choice(
+                    title=a.get("display_name") or a["profile"],
+                    value=a["profile"],
+                    checked=True  # All pre-checked
+                )
+                for a in accounts
+            ],
+            style=CUSTOM_STYLE,
+            instruction="(Spasi untuk uncheck, Enter untuk konfirmasi)",
+        ).ask()
+    except KeyboardInterrupt:
+        _handle_interrupt(exit_direct=True)
+        return []
+    
+    return selected or []
+
+
+def _simple_check_select(display_name, configured_checks, available_checks):
+    """Simplified check selection with default using customer-configured checks.
+    
+    Args:
+        display_name: Customer display name
+        configured_checks: List of check names configured for this customer
+        available_checks: Dict of all available check classes
+        
+    Returns:
+        List of selected check names
+    """
+    if not configured_checks:
+        return []
+    
+    # Filter only valid checks
+    valid_checks = [c for c in configured_checks if c in available_checks]
+    
+    if not valid_checks:
+        return []
+    
+    # Show info
+    console.print(
+        f"\n[cyan]{display_name}[/cyan] memiliki [yellow]{len(valid_checks)}[/yellow] checks terkonfigurasi"
+    )
+    console.print(f"[dim]Checks: {', '.join(valid_checks)}[/dim]\n")
+    
+    # Ask: use all configured checks?
+    try:
+        use_all = questionary.confirm(
+            f"{ICONS['check']} Gunakan semua checks yang terkonfigurasi?",
+            default=True,  # Default YES
+            style=CUSTOM_STYLE,
+        ).ask()
+    except KeyboardInterrupt:
+        _handle_interrupt(exit_direct=True)
+        return []
+    
+    if use_all:
+        return valid_checks
+    
+    # Otherwise, show checkboxes (with all pre-checked)
+    try:
+        selected = questionary.checkbox(
+            f"{ICONS['check']} Uncheck checks yang tidak ingin dijalankan:",
+            choices=[
+                questionary.Choice(
+                    title=check_name,
+                    value=check_name,
+                    checked=True  # All pre-checked
+                )
+                for check_name in valid_checks
+            ],
+            style=CUSTOM_STYLE,
+            instruction="(Spasi untuk uncheck, Enter untuk konfirmasi)",
+        ).ask()
+    except KeyboardInterrupt:
+        _handle_interrupt(exit_direct=True)
+        return []
+    
+    return selected or []
+
+
 def _choose_region(selected_profiles):
     """Region selection with beautiful UI."""
     default_region = resolve_region(selected_profiles, None)

@@ -529,6 +529,7 @@ class CheckExecutor:
 
         - single: Just the one named check
         - all: Customer's configured checks list (from DB), fallback to ALL_MODE_CHECKS
+               Default ALL_MODE_CHECKS: cost, guardduty, cloudwatch, notifications
         - arbel: Fixed ARBEL_CHECKS preset
         """
         if mode == "single":

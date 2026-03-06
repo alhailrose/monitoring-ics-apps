@@ -28,14 +28,19 @@ def _render_customer_dashboard(customers):
     table = Table(box=box.SIMPLE, show_header=True, padding=(0, 1))
     table.add_column("Customer", style="cyan")
     table.add_column("Accounts", style="white", justify="right")
-    table.add_column("Checks", style="white")
+    table.add_column("Checks", style="yellow")
     table.add_column("Slack", style="white")
 
     for c in customers:
         slack_status = "[green]ON[/green]" if c.get("slack_enabled") else "[dim]off[/dim]"
-        checks_str = ", ".join(c.get("checks", [])[:3])
-        if len(c.get("checks", [])) > 3:
-            checks_str += f" +{len(c['checks']) - 3}"
+        checks_list = c.get("checks", [])
+        
+        # Show all checks if <= 4, otherwise show first 3 + count
+        if len(checks_list) <= 4:
+            checks_str = ", ".join(checks_list) if checks_list else "[dim]none[/dim]"
+        else:
+            checks_str = ", ".join(checks_list[:3]) + f" [dim]+{len(checks_list) - 3} more[/dim]"
+        
         table.add_row(
             c["display_name"],
             str(c["account_count"]),
@@ -308,25 +313,14 @@ def _run_generic_customer(cfg):
         print_error(f"Tidak ada checks dikonfigurasi untuk {display_name}")
         return None
 
-    # Let operator select/deselect checks
-    check_choices = [c for c in checks if c in AVAILABLE_CHECKS]
-    if not check_choices:
-        print_error(f"Tidak ada checks valid untuk {display_name}")
-        return None
-
-    selected_checks = common._searchable_multi_select_prompt(
-        f"{ICONS['check']} Checks untuk {display_name}", check_choices
-    )
+    # Simplified check selection (default: use all configured, can uncheck)
+    selected_checks = common._simple_check_select(display_name, checks, AVAILABLE_CHECKS)
     if not selected_checks:
         print_error("Tidak ada check dipilih.")
         return None
 
-    # Let operator select/deselect accounts
-    account_choices = [a["profile"] for a in accounts]
-
-    selected_profiles = common._searchable_multi_select_prompt(
-        f"{ICONS['check']} Akun untuk {display_name}", account_choices
-    )
+    # Simplified account selection (default: select all, can uncheck)
+    selected_profiles = common._simple_account_select(display_name, accounts)
     if not selected_profiles:
         print_error("Tidak ada akun dipilih.")
         return None

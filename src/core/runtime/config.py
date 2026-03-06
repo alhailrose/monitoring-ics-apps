@@ -116,14 +116,13 @@ AVAILABLE_CHECKS = {
     "huawei-ecs-util": HuaweiECSUtilizationChecker,
 }
 
-# Checks to run in --all mode (excludes health only)
+# Checks to run in --all mode (default for all customers)
+# Default: cost anomalies, CloudWatch alarms, GuardDuty findings, notifications
 ALL_MODE_CHECKS = {
     "cost": CostAnomalyChecker,
     "guardduty": GuardDutyChecker,
     "cloudwatch": CloudWatchAlarmChecker,
     "notifications": NotificationChecker,
-    "backup": BackupStatusChecker,
-    "daily-arbel": DailyArbelChecker,
 }
 
 # Checks to run in lightweight --all mode (no backup/rds)
