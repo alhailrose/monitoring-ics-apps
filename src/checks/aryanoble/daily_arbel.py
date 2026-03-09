@@ -557,6 +557,8 @@ class DailyArbelChecker(BaseChecker):
             end_t = period[-1][0].astimezone(JKT).strftime("%H:%M")
             duration = int((period[-1][0] - period[0][0]).total_seconds() / 60)
             if duration < 5:
+                # Single-point spikes (duration=0) and very short bursts (<5 min)
+                # are treated as noise and filtered out intentionally.
                 continue
             spike_periods.append({
                 "inst_id": inst_id,
