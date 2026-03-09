@@ -370,6 +370,9 @@ class DailyArbelChecker(BaseChecker):
     def _alarm_threshold_for_role(self, cw_client, profile, role, metric_name):
         cfg = ACCOUNT_CONFIG.get(profile, {})
         role_alarm_map = cfg.get("alarm_thresholds", {}).get(role, {})
+        # EC2 alarm_thresholds uses list format (not metric_name->alarm_name dict); skip.
+        if not isinstance(role_alarm_map, dict):
+            return None
         alarm_name = role_alarm_map.get(metric_name)
         if not alarm_name:
             return None
@@ -1019,10 +1022,11 @@ class DailyArbelChecker(BaseChecker):
                     cfg["thresholds"],
                     role_thresholds=cfg.get("role_thresholds"),
                 )
-                role_alarm_periods = self._resolve_role_alarm_periods(cw, profile, role)
-                for metric_name, periods in role_alarm_periods.items():
-                    if metric_name in metrics_info:
-                        metrics_info[metric_name]["alarm_periods"] = periods
+                if service_type == "rds":
+                    role_alarm_periods = self._resolve_role_alarm_periods(cw, profile, role)
+                    for metric_name, periods in role_alarm_periods.items():
+                        if metric_name in metrics_info:
+                            metrics_info[metric_name]["alarm_periods"] = periods
                 evaluations = {}
                 for metric_name in cfg["metrics"]:
                     status, msg = self._evaluate_metric(
