@@ -363,12 +363,14 @@ class DailyArbelChecker(BaseChecker):
                 "metrics": daily.get("metrics", []),
                 "thresholds": daily.get("thresholds", {}),
                 "role_thresholds": daily.get("role_thresholds", {}),
+                "alarm_thresholds": daily.get("alarm_thresholds", {}),
             }
 
         return ACCOUNT_CONFIG.get(profile)
 
-    def _alarm_threshold_for_role(self, cw_client, profile, role, metric_name):
-        cfg = ACCOUNT_CONFIG.get(profile, {})
+    def _alarm_threshold_for_role(self, cw_client, profile, role, metric_name, cfg=None):
+        if cfg is None:
+            cfg = ACCOUNT_CONFIG.get(profile, {})
         role_alarm_map = cfg.get("alarm_thresholds", {}).get(role, {})
         # EC2 alarm_thresholds uses list format (not metric_name->alarm_name dict); skip.
         if not isinstance(role_alarm_map, dict):
@@ -392,7 +394,7 @@ class DailyArbelChecker(BaseChecker):
 
         return None
 
-    def _resolve_role_thresholds(self, cw_client, profile, role, base_thresholds, role_thresholds=None):
+    def _resolve_role_thresholds(self, cw_client, profile, role, base_thresholds, role_thresholds=None, cfg=None):
         resolved = dict(base_thresholds)
         # Apply per-role overrides from customer config first
         if role_thresholds and role in role_thresholds:
@@ -403,6 +405,7 @@ class DailyArbelChecker(BaseChecker):
             profile,
             role,
             "FreeableMemory",
+            cfg=cfg,
         )
         if fm_threshold is not None:
             resolved["FreeableMemory"] = fm_threshold
@@ -621,7 +624,7 @@ class DailyArbelChecker(BaseChecker):
 
         return "past-warn", spike_periods
 
-    def _check_ec2_alarms(self, cw_client, profile: str, role: str) -> list[dict]:
+    def _check_ec2_alarms(self, cw_client, profile: str, role: str, cfg=None) -> list[dict]:
         """Check CloudWatch alarm states for disk/memory for a given EC2 role.
 
         Returns a list of dicts, one per alarm that has fired (ALARM or has alarm periods):
@@ -631,9 +634,10 @@ class DailyArbelChecker(BaseChecker):
             "periods": list[tuple(float, start_str, end_str, duration_min)],
           }
         """
+        if cfg is None:
+            cfg = ACCOUNT_CONFIG.get(profile, {})
         alarm_names: list[str] = (
-            ACCOUNT_CONFIG.get(profile, {})
-            .get("alarm_thresholds", {})
+            cfg.get("alarm_thresholds", {})
             .get(role, [])
         )
         if not alarm_names:
@@ -1021,6 +1025,7 @@ class DailyArbelChecker(BaseChecker):
                     role,
                     cfg["thresholds"],
                     role_thresholds=cfg.get("role_thresholds"),
+                    cfg=cfg,
                 )
                 if service_type == "rds":
                     role_alarm_periods = self._resolve_role_alarm_periods(cw, profile, role)
@@ -1047,7 +1052,7 @@ class DailyArbelChecker(BaseChecker):
                     "metrics": evaluations,
                 }
                 if service_type == "ec2":
-                    alarm_results = self._check_ec2_alarms(cw, profile, role)
+                    alarm_results = self._check_ec2_alarms(cw, profile, role, cfg=cfg)
                     instance_reports[role]["disk_memory_alarms"] = alarm_results
                     if alarm_results:
                         any_warn = True
