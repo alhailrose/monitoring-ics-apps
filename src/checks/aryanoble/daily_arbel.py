@@ -1070,16 +1070,17 @@ class DailyArbelChecker(BaseChecker):
                     lines.append(f"- {label} spike: Tidak terdapat spike yang signifikan")
                 else:
                     lines.append(f"- {label} spike:")
-                    # Group by instance name
+                    # Group by inst_id (stable key); use inst_name only for display
                     by_instance = {}
                     for sp in all_spike_periods:
-                        key = sp["inst_name"] or sp["inst_id"]
+                        key = sp["inst_id"]
                         if key not in by_instance:
                             by_instance[key] = []
                         by_instance[key].append(sp)
-                    for inst_key, periods in by_instance.items():
-                        inst_id_short = periods[0]["inst_id"][:10] + "..." if len(periods[0]["inst_id"]) > 10 else periods[0]["inst_id"]
-                        lines.append(f"    {inst_key} ({inst_id_short}):")
+                    for inst_id_key, periods in by_instance.items():
+                        inst_name = periods[0]["inst_name"] or inst_id_key
+                        inst_id_short = inst_id_key[:10] + "..." if len(inst_id_key) > 10 else inst_id_key
+                        lines.append(f"    {inst_name} ({inst_id_short}):")
                         for sp in periods:
                             lines.append(
                                 f"      * {sp['start_str']}-{sp['end_str']} WIB "
@@ -1096,7 +1097,7 @@ class DailyArbelChecker(BaseChecker):
         warn_count = 0
         for data in result.get("instances", {}).values():
             for m in data.get("metrics", {}).values():
-                if m.get("status") == "warn":
+                if m.get("status") in ("warn", "past-warn"):
                     warn_count += 1
         return warn_count
 
