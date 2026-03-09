@@ -116,7 +116,9 @@ ACCOUNT_CONFIG = {
         },
         "alarm_thresholds": {
             "prod": {
-                "FreeableMemory": "erhabuddy-prod-rds-freeable-memory-alarm",
+                "CPUUtilization": "EB-MYSQL RDS CPU Utilization > 75%",
+                "DatabaseConnections": "EB-MYSQL RDS Connection > 400",
+                "FreeableMemory": "EB-MYSQL RDS Free Memory < 400MB",
             }
         },
     },
@@ -137,6 +139,17 @@ ACCOUNT_CONFIG = {
             "CPUUtilization": 75,
             "DatabaseConnections": 500,
             "FreeStorageSpace": 5 * 1024**3,  # 5 GB (of 20GB allocated)
+        },
+        "alarm_thresholds": {
+            "mysql-prod": {
+                "CPUUtilization": "WEBAPP-MYSQL RDS CPU Utilization > 75%",
+                "DatabaseConnections": "WEBAPP-MYSQL RDS Connection > 80",
+                "FreeableMemory": "WEBAPP-MYSQL RDS Free Memory < 400MB",
+            },
+            "postgre-prod": {
+                "CPUUtilization": "WEBAPP-POSTGRES RDS CPU Utilization > 75%",
+                "DatabaseConnections": "WEBAPP-POSTGRES RDS Connection > 10",
+            },
         },
     },
     "HRIS": {
@@ -476,13 +489,14 @@ class DailyArbelChecker(BaseChecker):
 
         return periods
 
-    def _resolve_role_alarm_periods(self, cw_client, profile, role):
+    def _resolve_role_alarm_periods(self, cw_client, profile, role, cfg=None):
         now_utc = datetime.now(timezone.utc)
         start_utc = now_utc - timedelta(hours=self.window_hours)
         out = {}
 
+        effective_cfg = cfg if cfg is not None else ACCOUNT_CONFIG.get(profile, {})
         role_metric_map = (
-            ACCOUNT_CONFIG.get(profile, {}).get("alarm_thresholds", {}).get(role, {})
+            effective_cfg.get("alarm_thresholds", {}).get(role, {})
         )
         for metric_name, alarm_name in role_metric_map.items():
             if not alarm_name:
@@ -1028,7 +1042,7 @@ class DailyArbelChecker(BaseChecker):
                     cfg=cfg,
                 )
                 if service_type == "rds":
-                    role_alarm_periods = self._resolve_role_alarm_periods(cw, profile, role)
+                    role_alarm_periods = self._resolve_role_alarm_periods(cw, profile, role, cfg=cfg)
                     for metric_name, periods in role_alarm_periods.items():
                         if metric_name in metrics_info:
                             metrics_info[metric_name]["alarm_periods"] = periods

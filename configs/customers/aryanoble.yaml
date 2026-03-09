@@ -88,6 +88,11 @@ accounts:
         CPUUtilization: 75
         DatabaseConnections: 500
         FreeStorageSpace: 10737418240
+      alarm_thresholds:
+        prod:
+          CPUUtilization: "EB-MYSQL RDS CPU Utilization > 75%"
+          DatabaseConnections: "EB-MYSQL RDS Connection > 400"
+          FreeableMemory: "EB-MYSQL RDS Free Memory < 400MB"
 
   - profile: public-web
     account_id: "211125667194"
@@ -106,6 +111,14 @@ accounts:
         CPUUtilization: 75
         DatabaseConnections: 500
         FreeStorageSpace: 5368709120
+      alarm_thresholds:
+        mysql-prod:
+          CPUUtilization: "WEBAPP-MYSQL RDS CPU Utilization > 75%"
+          DatabaseConnections: "WEBAPP-MYSQL RDS Connection > 80"
+          FreeableMemory: "WEBAPP-MYSQL RDS Free Memory < 400MB"
+        postgre-prod:
+          CPUUtilization: "WEBAPP-POSTGRES RDS CPU Utilization > 75%"
+          DatabaseConnections: "WEBAPP-POSTGRES RDS Connection > 10"
 
   - profile: dwh
     account_id: "084056488725"
