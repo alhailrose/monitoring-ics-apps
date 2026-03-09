@@ -512,15 +512,21 @@ class DailyArbelChecker(BaseChecker):
         return result
 
     def _evaluate_ec2_network(self, info, label):
-        """Evaluate EC2 NetworkIn/NetworkOut — display-only with spike detection."""
+        """Evaluate EC2 NetworkIn/NetworkOut — returns structured spike period list.
+
+        Returns:
+            (status, spike_periods)
+            status: "ok" | "past-warn" | "no-data"
+            spike_periods: list of dicts with keys:
+                inst_id, inst_name, start_str, end_str, duration_min, peak_bytes
+        """
         vals = info.get("values") or []
         if not vals:
-            return "no-data", f"{label}: Data tidak tersedia"
+            return "no-data", []
 
-        last = info.get("last", 0)
         avg = info.get("avg", 0)
-        # Spike = value > 2x average and avg is meaningful (> 1KB)
-        spike_threshold = max(avg * 2, 1024)
+        min_spike_bytes = 1 * 1024 ** 3  # 1 GB minimum per 1-minute bucket
+        spike_threshold = max(avg * 2, min_spike_bytes)
         timestamps = info.get("timestamps", [])
 
         spikes = [
@@ -528,7 +534,7 @@ class DailyArbelChecker(BaseChecker):
         ]
 
         if not spikes:
-            return "ok", f"{label} = Tidak terdapat spike yang signifikan"
+            return "ok", []
 
         # Group consecutive spikes (gap > 5 min = new period)
         periods = []
@@ -542,8 +548,9 @@ class DailyArbelChecker(BaseChecker):
                 current = [spikes[i]]
         periods.append(current)
 
-        # Format spike periods
-        spike_parts = []
+        inst_id = info.get("instance_id", "")
+        inst_name = info.get("instance_name", "")
+        spike_periods = []
         for period in periods:
             peak = max(period, key=lambda x: x[1])
             start_t = period[0][0].astimezone(JKT).strftime("%H:%M")
@@ -551,21 +558,19 @@ class DailyArbelChecker(BaseChecker):
             duration = int((period[-1][0] - period[0][0]).total_seconds() / 60)
             if duration < 5:
                 continue
-            inst_id = info.get("instance_id", "")
-            inst_name = info.get("instance_name", "")
-            if inst_id and inst_name:
-                spike_parts.append(
-                    f"{inst_id} ({inst_name}) pukul {start_t}-{end_t} WIB ({duration} menit, peak {human_network_bytes(peak[1])})"
-                )
-            else:
-                spike_parts.append(
-                    f"pukul {start_t}-{end_t} WIB ({duration} menit, peak {human_network_bytes(peak[1])})"
-                )
+            spike_periods.append({
+                "inst_id": inst_id,
+                "inst_name": inst_name,
+                "start_str": start_t,
+                "end_str": end_t,
+                "duration_min": duration,
+                "peak_bytes": peak[1],
+            })
 
-        if not spike_parts:
-            return "ok", f"{label} = Tidak terdapat spike yang signifikan"
+        if not spike_periods:
+            return "ok", []
 
-        return "past-warn", f"{label} spike = terdapat spike pada " + ", ".join(spike_parts)
+        return "past-warn", spike_periods
 
     def _evaluate_metric(self, metric, info, thresholds, profile=None):
         vals = info.get("values") or []
