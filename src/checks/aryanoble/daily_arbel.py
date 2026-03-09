@@ -154,6 +154,24 @@ ACCOUNT_CONFIG = {
         },
         "metrics": ["CPUUtilization", "NetworkIn", "NetworkOut"],
         "thresholds": {"CPUUtilization": 80},
+        "alarm_thresholds": {
+            "webserver": [
+                "aryanoble-prod-Window2019Base-webserver Disk C < 20%",
+                "aryanoble-prod-Window2019Base-webserver Disk D < 20%",
+                "aryanoble-prod-Window2019Base-webserver-mem-above-80",
+            ],
+            "database": [
+                "aryanoble-prod-Windows2019+SQL2019Standard-database-disk-D-above-80",
+                "aryanoble-prod-Windows2019+SQL2019Standard-database-disk-E-above-80",
+                "aryanoble-prod-Windows2019+SQL2019Standard-database-disk-F-above-80",
+                "aryanoble-prod-Windows2019+SQL2019Standard-database-disk-G-above-80",
+                "aryanoble-prod-Windows2019+SQL2019Standard-database-mem-above-80",
+            ],
+            "openvpn": [
+                "aryanoble-prod-Ubuntu20.04-openvpn-disk-above-80",
+                "aryanoble-prod-Ubuntu20.04-openvpn-mem-above-80",
+            ],
+        },
     },
     "sfa": {
         "account_name": "SFA",
@@ -176,6 +194,32 @@ ACCOUNT_CONFIG = {
         },
         "metrics": ["CPUUtilization", "NetworkIn", "NetworkOut"],
         "thresholds": {"CPUUtilization": 70},
+        "alarm_thresholds": {
+            "vm-sfa": [
+                "vm-sfa-disk-above-70",
+                "vm-sfa-mem-above-70",
+            ],
+            "vm-database": [
+                "vm-database-disk-C:-below-30",
+                "vm-database-mem-above-70",
+            ],
+            "vm-jobs": [
+                "vm-jobs-disk-above-70",
+                "vm-jobs-mem-above-70",
+            ],
+            "vm-dms": [
+                "vm-dms-disk-C:-below-30",
+                "vm-dms-mem-above-70",
+            ],
+            "openvpn": [
+                "sfa-production-openvpn-disk-above-70",
+                "sfa-production-openvpn-mem-above-70",
+            ],
+            "openvpn-new": [
+                "sfa-production-openvpn-new-disk-above-70",
+                "sfa-production-openvpn-new-mem-above-70",
+            ],
+        },
     },
 }
 
