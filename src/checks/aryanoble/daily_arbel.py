@@ -929,8 +929,11 @@ class DailyArbelChecker(BaseChecker):
                         role_thresholds,
                         profile,
                     )
-                    evaluations[metric_name] = {"status": status, "message": msg}
-                    if status == "warn":
+                    if metric_name in ("NetworkIn", "NetworkOut"):
+                        evaluations[metric_name] = {"status": status, "raw_data": msg, "message": ""}
+                    else:
+                        evaluations[metric_name] = {"status": status, "message": msg}
+                    if status in ("warn", "past-warn"):
                         any_warn = True
 
                 instance_reports[role] = {
@@ -1034,7 +1037,7 @@ class DailyArbelChecker(BaseChecker):
                     metric_data[metric_name] = []
                     metric_order.append(metric_name)
                 metric_data[metric_name].append(
-                    (inst_id, role, info.get("status", "ok"), info.get("message", ""))
+                    (inst_id, role, info.get("status", "ok"), info.get("raw_data", info.get("message", "")))
                 )
 
         for metric_name in metric_order:
@@ -1056,21 +1059,32 @@ class DailyArbelChecker(BaseChecker):
                     lines.append("- CPU utilization = Tidak terdapat spike yang signifikan")
 
             elif metric_name in ("NetworkIn", "NetworkOut"):
-                label = "NetworkIn" if metric_name == "NetworkIn" else "NetworkOut"
-                spike_details = []
-                for iid, role, st, msg in entries:
-                    if st == "past-warn":
-                        # Extract detail after "terdapat spike pada "
-                        marker = "terdapat spike pada "
-                        idx = msg.find(marker)
-                        if idx >= 0:
-                            spike_details.append(msg[idx + len(marker):])
-                        else:
-                            spike_details.append(f"{iid} ({role})")
-                if spike_details:
-                    lines.append(f"- {label} spike = Terdapat spike pada " + ", ".join(spike_details))
+                label = metric_name
+                # Collect all spike periods from all instances
+                all_spike_periods = []
+                for iid, role, st, raw_data in entries:
+                    if st == "past-warn" and isinstance(raw_data, list):
+                        all_spike_periods.extend(raw_data)
+
+                if not all_spike_periods:
+                    lines.append(f"- {label} spike: Tidak terdapat spike yang signifikan")
                 else:
-                    lines.append(f"- {label} spike = Tidak terdapat spike yang signifikan")
+                    lines.append(f"- {label} spike:")
+                    # Group by instance name
+                    by_instance = {}
+                    for sp in all_spike_periods:
+                        key = sp["inst_name"] or sp["inst_id"]
+                        if key not in by_instance:
+                            by_instance[key] = []
+                        by_instance[key].append(sp)
+                    for inst_key, periods in by_instance.items():
+                        inst_id_short = periods[0]["inst_id"][:10] + "..." if len(periods[0]["inst_id"]) > 10 else periods[0]["inst_id"]
+                        lines.append(f"    {inst_key} ({inst_id_short}):")
+                        for sp in periods:
+                            lines.append(
+                                f"      * {sp['start_str']}-{sp['end_str']} WIB "
+                                f"({sp['duration_min']} menit, peak {human_network_bytes(sp['peak_bytes'])})"
+                            )
 
             else:
                 for iid, role, st, msg in entries:
