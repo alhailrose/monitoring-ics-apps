@@ -339,26 +339,12 @@ def build_whatsapp_rds_client(all_results):
         )
         lines.extend([date_str, "", "Summary:"])
 
-        service_type = res.get("service_type", "rds")
-        if service_type == "ec2":
-            # EC2: delegate to checker's format_report for correct network/alarm rendering
-            from src.checks.aryanoble.daily_arbel import DailyArbelChecker
-            checker = DailyArbelChecker()
-            ec2_body = checker.format_report(res)
-            messages.append(ec2_body)
-            continue
-
-        instances = res.get("instances", {})
-        for role, data in instances.items():
-            lines.append("")
-            lines.append(f"{role.capitalize()}:")
-            metrics = data.get("metrics", {})
-            for m, info in metrics.items():
-                msg = info.get("message", "")
-                if msg:
-                    lines.append(f"* {msg}")
-
-        messages.append("\n".join(lines))
+        # Delegate all rendering to checker's format_report for consistent output
+        from src.checks.aryanoble.daily_arbel import DailyArbelChecker
+        checker = DailyArbelChecker()
+        body = checker.format_report(res)
+        if body:
+            messages.append(body)
 
     if not messages:
         return "Tidak ada data RDS untuk profil Aryanoble yang terkonfigurasi."
