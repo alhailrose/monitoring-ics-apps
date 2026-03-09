@@ -618,6 +618,64 @@ class DailyArbelChecker(BaseChecker):
 
         return "past-warn", spike_periods
 
+    def _check_ec2_alarms(self, cw_client, profile: str, role: str) -> list[dict]:
+        """Check CloudWatch alarm states for disk/memory for a given EC2 role.
+
+        Returns a list of dicts, one per alarm that has fired (ALARM or has alarm periods):
+          {
+            "alarm_name": str,
+            "current_state": "ALARM" | "OK" | "INSUFFICIENT_DATA",
+            "periods": list[tuple(float, start_str, end_str, duration_min)],
+          }
+        """
+        alarm_names: list[str] = (
+            ACCOUNT_CONFIG.get(profile, {})
+            .get("alarm_thresholds", {})
+            .get(role, [])
+        )
+        if not alarm_names:
+            return []
+
+        now_utc = datetime.now(timezone.utc)
+        window_start_utc = now_utc - timedelta(hours=self.window_hours)
+        results = []
+
+        for alarm_name in alarm_names:
+            try:
+                current_state = "OK"
+                described = cw_client.describe_alarms(AlarmNames=[alarm_name])
+                metric_alarms = described.get("MetricAlarms", [])
+                if metric_alarms:
+                    current_state = metric_alarms[0].get("StateValue", "OK")
+
+                history = cw_client.describe_alarm_history(
+                    AlarmName=alarm_name,
+                    HistoryItemType="StateUpdate",
+                    StartDate=window_start_utc,
+                    EndDate=now_utc,
+                    ScanBy="TimestampDescending",
+                ).get("AlarmHistoryItems", [])
+
+                periods = self._extract_alarm_periods(
+                    history,
+                    now_utc,
+                    window_start_utc,
+                    current_state=current_state,
+                )
+                if current_state == "ALARM" or periods:
+                    results.append({
+                        "alarm_name": alarm_name,
+                        "current_state": current_state,
+                        "periods": periods,
+                    })
+            except Exception as e:
+                logger.warning(
+                    "Failed to check EC2 alarm %s/%s/%s: %s",
+                    profile, role, alarm_name, e,
+                )
+
+        return results
+
     def _evaluate_metric(self, metric, info, thresholds, profile=None):
         vals = info.get("values") or []
         if not vals:
@@ -984,6 +1042,11 @@ class DailyArbelChecker(BaseChecker):
                     "instance_id": inst_id,
                     "metrics": evaluations,
                 }
+                if service_type == "ec2":
+                    alarm_results = self._check_ec2_alarms(cw, profile, role)
+                    instance_reports[role]["disk_memory_alarms"] = alarm_results
+                    if alarm_results:
+                        any_warn = True
 
             status = "ATTENTION REQUIRED" if any_warn else "OK"
 
@@ -1134,6 +1197,38 @@ class DailyArbelChecker(BaseChecker):
             else:
                 for iid, role, st, msg in entries:
                     lines.append(f"- {msg}")
+
+        # Disk / Memory alarms section
+        any_disk_mem_alarms = False
+        for role, data in instances.items():
+            alarms = data.get("disk_memory_alarms") or []
+            if alarms:
+                any_disk_mem_alarms = True
+                break
+
+        if any_disk_mem_alarms:
+            lines.append("- Disk / Memory:")
+            for role, data in instances.items():
+                alarms = data.get("disk_memory_alarms") or []
+                if not alarms:
+                    continue
+                for alarm in alarms:
+                    alarm_name = alarm["alarm_name"]
+                    current_state = alarm["current_state"]
+                    periods = alarm.get("periods") or []
+                    if current_state == "ALARM" and not periods:
+                        lines.append(f"    {role} | {alarm_name}: ALARM (aktif sekarang)")
+                    elif periods:
+                        state_label = "ALARM" if current_state == "ALARM" else "pernah ALARM"
+                        period_strs = []
+                        for _, start_str, end_str, duration_min in periods:
+                            period_strs.append(f"{start_str}-{end_str} WIB ({duration_min} menit)")
+                        lines.append(
+                            f"    {role} | {alarm_name}: {state_label} — "
+                            + ", ".join(period_strs)
+                        )
+        else:
+            lines.append("- Disk / Memory: Semua normal")
 
     def count_issues(self, result: dict) -> int:
         if result.get("status") in ("error", "skipped"):
