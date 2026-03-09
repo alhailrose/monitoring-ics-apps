@@ -1225,17 +1225,23 @@ class DailyArbelChecker(BaseChecker):
                     alarm_name = alarm["alarm_name"]
                     current_state = alarm["current_state"]
                     periods = alarm.get("periods") or []
-                    if current_state == "ALARM" and not periods:
-                        lines.append(f"    {role} | {alarm_name}: ALARM (aktif sekarang)")
-                    elif periods:
-                        state_label = "ALARM" if current_state == "ALARM" else "pernah ALARM"
-                        period_strs = []
-                        for _, start_str, end_str, duration_min in periods:
-                            period_strs.append(f"{start_str}-{end_str} WIB ({duration_min} menit)")
-                        lines.append(
-                            f"    {role} | {alarm_name}: {state_label} — "
-                            + ", ".join(period_strs)
-                        )
+                    if current_state == "ALARM":
+                        # Aktif sekarang — tanpa detail waktu
+                        lines.append(f"    {role} | {alarm_name}: ALARM")
+                    else:
+                        # Pernah ALARM — tampilkan hanya periode >= 15 menit
+                        long_periods = [
+                            (s, e, d) for _, s, e, d in periods if d >= 15
+                        ]
+                        if long_periods:
+                            period_strs = [
+                                f"{s}-{e} WIB ({d} menit)"
+                                for s, e, d in long_periods
+                            ]
+                            lines.append(
+                                f"    {role} | {alarm_name}: pernah ALARM — "
+                                + ", ".join(period_strs)
+                            )
         else:
             lines.append("- Disk / Memory: Semua normal")
 
