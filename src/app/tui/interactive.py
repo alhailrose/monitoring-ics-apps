@@ -4,7 +4,7 @@ import questionary
 
 from src.app.tui import common
 from src.app.tui.flows import cloudwatch_cost, customer, dashboard, settings
-from src.configs.loader import load_customer_config
+from src.configs.loader import get_alarm_names_for_profile, load_customer_config
 from src.core.runtime.config import AVAILABLE_CHECKS
 from src.core.runtime.runners import (
     run_all_checks,
@@ -168,10 +168,25 @@ def _run_quick_check():
     if region is None:
         return
 
+    # Build check_kwargs for checks that need extra params
+    check_kwargs = None
+    if selected_check == "alarm_verification":
+        alarm_names = []
+        for p in profiles:
+            alarm_names.extend(get_alarm_names_for_profile(p))
+        check_kwargs = {"alarm_names": alarm_names, "min_duration_minutes": 10}
+
     if len(profiles) > 1:
-        run_group_specific(selected_check, profiles, region, group_name=group_choice)
+        run_group_specific(
+            selected_check, profiles, region,
+            group_name=group_choice,
+            check_kwargs=check_kwargs,
+        )
     else:
-        run_individual_check(selected_check, profiles[0], region)
+        run_individual_check(
+            selected_check, profiles[0], region,
+            check_kwargs=check_kwargs,
+        )
 
 
 def run_huawei_utilization():
@@ -179,11 +194,16 @@ def run_huawei_utilization():
     print_mini_banner()
     print_section_header("Huawei Utilization", ICONS.get("huawei", ICONS["cloudwatch"]))
 
+    huawei_checker = AVAILABLE_CHECKS.get("huawei-ecs-util")
+    if huawei_checker is None:
+        print_error("Check 'huawei-ecs-util' tidak terdaftar. Periksa runtime config.")
+        return
+
     run_all_checks(
         profiles=HUAWEI_FIXED_PROFILES,
         region=HUAWEI_REGION,
         group_name="Huawei",
-        checks_override={"huawei-ecs-util": AVAILABLE_CHECKS["huawei-ecs-util"]},
+        checks_override={"huawei-ecs-util": huawei_checker},
         output_mode="huawei_legacy",
     )
 
@@ -191,7 +211,10 @@ def run_huawei_utilization():
 def _run_huawei_menu():
     submenu_choice = common._select_prompt(
         f"{ICONS.get('huawei', ICONS['cloudwatch'])} Huawei Check",
-        [questionary.Choice("Utilization", value="utilization")],
+        [
+            questionary.Choice("Utilization", value="utilization"),
+            questionary.Choice("Back", value="back"),
+        ],
     )
     if submenu_choice == "utilization":
         run_huawei_utilization()
