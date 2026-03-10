@@ -174,6 +174,12 @@ def _run_quick_check():
         alarm_names = []
         for p in profiles:
             alarm_names.extend(get_alarm_names_for_profile(p))
+        if not alarm_names:
+            print_error(
+                "Alarm belum dikonfigurasi untuk profil yang dipilih. "
+                "Tambahkan alarm_names di configs/customers/<customer>.yaml"
+            )
+            return
         check_kwargs = {"alarm_names": alarm_names, "min_duration_minutes": 10}
 
     if len(profiles) > 1:
