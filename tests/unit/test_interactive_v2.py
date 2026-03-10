@@ -329,3 +329,94 @@ def test_check_choices_do_not_include_daily_arbel():
     """CHECK_CHOICES should not include daily-arbel (it's customer-specific)."""
     check_values = [c.value for c in interactive.CHECK_CHOICES]
     assert "daily-arbel" not in check_values
+
+
+def test_pick_profiles_all_accounts_returns_all_profiles(monkeypatch):
+    """All Accounts mode should return every profile from every customer."""
+    from src.app.tui import common
+    from src.configs import loader
+
+    monkeypatch.setattr(
+        loader,
+        "list_customers",
+        lambda: [
+            {"customer_id": "nabati", "display_name": "Nabati", "account_count": 2},
+            {"customer_id": "diamond", "display_name": "Diamond", "account_count": 1},
+        ],
+    )
+
+    def _fake_load(customer_id):
+        if customer_id == "nabati":
+            return {"accounts": [{"profile": "ksni-master"}, {"profile": "erp-ksni"}]}
+        return {"accounts": [{"profile": "Diamond"}]}
+
+    monkeypatch.setattr(loader, "load_customer_config", _fake_load)
+
+    # User picks "all_accounts" mode
+    monkeypatch.setattr(common, "_select_prompt", lambda _msg, _choices, **_kw: "all_accounts")
+
+    profiles, group_name, back = interactive._pick_profiles_from_customers()
+
+    assert not back
+    assert sorted(profiles) == ["Diamond", "erp-ksni", "ksni-master"]
+    assert group_name == "All Accounts"
+
+
+def test_pick_profiles_per_customer_all_accounts(monkeypatch):
+    """Per Customer mode with 'pilih semua' should return all profiles of selected customer."""
+    from src.app.tui import common
+    from src.configs import loader
+
+    monkeypatch.setattr(
+        loader,
+        "list_customers",
+        lambda: [{"customer_id": "nabati", "display_name": "Nabati", "account_count": 2}],
+    )
+    monkeypatch.setattr(
+        loader,
+        "load_customer_config",
+        lambda _: {"accounts": [{"profile": "ksni-master"}, {"profile": "erp-ksni"}]},
+    )
+
+    select_calls = iter(["per_customer", "nabati"])
+    monkeypatch.setattr(common, "_select_prompt", lambda _msg, _choices, **_kw: next(select_calls))
+
+    # confirm "pilih semua" → True
+    import questionary as q
+    monkeypatch.setattr(q, "confirm", lambda *_a, **_kw: type("C", (), {"ask": lambda self: True})())
+
+    profiles, group_name, back = interactive._pick_profiles_from_customers()
+
+    assert not back
+    assert sorted(profiles) == ["erp-ksni", "ksni-master"]
+    assert group_name == "Nabati"
+
+
+def test_pick_profiles_per_customer_partial_selection(monkeypatch):
+    """Per Customer mode with manual select should return only checked profiles."""
+    from src.app.tui import common
+    from src.configs import loader
+
+    monkeypatch.setattr(
+        loader,
+        "list_customers",
+        lambda: [{"customer_id": "nabati", "display_name": "Nabati", "account_count": 2}],
+    )
+    monkeypatch.setattr(
+        loader,
+        "load_customer_config",
+        lambda _: {"accounts": [{"profile": "ksni-master"}, {"profile": "erp-ksni"}]},
+    )
+
+    select_calls = iter(["per_customer", "nabati"])
+    monkeypatch.setattr(common, "_select_prompt", lambda _msg, _choices, **_kw: next(select_calls))
+
+    import questionary as q
+    monkeypatch.setattr(q, "confirm", lambda *_a, **_kw: type("C", (), {"ask": lambda self: False})())
+    monkeypatch.setattr(common, "_checkbox_prompt", lambda _msg, _choices: ["ksni-master"])
+
+    profiles, group_name, back = interactive._pick_profiles_from_customers()
+
+    assert not back
+    assert profiles == ["ksni-master"]
+    assert group_name == "Nabati"

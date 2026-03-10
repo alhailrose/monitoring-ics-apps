@@ -99,7 +99,12 @@ CHECK_CHOICES = [
 
 
 def _pick_profiles_from_customers():
-    """Pick profiles from all customer configs, multi-select."""
+    """Pick profiles from customer configs.
+
+    Two modes:
+    - All Accounts: return every profile from every customer
+    - Per Customer: pick 1 customer, then pick accounts from it
+    """
     from src.configs.loader import list_customers, load_customer_config
 
     customers = list_customers()
@@ -107,41 +112,100 @@ def _pick_profiles_from_customers():
         print_error("Tidak ada customer config ditemukan.")
         return [], None, False
 
-    all_profiles = []
-    label_to_profile = {}
-    for c in customers:
-        try:
-            cfg = load_customer_config(c["customer_id"])
-            for a in cfg.get("accounts", []):
-                profile = a.get("profile")
-                if profile:
-                    customer_label = c.get("display_name") or c.get("customer_id", "")
-                    label = f"{a.get('display_name', profile)} [{customer_label}] ({profile})"
-                    all_profiles.append(label)
-                    label_to_profile[label] = profile
-        except Exception:
-            continue
+    mode_choices = [
+        questionary.Choice(
+            f"{ICONS['all']} All Accounts  — semua profil dari semua customer",
+            value="all_accounts",
+        ),
+        questionary.Choice(
+            f"{ICONS['star']} Per Customer  — pilih 1 customer, lalu pilih akunnya",
+            value="per_customer",
+        ),
+    ]
 
-    if not all_profiles:
-        print_error("Tidak ada profil ditemukan di customer configs.")
+    mode = common._select_prompt(f"{ICONS['check']} Sumber Profil", mode_choices)
+    if not mode:
         return [], None, False
 
-    selected_labels = common._searchable_multi_select_prompt(
-        f"{ICONS['check']} Pilih Profil (multi-select)",
-        all_profiles,
+    if mode == "all_accounts":
+        all_profiles = []
+        seen: set[str] = set()
+        for c in customers:
+            try:
+                cfg = load_customer_config(c["customer_id"])
+                for a in cfg.get("accounts", []):
+                    profile = a.get("profile")
+                    if profile and profile not in seen:
+                        all_profiles.append(profile)
+                        seen.add(profile)
+            except Exception:
+                continue
+        return all_profiles, "All Accounts", False
+
+    # Per Customer: pick 1 customer
+    customer_choices = [
+        questionary.Choice(
+            f"{c.get('display_name', c['customer_id'])} ({c['account_count']} akun)",
+            value=c["customer_id"],
+        )
+        for c in customers
+    ]
+    selected_id = common._select_prompt(
+        f"{ICONS['star']} Pilih Customer", customer_choices
     )
-    if not selected_labels:
-        return [], "All Customers", False
+    if not selected_id:
+        return [], None, False
 
-    selected_profiles = []
-    seen_profiles = set()
-    for label in selected_labels:
-        profile = label_to_profile.get(label)
-        if profile and profile not in seen_profiles:
-            selected_profiles.append(profile)
-            seen_profiles.add(profile)
+    try:
+        cfg = load_customer_config(selected_id)
+    except Exception as exc:
+        print_error(f"Gagal load config: {exc}")
+        return [], None, False
 
-    return selected_profiles, "All Customers", False
+    accounts = cfg.get("accounts", [])
+    display_name = next(
+        (c.get("display_name", selected_id) for c in customers if c["customer_id"] == selected_id),
+        selected_id,
+    )
+
+    if not accounts:
+        print_error(f"Tidak ada akun di config {display_name}.")
+        return [], None, False
+
+    import questionary as _q
+    from src.core.runtime.config import CUSTOM_STYLE
+
+    try:
+        use_all = _q.confirm(
+            f"{ICONS['check']} Pilih semua akun {display_name}? ({len(accounts)} akun)",
+            default=True,
+            style=CUSTOM_STYLE,
+        ).ask()
+    except KeyboardInterrupt:
+        common._handle_interrupt(exit_direct=True)
+        return [], None, False
+
+    if use_all:
+        profiles = [a["profile"] for a in accounts if a.get("profile")]
+        return profiles, display_name, False
+
+    account_choices = [
+        questionary.Choice(
+            a.get("display_name") or a["profile"],
+            value=a["profile"],
+            checked=False,
+        )
+        for a in accounts
+        if a.get("profile")
+    ]
+    selected = common._checkbox_prompt(
+        f"{ICONS['check']} Pilih akun {display_name}", account_choices
+    )
+    if not selected:
+        print_error("Tidak ada akun dipilih.")
+        return [], None, False
+
+    return selected, display_name, False
 
 
 def _run_quick_check():

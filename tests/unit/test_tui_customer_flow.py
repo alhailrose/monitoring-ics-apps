@@ -173,7 +173,8 @@ def test_quick_check_uses_customer_mapping_profiles_only(monkeypatch):
     assert individual_calls == [("health", "prod-a", "ap-southeast-3")]
 
 
-def test_pick_profiles_from_customers_uses_searchable_selector(monkeypatch):
+def test_pick_profiles_from_customers_uses_mode_selector(monkeypatch):
+    """_pick_profiles_from_customers should show a mode selector (All Accounts / Per Customer)."""
     customers = [
         {"customer_id": "acme", "display_name": "Acme", "account_count": 1},
         {"customer_id": "globex", "display_name": "Globex", "account_count": 1},
@@ -190,31 +191,22 @@ def test_pick_profiles_from_customers_uses_searchable_selector(monkeypatch):
         lambda customer_id: cfg_by_customer[customer_id],
     )
 
-    captured = {}
-
-    def fake_searchable(prompt, choices, ask_search=True):
-        captured["prompt"] = prompt
-        captured["choices"] = list(choices)
-        captured["ask_search"] = ask_search
-        return ["Prod A [Acme] (prod-a)"]
-
+    # User picks "all_accounts" mode
     monkeypatch.setattr(
         interactive.common,
-        "_searchable_multi_select_prompt",
-        fake_searchable,
+        "_select_prompt",
+        lambda _msg, _choices, **_kw: "all_accounts",
     )
     monkeypatch.setattr(
         interactive.common,
         "_checkbox_prompt",
         lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("Legacy checkbox path should not be used")
+            AssertionError("Checkbox should not be used in all_accounts mode")
         ),
     )
 
     profiles, group_choice, back = interactive._pick_profiles_from_customers()
 
     assert back is False
-    assert group_choice == "All Customers"
-    assert profiles == ["prod-a"]
-    assert captured["ask_search"] is True
-    assert "Prod A [Acme] (prod-a)" in captured["choices"]
+    assert group_choice == "All Accounts"
+    assert sorted(profiles) == ["prod-a", "prod-b"]
