@@ -292,7 +292,10 @@ def _choose_region(selected_profiles):
 
 
 def _pick_profiles(allow_multiple=True):
-    """Profile picker with beautiful UI."""
+    """Profile picker with beautiful UI.
+
+    Escape at group/profile picker returns to source picker.
+    """
     source_choices = [
         questionary.Choice(
             f"{ICONS['settings']} Group (SSO) - Profil terdaftar", value="group"
@@ -302,65 +305,98 @@ def _pick_profiles(allow_multiple=True):
         ),
     ]
 
-    source = _select_prompt(f"{ICONS['settings']} Sumber Profil", source_choices)
-    if not source:
-        return [], None, True
+    step = "source"
+    source = None
 
-    profiles = []
-    group_choice = None
-
-    if source == "group":
-        mandatory_groups = {"NABATI-KSNI", "Master"}
-        group_choices = [
-            questionary.Choice(
-                f"{ICONS['dot']} {name} ({len(profs)} profiles){' (mandatory)' if name in mandatory_groups else ''}",
-                value=name,
+    while True:
+        if step == "source":
+            source = _select_prompt(
+                f"{ICONS['settings']} Sumber Profil", source_choices, allow_back=True
             )
-            for name, profs in PROFILE_GROUPS.items()
-        ]
+            if not source:
+                return [], None, True  # back signal to caller
 
-        group_choice = _select_prompt(f"{ICONS['all']} Pilih Group", group_choices)
-        if not group_choice:
-            return [], None, True
+            if source == "local":
+                step = "local"
+            else:
+                step = "group"
 
-        choices = list(PROFILE_GROUPS[group_choice].keys())
-        mandatory_profiles = {"asg"}
-        if allow_multiple:
-            formatted_choices = [
-                f"{choice} (mandatory)" if choice in mandatory_profiles else choice
-                for choice in choices
+        elif step == "group":
+            mandatory_groups = {"NABATI-KSNI", "Master"}
+            group_choices = [
+                questionary.Choice(
+                    f"{ICONS['dot']} {name} ({len(profs)} profiles){' (mandatory)' if name in mandatory_groups else ''}",
+                    value=name,
+                )
+                for name, profs in PROFILE_GROUPS.items()
             ]
-            profiles = _checkbox_prompt(
-                f"{ICONS['check']} Pilih Akun dari {group_choice}", formatted_choices
-            )
-            profiles = profiles or []
-            profiles = [p.replace(" (mandatory)", "") for p in profiles]
-        else:
-            formatted_choices = [
-                f"{choice} (mandatory)" if choice in mandatory_profiles else choice
-                for choice in choices
-            ]
-            selected = _select_prompt(
-                f"{ICONS['single']} Pilih Akun", formatted_choices
-            )
-            profiles = [selected.replace(" (mandatory)", "")] if selected else []
-    else:
-        local_profiles = list_local_profiles()
-        if not local_profiles:
-            print_error(
-                "Tidak menemukan profil AWS lokal. Silakan configure AWS CLI terlebih dulu."
-            )
-            return [], None, False
 
-        if allow_multiple:
-            profiles = _checkbox_prompt(
-                f"{ICONS['check']} Pilih Profil Lokal", local_profiles
+            group_choice = _select_prompt(
+                f"{ICONS['all']} Pilih Group", group_choices, allow_back=True
             )
-        else:
-            selected = _select_prompt(f"{ICONS['single']} Pilih Profil", local_profiles)
-            profiles = [selected] if selected else []
+            if not group_choice:
+                # Escape = back to source picker
+                step = "source"
+                continue
 
-    return profiles or [], group_choice, False
+            choices = list(PROFILE_GROUPS[group_choice].keys())
+            mandatory_profiles = {"asg"}
+            if allow_multiple:
+                formatted_choices = [
+                    f"{choice} (mandatory)" if choice in mandatory_profiles else choice
+                    for choice in choices
+                ]
+                profiles = _checkbox_prompt(
+                    f"{ICONS['check']} Pilih Akun dari {group_choice}",
+                    formatted_choices,
+                    allow_back=True,
+                )
+                if profiles is None:
+                    # Escape = back to group picker
+                    continue
+                profiles = profiles or []
+                profiles = [p.replace(" (mandatory)", "") for p in profiles]
+            else:
+                formatted_choices = [
+                    f"{choice} (mandatory)" if choice in mandatory_profiles else choice
+                    for choice in choices
+                ]
+                selected = _select_prompt(
+                    f"{ICONS['single']} Pilih Akun", formatted_choices, allow_back=True
+                )
+                if selected is None:
+                    continue  # back to group picker
+                profiles = [selected.replace(" (mandatory)", "")] if selected else []
+
+            return profiles or [], group_choice, False
+
+        elif step == "local":
+            local_profiles = list_local_profiles()
+            if not local_profiles:
+                print_error(
+                    "Tidak menemukan profil AWS lokal. Silakan configure AWS CLI terlebih dulu."
+                )
+                return [], None, False
+
+            if allow_multiple:
+                profiles = _checkbox_prompt(
+                    f"{ICONS['check']} Pilih Profil Lokal",
+                    local_profiles,
+                    allow_back=True,
+                )
+                if profiles is None:
+                    step = "source"
+                    continue
+            else:
+                selected = _select_prompt(
+                    f"{ICONS['single']} Pilih Profil", local_profiles, allow_back=True
+                )
+                if selected is None:
+                    step = "source"
+                    continue
+                profiles = [selected] if selected else []
+
+            return profiles or [], None, False
 
 
 def _pause():
