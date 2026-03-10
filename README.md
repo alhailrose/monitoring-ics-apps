@@ -56,6 +56,9 @@ docker compose -f infra/docker/docker-compose.yml config
    monitoring-hub
    ```
 
+Panduan setup lengkap (AWS + Huawei + onboarding user lain):
+- `docs/setup/setup-guide-id.md`
+
 ### Huawei login flow (hcloud)
 
 Untuk menjalankan check `huawei-ecs-util`, gunakan helper script bawaan repository ini:
