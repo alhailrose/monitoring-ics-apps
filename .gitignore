@@ -17,3 +17,6 @@ logs/
 .claude/
 .kiro/
 skills-lock.json
+
+# Implementation plans
+docs/plans/
