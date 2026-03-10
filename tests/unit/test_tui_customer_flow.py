@@ -113,6 +113,7 @@ def test_run_customer_report_filters_customer_choices_by_keyword(monkeypatch):
         {"customer_id": "bravo", "display_name": "Bravo", "account_count": 2, "checks": [], "slack_enabled": False},
     ]
     captured = {}
+    select_calls = {"count": 0}
 
     monkeypatch.setattr(customer, "print_mini_banner", lambda: None)
     monkeypatch.setattr(customer, "print_section_header", lambda *args, **kwargs: None)
@@ -126,6 +127,11 @@ def test_run_customer_report_filters_customer_choices_by_keyword(monkeypatch):
     )
 
     def fake_select(prompt, choices, default=None):
+        select_calls["count"] += 1
+        if select_calls["count"] == 1:
+            # First call: mode selection — pick "single"
+            return "single"
+        # Second call: customer picker — capture and return None
         captured["prompt"] = prompt
         captured["values"] = [choice.value for choice in choices]
         return None

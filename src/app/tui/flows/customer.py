@@ -415,6 +415,63 @@ def _prompt_slack(cfg):
         )
 
 
+def _run_customer_auto(cfg):
+    """Run a customer with all accounts and all configured checks — no prompts.
+
+    Used by multi-customer mode to run each customer automatically.
+    """
+    customer_id = cfg["customer_id"]
+    display_name = cfg.get("display_name", customer_id)
+    checks = cfg.get("checks", [])
+    accounts = cfg.get("accounts", [])
+
+    if not checks or not accounts:
+        return
+
+    valid_checks = [c for c in checks if c in AVAILABLE_CHECKS]
+    if not valid_checks:
+        return
+
+    selected_profiles = [a["profile"] for a in accounts if a.get("profile")]
+    if not selected_profiles:
+        return
+
+    region = "ap-southeast-3"
+    for a in accounts:
+        if a.get("profile") in selected_profiles and a.get("region"):
+            region = a["region"]
+            break
+
+    consolidated = [
+        c for c in valid_checks
+        if c in AVAILABLE_CHECKS and AVAILABLE_CHECKS[c](region="").supports_consolidated
+    ]
+    individual = [c for c in valid_checks if c not in consolidated]
+
+    for check_name in individual:
+        run_group_specific(
+            check_name,
+            selected_profiles,
+            region,
+            group_name=display_name,
+        )
+
+    if consolidated:
+        checks_override = {
+            name: AVAILABLE_CHECKS[name]
+            for name in consolidated
+            if name in AVAILABLE_CHECKS
+        }
+        has_backup_rds = "backup" in checks_override or "daily-arbel" in checks_override
+        run_all_checks(
+            profiles=selected_profiles,
+            region=region,
+            group_name=display_name,
+            checks_override=checks_override,
+            exclude_backup_rds=not has_backup_rds,
+        )
+
+
 def run_customer_report():
     """Main Customer Report flow."""
     print_mini_banner()
@@ -427,6 +484,49 @@ def run_customer_report():
         return
 
     _render_customer_dashboard(customers)
+
+    # Mode selection
+    mode_choices = [
+        questionary.Choice(
+            f"{ICONS['star']} Satu Customer  — pilih 1 customer, tanya checks & akun",
+            value="single",
+        ),
+        questionary.Choice(
+            f"{ICONS['all']} Multi Customer — pilih beberapa customer, jalankan otomatis",
+            value="multi",
+        ),
+    ]
+    mode = common._select_prompt(f"{ICONS['check']} Mode Eksekusi", mode_choices)
+    if not mode:
+        return
+
+    if mode == "multi":
+        customer_choices = [
+            questionary.Choice(
+                f"{c['display_name']} ({c['account_count']} akun)",
+                value=c["customer_id"],
+                checked=False,
+            )
+            for c in customers
+        ]
+        selected_ids = common._checkbox_prompt(
+            f"{ICONS['all']} Pilih Customer", customer_choices
+        )
+        if not selected_ids:
+            print_error("Tidak ada customer dipilih.")
+            return
+
+        for cid in selected_ids:
+            try:
+                cfg = load_customer_config(cid)
+            except Exception as exc:
+                print_error(f"Gagal load config {cid}: {exc}")
+                continue
+            display = cfg.get("display_name", cid)
+            console.print(f"\n[bold cyan]{ICONS['star']} {display}[/bold cyan]")
+            _run_customer_auto(cfg)
+
+        return
 
     try:
         search_query = questionary.text(
