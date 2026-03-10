@@ -19,10 +19,10 @@ aws --version
 
 ## Cara Cepat: Script Otomatis
 
-Script `setup-aws-profiles.sh` di root repo ini akan menambahkan semua profiles ke `~/.aws/config` secara otomatis.
+Script `scripts/setup-aws-profiles.sh` di repo ini akan menambahkan semua profiles ke `~/.aws/config` secara otomatis.
 
 ```bash
-bash setup-aws-profiles.sh
+bash scripts/setup-aws-profiles.sh
 ```
 
 Script ini:
