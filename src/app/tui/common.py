@@ -39,8 +39,13 @@ def _handle_interrupt(context="Kembali ke menu utama", exit_direct=False):
     )
 
 
-def _select_prompt(prompt, choices, default=None):
-    """Beautiful select prompt with icons."""
+def _select_prompt(prompt, choices, default=None, allow_back: bool = False):
+    """Beautiful select prompt with icons.
+
+    Args:
+        allow_back: If True, Ctrl+C returns None instead of sys.exit.
+                    Use this inside sub-flows where user should be able to go back.
+    """
     try:
         ans = questionary.select(
             prompt,
@@ -52,13 +57,19 @@ def _select_prompt(prompt, choices, default=None):
             instruction="(Gunakan ↑↓ untuk navigasi, Enter untuk pilih)",
         ).ask()
     except KeyboardInterrupt:
+        if allow_back:
+            return None
         _handle_interrupt(exit_direct=True)
         return None
     return ans or None
 
 
-def _checkbox_prompt(prompt, choices):
-    """Beautiful checkbox prompt."""
+def _checkbox_prompt(prompt, choices, allow_back: bool = False):
+    """Beautiful checkbox prompt.
+
+    Args:
+        allow_back: If True, Ctrl+C returns None instead of sys.exit.
+    """
     try:
         ans = questionary.checkbox(
             prompt,
@@ -67,6 +78,8 @@ def _checkbox_prompt(prompt, choices):
             instruction="(Spasi untuk pilih, Enter untuk konfirmasi)",
         ).ask()
     except KeyboardInterrupt:
+        if allow_back:
+            return None
         _handle_interrupt(exit_direct=True)
         return None
     return ans or None
