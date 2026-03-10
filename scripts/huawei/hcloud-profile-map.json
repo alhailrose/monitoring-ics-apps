@@ -1,0 +1,287 @@
+{
+  "agreePrivacy": "true",
+  "authEncrypt": "true",
+  "crypter": "4GUjegUcqQMdK+AoGwECM5kj9NjQaNU4omUCEIoJmbO1pQN1qPOlc8ZNf+ULo08I",
+  "current": "dh_dev_erp-ro",
+  "language": "en",
+  "nonce": "XpuMfxtoiR5KUW4qwZUmxUYRogMCob1g",
+  "offline": "true",
+  "warning": "true",
+  "profiles": [
+    {
+      "name": "dh_log-ro",
+      "mode": "SSO",
+      "region": "ap-southeast-4",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "ddff636e420d4c6995640763fa6dfa3b",
+        "agencyUrn": "iam::ddff636e420d4c6995640763fa6dfa3b:agency:SysReservedV3_read-only_a2c4903f5be7fe0a",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    },
+    {
+      "name": "dh_prod_nonerp-ro",
+      "mode": "SSO",
+      "region": "ap-southeast-4",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "f22f7cc62ba54f86a3ff68511c014aa1",
+        "agencyUrn": "iam::f22f7cc62ba54f86a3ff68511c014aa1:agency:SysReservedV3_read-only_16feef9563d74502",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    },
+    {
+      "name": "afco_prod_erp-ro",
+      "mode": "SSO",
+      "region": "ap-southeast-4",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "86d0f4e86bdc4f5d943a25e032fdb798",
+        "agencyUrn": "iam::86d0f4e86bdc4f5d943a25e032fdb798:agency:SysReservedV3_read-only_b95caff542caaf8b",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    },
+    {
+      "name": "afco_dev_erp-ro",
+      "mode": "SSO",
+      "region": "ap-southeast-4",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "622ea224637c49fc9066e1af3f73b32b",
+        "agencyUrn": "iam::622ea224637c49fc9066e1af3f73b32b:agency:SysReservedV3_read-only_bf4163cd07fcf532",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    },
+    {
+      "name": "dh_prod_network-ro",
+      "mode": "SSO",
+      "region": "",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "744ed3cbb23546df8829be7d84115fdd",
+        "agencyUrn": "iam::744ed3cbb23546df8829be7d84115fdd:agency:SysReservedV3_read-only_6e34a58ad144e995",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    },
+    {
+      "name": "dh_prod_erp-ro",
+      "mode": "SSO",
+      "region": "ap-southeast-4",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "ddff636e420d4c6995640763fa6dfa3b",
+        "agencyUrn": "iam::ddff636e420d4c6995640763fa6dfa3b:agency:SysReservedV3_read-only_a2c4903f5be7fe0a",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    },
+    {
+      "name": "dh_hris-ro",
+      "mode": "SSO",
+      "region": "ap-southeast-4",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "959aae443f494f70814b3f0455be60ee",
+        "agencyUrn": "iam::959aae443f494f70814b3f0455be60ee:agency:SysReservedV3_read-only_1f26410a1e9e9b3a",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    },
+    {
+      "name": "dh_dev_erp-ro",
+      "mode": "SSO",
+      "region": "ap-southeast-4",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "ec7cf2a902ae40a0a78375a1d211a309",
+        "agencyUrn": "iam::ec7cf2a902ae40a0a78375a1d211a309:agency:SysReservedV3_read-only_a73f133f197f462e",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    },
+    {
+      "name": "dh_master-ro",
+      "mode": "SSO",
+      "region": "ap-southeast-4",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "5312c66190fd40508e84d360f4431128",
+        "agencyUrn": "iam::5312c66190fd40508e84d360f4431128:agency:SysReservedV3_read-only_5851bc3dfbc20b88",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    },
+    {
+      "name": "dh_mobileapps-ro",
+      "mode": "SSO",
+      "region": "ap-southeast-4",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "d6c0ab89d58c4a20ae1d2ead806d5e63",
+        "agencyUrn": "iam::d6c0ab89d58c4a20ae1d2ead806d5e63:agency:SysReservedV3_read-only_a1165171cd34bda4",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    },
+    {
+      "name": "dh_sandbox-ro",
+      "mode": "SSO",
+      "region": "ap-southeast-4",
+      "domainId": "",
+      "projectId": "",
+      "readTimeout": 10,
+      "connectTimeout": 5,
+      "retryCount": 0,
+      "skipSecureVerify": "false",
+      "ssoParam": {
+        "startUrl": "https://idcenter.huaweicloud.com/ptdh/portal",
+        "ssoRegion": "ap-southeast-4"
+      },
+      "ssoAuth": {
+        "accountId": "e89b20b182a04c79a9d3bc76cfa8763f",
+        "agencyUrn": "iam::e89b20b182a04c79a9d3bc76cfa8763f:agency:SysReservedV3_read-only_850b4b3724bdbb94",
+        "accessTokenResult": null,
+        "clientIdAndSecret": null,
+        "stsToken": null
+      },
+      "accessKeyId": "",
+      "secretAccessKey": "",
+      "securityToken": ""
+    }
+  ]
+}

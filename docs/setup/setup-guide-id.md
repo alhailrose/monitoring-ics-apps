@@ -33,6 +33,17 @@ Catatan: YAML customer/default hanya menyimpan mapping profile/check, bukan cred
 
 ## 4) Setup Huawei profile (hcloud)
 
+Cara paling mudah untuk user baru (beda laptop/server):
+
+```bash
+./scripts/huawei/setup_hcloud_profiles.sh dh_prod_erp-ro
+```
+
+Script ini otomatis:
+- install mapping profile Huawei ke `~/.hcloud/config.json`
+- login SSO 1 profile sumber
+- sync token ke semua profile SSO
+
 Login SSO sekali di profile sumber, lalu sinkron token ke profile SSO lain:
 
 ```bash

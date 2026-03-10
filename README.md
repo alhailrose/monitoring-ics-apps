@@ -61,7 +61,18 @@ Panduan setup lengkap (AWS + Huawei + onboarding user lain):
 
 ### Huawei login flow (hcloud)
 
-Untuk menjalankan check `huawei-ecs-util`, gunakan helper script bawaan repository ini:
+Untuk user baru (beda laptop/server) paling mudah:
+
+```bash
+./scripts/huawei/setup_hcloud_profiles.sh dh_prod_erp-ro
+```
+
+Script ini akan:
+- install mapping profile Huawei ke `~/.hcloud/config.json`
+- login SSO 1 profile (`dh_prod_erp-ro`)
+- sinkron token ke semua profile SSO
+
+Jika ingin manual, jalankan helper berikut:
 
 ```bash
 hcloud configure sso --cli-profile=dh_prod_erp-ro
@@ -76,7 +87,7 @@ monitoring-hub --check huawei-ecs-util --profile dh_prod_erp-ro --region ap-sout
 
 Catatan: script helper ada di folder `scripts/huawei/` pada repository.
 
-#### Sharing template config Huawei ke user lain
+#### Opsi lanjutan (onboarding user OS lain di server yang sama)
 
 1) Export template (tanpa token aktif):
 
