@@ -56,7 +56,7 @@ docker compose -f infra/docker/docker-compose.yml config
    monitoring-hub
    ```
 
-Panduan setup lengkap (AWS + Huawei + onboarding user lain):
+Panduan setup lengkap (AWS + Huawei):
 - `docs/setup/setup-guide-id.md`
 
 ### Huawei login flow (hcloud)
@@ -85,48 +85,9 @@ Setelah token sinkron, jalankan check dari monitoring-hub:
 monitoring-hub --check huawei-ecs-util --profile dh_prod_erp-ro --region ap-southeast-4
 ```
 
-Catatan: script helper ada di folder `scripts/huawei/` pada repository.
-
-#### Opsi lanjutan (onboarding user OS lain di server yang sama)
-
-1) Export template (tanpa token aktif):
-
-```bash
-./scripts/huawei/export_hcloud_template.sh --output ./hcloud-config-template.json
-```
-
-2) Install ke user target (tetap login SSO sendiri):
-
-```bash
-./scripts/huawei/bootstrap_hcloud_user.sh \
-  --template ./hcloud-config-template.json \
-  --target-home /home/<user> \
-  --owner <user>:<user>
-```
-
-3) Di user target, login lalu sinkron token:
-
-```bash
-hcloud configure sso --cli-profile=dh_prod_erp-ro
-./scripts/huawei/sync_sso_token.sh --source dh_prod_erp-ro
-```
-
-Atau pakai wrapper satu perintah (isi user + source profile):
-
-```bash
-./scripts/huawei/onboard_hcloud_user.sh \
-  --target-user <user> \
-  --source-profile dh_prod_erp-ro
-```
-
-Jika ingin langsung menjalankan login + sync otomatis sebagai user target:
-
-```bash
-./scripts/huawei/onboard_hcloud_user.sh \
-  --target-user <user> \
-  --source-profile dh_prod_erp-ro \
-  --execute-login-sync
-```
+Catatan: helper Huawei yang dipakai di repo hanya:
+- `scripts/huawei/setup_hcloud_profiles.sh`
+- `scripts/huawei/sync_sso_token.sh`
 
 Jika update versi terbaru:
 ```bash

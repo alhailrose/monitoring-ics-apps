@@ -55,15 +55,49 @@ fi
 
 mkdir -p "$TARGET_CONFIG_DIR"
 
+tmp_file="$(mktemp)"
+cleanup() {
+  rm -f "$tmp_file"
+}
+trap cleanup EXIT
+
 if [[ -f "$TARGET_CONFIG_FILE" ]]; then
   backup="${TARGET_CONFIG_FILE}.bak-$(date +%Y%m%d-%H%M%S)"
   cp "$TARGET_CONFIG_FILE" "$backup"
   echo "Existing config backed up to: $backup"
 fi
 
-cp "$PROFILE_MAP_FILE" "$TARGET_CONFIG_FILE"
+jq --arg src "$SOURCE_PROFILE" '
+  (if type=="array" then . else (.profiles // []) end) as $profiles
+  | {
+      current: $src,
+      profiles: (
+        $profiles
+        | map(
+            .accessKeyId = ""
+            | .secretAccessKey = ""
+            | .securityToken = ""
+            | .ssoAuth = ((.ssoAuth // {})
+                | .accessTokenResult = null
+                | .clientIdAndSecret = null
+                | .stsToken = null)
+          )
+      )
+    }
+' "$PROFILE_MAP_FILE" > "$tmp_file"
+
+mv "$tmp_file" "$TARGET_CONFIG_FILE"
 chmod 700 "$TARGET_CONFIG_DIR"
 chmod 600 "$TARGET_CONFIG_FILE"
+
+if ! hcloud configure show --cli-profile="$SOURCE_PROFILE" --cli-output=json >/dev/null 2>&1; then
+  if [[ -n "${backup:-}" && -f "$backup" ]]; then
+    cp "$backup" "$TARGET_CONFIG_FILE"
+  fi
+  echo "Error: generated $TARGET_CONFIG_FILE cannot be parsed by hcloud." >&2
+  echo "Please check hcloud version and profile map format." >&2
+  exit 1
+fi
 
 echo "Installed Huawei profile mapping to: $TARGET_CONFIG_FILE"
 echo

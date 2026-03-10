@@ -68,48 +68,10 @@ Output Huawei saat ini default:
 - hanya **1 output report** (tanpa blok WhatsApp terpisah)
 - istilah report dipadatkan: **stabil tinggi terus** dan **spike**
 
-## 6) Onboarding user lain (share konfigurasi, login tetap masing-masing)
+## 6) Helper script yang dipakai
 
-### Opsi A - step manual
-
-1. Export template aman (token dihapus):
-
-```bash
-./scripts/huawei/export_hcloud_template.sh --output ./hcloud-config-template.json
-```
-
-2. Install template ke home user target:
-
-```bash
-./scripts/huawei/bootstrap_hcloud_user.sh \
-  --template ./hcloud-config-template.json \
-  --target-home /home/<user> \
-  --owner <user>:<user>
-```
-
-3. Di user target, login lalu sync token:
-
-```bash
-hcloud configure sso --cli-profile=dh_prod_erp-ro
-./scripts/huawei/sync_sso_token.sh --source dh_prod_erp-ro
-```
-
-### Opsi B - satu perintah wrapper
-
-```bash
-./scripts/huawei/onboard_hcloud_user.sh \
-  --target-user <user> \
-  --source-profile dh_prod_erp-ro
-```
-
-Jika ingin wrapper langsung mengeksekusi login + sync sebagai user target:
-
-```bash
-./scripts/huawei/onboard_hcloud_user.sh \
-  --target-user <user> \
-  --source-profile dh_prod_erp-ro \
-  --execute-login-sync
-```
+- `scripts/huawei/setup_hcloud_profiles.sh`
+- `scripts/huawei/sync_sso_token.sh`
 
 ## 7) Catatan data Huawei (akurasi)
 
