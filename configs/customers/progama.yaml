@@ -16,3 +16,8 @@ accounts:
     account_id: "779060063462"
     display_name: "Programa Reka Piranti"
   
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

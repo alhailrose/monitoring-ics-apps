@@ -81,3 +81,9 @@ accounts:
   - profile: website-ksni
     account_id: "637423330091"
     display_name: "Website KSNI"
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

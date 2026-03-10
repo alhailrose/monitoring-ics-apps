@@ -18,3 +18,9 @@ accounts:
     account_id: "264887202956"
     display_name: "ASG"
     region: ap-southeast-3
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

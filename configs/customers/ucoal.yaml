@@ -25,3 +25,9 @@ accounts:
   - profile: ucoal-minescape
     account_id: "595985021323"
     display_name: "Ucoal Minescape"
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

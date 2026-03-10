@@ -17,3 +17,9 @@ accounts:
   - profile: KKI
     account_id: "471112835466"
     display_name: "KKI"
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

@@ -17,3 +17,9 @@ accounts:
   - profile: Techmeister
     account_id: "763944546283"
     display_name: "Techmeister"
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

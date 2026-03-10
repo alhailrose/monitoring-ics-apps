@@ -18,3 +18,9 @@ accounts:
     account_id: "975050309328"
     display_name: "RumahMedia"
     region: ap-southeast-2
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

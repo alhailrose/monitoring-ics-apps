@@ -20,3 +20,9 @@ accounts:
   - profile: kurnia-phileo
     account_id: "452439730915"
     display_name: "Kurnia Phileo Selaras - Production"
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

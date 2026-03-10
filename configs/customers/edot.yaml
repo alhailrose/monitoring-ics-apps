@@ -18,3 +18,9 @@ accounts:
     account_id: "261622543538"
     display_name: "Edot"
     region: ap-southeast-1
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

@@ -17,3 +17,9 @@ accounts:
     account_id: "940404076348"
     display_name: "BBI"
     region: ap-southeast-1
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

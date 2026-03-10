@@ -30,3 +30,9 @@ accounts:
     account_id: "466650104955"
     display_name: "Fresnel Master"
     sso: false
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

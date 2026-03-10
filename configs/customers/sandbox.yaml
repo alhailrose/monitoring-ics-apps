@@ -16,3 +16,9 @@ accounts:
     account_id: "339712808680"
     display_name: "Sandbox"
     region: us-east-1
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2
