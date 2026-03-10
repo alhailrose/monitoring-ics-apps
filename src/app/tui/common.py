@@ -5,6 +5,8 @@ from time import monotonic
 from typing import Iterable
 
 import questionary
+from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
+from prompt_toolkit.keys import Keys
 
 from src.core.runtime.config import (
     PROFILE_GROUPS,
@@ -15,6 +17,41 @@ from src.core.runtime.config import (
 )
 from src.core.runtime.ui import console, print_error, ICONS
 from src.core.runtime.utils import list_local_profiles, resolve_region
+
+
+def _make_escape_bindings() -> KeyBindings:
+    """Create a KeyBindings object that maps Escape → KeyboardInterrupt.
+
+    Used to inject into questionary prompts so Escape alone (without Enter)
+    immediately triggers back navigation.
+    """
+    kb = KeyBindings()
+
+    @kb.add(Keys.Escape, eager=True)
+    def _(event):
+        event.app.exit(exception=KeyboardInterrupt, style="class:aborting")
+
+    return kb
+
+
+def _inject_escape_binding(question) -> None:
+    """Inject an Escape key binding into a questionary Question's Application.
+
+    Merges our escape binding with the existing key_bindings on the Application
+    so Escape triggers KeyboardInterrupt immediately (no Enter needed).
+
+    Silently skips if the question object has no .application attribute
+    (e.g., in tests where questionary is monkeypatched with a fake object).
+    """
+    app = getattr(question, "application", None)
+    if app is None:
+        return
+    existing = app.key_bindings
+    escape_kb = _make_escape_bindings()
+    if existing is not None:
+        app.key_bindings = merge_key_bindings([existing, escape_kb])
+    else:
+        app.key_bindings = escape_kb
 
 
 def _handle_interrupt(context="Kembali ke menu utama", exit_direct=False):
@@ -43,16 +80,18 @@ def _select_prompt(prompt, choices, default=None, allow_back: bool = False):
     """Beautiful select prompt with icons.
 
     Args:
-        allow_back: If True, Ctrl+C returns None instead of sys.exit.
+        allow_back: If True, Ctrl+C/Escape returns None instead of sys.exit.
                     Use this inside sub-flows where user should be able to go back.
+                    When allow_back=True, an Escape key binding is injected so
+                    pressing Escape alone (without Enter) immediately triggers back.
     """
     try:
         instruction = (
-            "(↑↓ navigasi, Enter pilih, Ctrl+C kembali)"
+            "(↑↓ navigasi, Enter pilih, Ctrl+C/Esc kembali)"
             if allow_back
             else "(Gunakan ↑↓ untuk navigasi, Enter untuk pilih)"
         )
-        ans = questionary.select(
+        q = questionary.select(
             prompt,
             choices=choices,
             default=default
@@ -60,7 +99,10 @@ def _select_prompt(prompt, choices, default=None, allow_back: bool = False):
             else None,
             style=CUSTOM_STYLE,
             instruction=instruction,
-        ).ask()
+        )
+        if allow_back:
+            _inject_escape_binding(q)
+        ans = q.ask()
     except KeyboardInterrupt:
         if allow_back:
             return None
@@ -73,20 +115,25 @@ def _checkbox_prompt(prompt, choices, allow_back: bool = False):
     """Beautiful checkbox prompt.
 
     Args:
-        allow_back: If True, Ctrl+C returns None instead of sys.exit.
+        allow_back: If True, Ctrl+C/Escape returns None instead of sys.exit.
+                    An Escape key binding is injected when allow_back=True so
+                    pressing Escape alone immediately triggers back.
     """
     try:
         instruction = (
-            "(Spasi pilih, Enter konfirmasi, Ctrl+C kembali)"
+            "(Spasi pilih, Enter konfirmasi, Ctrl+C/Esc kembali)"
             if allow_back
             else "(Spasi untuk pilih, Enter untuk konfirmasi)"
         )
-        ans = questionary.checkbox(
+        q = questionary.checkbox(
             prompt,
             choices=choices,
             style=CUSTOM_STYLE,
             instruction=instruction,
-        ).ask()
+        )
+        if allow_back:
+            _inject_escape_binding(q)
+        ans = q.ask()
     except KeyboardInterrupt:
         if allow_back:
             return None
