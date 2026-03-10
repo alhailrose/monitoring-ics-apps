@@ -236,7 +236,7 @@ def _run_aryanoble_subflow(cfg):
 
         if candidate_alarms:
             alarm_choices = [
-                questionary.Choice(a, value=a, checked=True)
+                questionary.Choice(a, value=a, checked=False)
                 for a in candidate_alarms
             ]
             selected_alarms = common._checkbox_prompt(
