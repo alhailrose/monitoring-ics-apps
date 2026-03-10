@@ -168,3 +168,20 @@ def list_customers() -> List[dict]:
                 })
 
     return results
+
+
+def get_alarm_names_for_profile(profile: str) -> list:
+    """Return flat alarm_names list for a given AWS profile name.
+
+    Scans all customer YAML configs to find the account matching
+    the profile name, then returns its alarm_names list (or [] if not set).
+    """
+    for customer in list_customers():
+        try:
+            cfg = load_customer_config(customer["customer_id"])
+            for account in cfg.get("accounts", []):
+                if account.get("profile") == profile:
+                    return account.get("alarm_names", [])
+        except Exception:
+            continue
+    return []
