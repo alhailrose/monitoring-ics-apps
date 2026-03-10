@@ -47,6 +47,11 @@ def _select_prompt(prompt, choices, default=None, allow_back: bool = False):
                     Use this inside sub-flows where user should be able to go back.
     """
     try:
+        instruction = (
+            "(↑↓ navigasi, Enter pilih, Ctrl+C kembali)"
+            if allow_back
+            else "(Gunakan ↑↓ untuk navigasi, Enter untuk pilih)"
+        )
         ans = questionary.select(
             prompt,
             choices=choices,
@@ -54,7 +59,7 @@ def _select_prompt(prompt, choices, default=None, allow_back: bool = False):
             if default in [c if isinstance(c, str) else c.value for c in choices]
             else None,
             style=CUSTOM_STYLE,
-            instruction="(Gunakan ↑↓ untuk navigasi, Enter untuk pilih)",
+            instruction=instruction,
         ).ask()
     except KeyboardInterrupt:
         if allow_back:
@@ -71,11 +76,16 @@ def _checkbox_prompt(prompt, choices, allow_back: bool = False):
         allow_back: If True, Ctrl+C returns None instead of sys.exit.
     """
     try:
+        instruction = (
+            "(Spasi pilih, Enter konfirmasi, Ctrl+C kembali)"
+            if allow_back
+            else "(Spasi untuk pilih, Enter untuk konfirmasi)"
+        )
         ans = questionary.checkbox(
             prompt,
             choices=choices,
             style=CUSTOM_STYLE,
-            instruction="(Spasi untuk pilih, Enter untuk konfirmasi)",
+            instruction=instruction,
         ).ask()
     except KeyboardInterrupt:
         if allow_back:
