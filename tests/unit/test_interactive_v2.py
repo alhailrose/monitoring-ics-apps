@@ -413,10 +413,40 @@ def test_pick_profiles_per_customer_partial_selection(monkeypatch):
 
     import questionary as q
     monkeypatch.setattr(q, "confirm", lambda *_a, **_kw: type("C", (), {"ask": lambda self: False})())
-    monkeypatch.setattr(common, "_checkbox_prompt", lambda _msg, _choices: ["ksni-master"])
+    monkeypatch.setattr(common, "_checkbox_prompt", lambda _msg, _choices, **_kw: ["ksni-master"])
 
     profiles, group_name, back = interactive._pick_profiles_from_customers()
 
     assert not back
     assert profiles == ["ksni-master"]
     assert group_name == "Nabati"
+
+
+def test_pick_profiles_per_customer_back_from_customer_to_mode(monkeypatch):
+    """Escape di 'pilih customer' harus kembali ke mode selector, bukan keluar."""
+    from src.app.tui import common
+    from src.configs import loader
+
+    monkeypatch.setattr(
+        loader,
+        "list_customers",
+        lambda: [{"customer_id": "nabati", "display_name": "Nabati", "account_count": 2}],
+    )
+    monkeypatch.setattr(
+        loader,
+        "load_customer_config",
+        lambda _: {"accounts": [{"profile": "ksni-master"}, {"profile": "erp-ksni"}]},
+    )
+
+    # First loop: per_customer, then None (escape customer pick)
+    # Second loop: all_accounts (user corrects their choice)
+    call_seq = iter(["per_customer", None, "all_accounts"])
+    monkeypatch.setattr(
+        common, "_select_prompt", lambda _msg, _choices, **_kw: next(call_seq)
+    )
+
+    profiles, group_name, back = interactive._pick_profiles_from_customers()
+
+    assert not back
+    assert group_name == "All Accounts"
+    assert len(profiles) == 2

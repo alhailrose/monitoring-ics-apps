@@ -104,6 +104,8 @@ def _pick_profiles_from_customers():
     Two modes:
     - All Accounts: return every profile from every customer
     - Per Customer: pick 1 customer, then pick accounts from it
+
+    Escape at any step goes back to previous step (never exits app).
     """
     from src.configs.loader import list_customers, load_customer_config
 
@@ -123,26 +125,6 @@ def _pick_profiles_from_customers():
         ),
     ]
 
-    mode = common._select_prompt(f"{ICONS['check']} Sumber Profil", mode_choices)
-    if not mode:
-        return [], None, False
-
-    if mode == "all_accounts":
-        all_profiles = []
-        seen: set[str] = set()
-        for c in customers:
-            try:
-                cfg = load_customer_config(c["customer_id"])
-                for a in cfg.get("accounts", []):
-                    profile = a.get("profile")
-                    if profile and profile not in seen:
-                        all_profiles.append(profile)
-                        seen.add(profile)
-            except Exception:
-                continue
-        return all_profiles, "All Accounts", False
-
-    # Per Customer: pick 1 customer
     customer_choices = [
         questionary.Choice(
             f"{c.get('display_name', c['customer_id'])} ({c['account_count']} akun)",
@@ -150,62 +132,114 @@ def _pick_profiles_from_customers():
         )
         for c in customers
     ]
-    selected_id = common._select_prompt(
-        f"{ICONS['star']} Pilih Customer", customer_choices
-    )
-    if not selected_id:
-        return [], None, False
 
-    try:
-        cfg = load_customer_config(selected_id)
-    except Exception as exc:
-        print_error(f"Gagal load config: {exc}")
-        return [], None, False
+    step = "mode"
+    selected_mode = None
+    _current_cfg = None
+    _current_display = None
+    _current_accounts = None
 
-    accounts = cfg.get("accounts", [])
-    display_name = next(
-        (c.get("display_name", selected_id) for c in customers if c["customer_id"] == selected_id),
-        selected_id,
-    )
+    while True:
+        if step == "mode":
+            selected_mode = common._select_prompt(
+                f"{ICONS['check']} Sumber Profil", mode_choices, allow_back=True
+            )
+            if selected_mode is None:
+                # Escape at top-level mode picker = exit this flow
+                return [], None, False
+            if selected_mode == "all_accounts":
+                all_profiles = []
+                seen: set[str] = set()
+                for c in customers:
+                    try:
+                        cfg = load_customer_config(c["customer_id"])
+                        for a in cfg.get("accounts", []):
+                            profile = a.get("profile")
+                            if profile and profile not in seen:
+                                all_profiles.append(profile)
+                                seen.add(profile)
+                    except Exception:
+                        continue
+                return all_profiles, "All Accounts", False
+            # per_customer: advance to next step
+            step = "customer"
 
-    if not accounts:
-        print_error(f"Tidak ada akun di config {display_name}.")
-        return [], None, False
+        elif step == "customer":
+            selected_id = common._select_prompt(
+                f"{ICONS['star']} Pilih Customer", customer_choices, allow_back=True
+            )
+            if selected_id is None:
+                # Escape = go back to mode picker
+                step = "mode"
+                continue
 
-    import questionary as _q
-    from src.core.runtime.config import CUSTOM_STYLE
+            try:
+                _current_cfg = load_customer_config(selected_id)
+            except Exception as exc:
+                print_error(f"Gagal load config: {exc}")
+                step = "mode"
+                continue
 
-    try:
-        use_all = _q.confirm(
-            f"{ICONS['check']} Pilih semua akun {display_name}? ({len(accounts)} akun)",
-            default=True,
-            style=CUSTOM_STYLE,
-        ).ask()
-    except KeyboardInterrupt:
-        common._handle_interrupt(exit_direct=True)
-        return [], None, False
+            _current_accounts = _current_cfg.get("accounts", [])
+            _current_display = next(
+                (c.get("display_name", selected_id) for c in customers if c["customer_id"] == selected_id),
+                selected_id,
+            )
 
-    if use_all:
-        profiles = [a["profile"] for a in accounts if a.get("profile")]
-        return profiles, display_name, False
+            if not _current_accounts:
+                print_error(f"Tidak ada akun di config {_current_display}.")
+                step = "mode"
+                continue
 
-    account_choices = [
-        questionary.Choice(
-            a.get("display_name") or a["profile"],
-            value=a["profile"],
-            checked=False,
-        )
-        for a in accounts
-        if a.get("profile")
-    ]
-    selected = common._checkbox_prompt(
-        f"{ICONS['check']} Pilih akun {display_name}", account_choices
-    )
-    if not selected:
-        print_error("Tidak ada akun dipilih.")
-        return [], None, False
+            step = "accounts"
 
-    return selected, display_name, False
+        elif step == "accounts":
+            import questionary as _q
+            from src.core.runtime.config import CUSTOM_STYLE
+
+            try:
+                use_all = _q.confirm(
+                    f"{ICONS['check']} Pilih semua akun {_current_display}? ({len(_current_accounts)} akun)",
+                    default=True,
+                    style=CUSTOM_STYLE,
+                ).ask()
+            except KeyboardInterrupt:
+                # Escape at account confirm = back to customer picker
+                step = "customer"
+                continue
+
+            if use_all is None:
+                step = "customer"
+                continue
+
+            if use_all:
+                profiles = [a["profile"] for a in _current_accounts if a.get("profile")]
+                return profiles, _current_display, False
+
+            account_choices = [
+                questionary.Choice(
+                    a.get("display_name") or a["profile"],
+                    value=a["profile"],
+                    checked=False,
+                )
+                for a in _current_accounts
+                if a.get("profile")
+            ]
+            selected = common._checkbox_prompt(
+                f"{ICONS['check']} Pilih akun {_current_display}",
+                account_choices,
+                allow_back=True,
+            )
+            if selected is None:
+                # Escape = back to customer picker
+                step = "customer"
+                continue
+            if not selected:
+                print_error("Tidak ada akun dipilih.")
+                step = "customer"
+                continue
+
+            return selected, _current_display, False
 
 
 def _run_quick_check():
