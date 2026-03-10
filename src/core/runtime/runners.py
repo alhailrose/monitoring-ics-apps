@@ -31,7 +31,10 @@ from .reports import (
     build_whatsapp_alarm,
     build_whatsapp_budget,
 )
-from src.core.formatting.reports import build_huawei_legacy_consolidated_report
+from src.core.formatting.reports import (
+    build_huawei_legacy_consolidated_report,
+    build_huawei_legacy_whatsapp_report,
+)
 from .ui import (
     console,
     print_check_header,
@@ -43,7 +46,11 @@ from src.checks.common.aws_errors import is_credential_error, friendly_credentia
 
 
 def run_individual_check(
-    check_name: str, profile: str, region: str, send_slack: bool = False
+    check_name: str,
+    profile: str,
+    region: str,
+    send_slack: bool = False,
+    check_kwargs: Optional[dict] = None,
 ):
     """Run individual check with detailed output and beautiful UI."""
     if check_name not in AVAILABLE_CHECKS:
@@ -55,7 +62,7 @@ def run_individual_check(
 
     account_id = get_account_id(profile)
     checker_class = AVAILABLE_CHECKS[check_name]
-    checker = checker_class(region=region)
+    checker = checker_class(region=region, **(check_kwargs or {}))
 
     # Beautiful header
     print_check_header(check_name, profile, account_id, region)
@@ -546,6 +553,17 @@ def _print_consolidated_report(
             ordered_profiles=list(profiles),
         )
         print("\n" + text)
+
+        whatsapp_text = build_huawei_legacy_whatsapp_report(
+            all_results=huawei_results,
+            errors=huawei_errors,
+            ordered_profiles=list(profiles),
+        )
+        print("\n" + "=" * 70)
+        print("WHATSAPP MESSAGE (READY TO SEND)")
+        print("=" * 70)
+        print("--huawei")
+        print(whatsapp_text)
         return
 
     lines = []
