@@ -93,73 +93,24 @@ EOF
     success "Ditambahkan: profile ${profile}"
 }
 
-# ─── Helper: tambah profile assumed role (login_session) ──────────────────────
-add_assumed_role_profile() {
+# ─── Helper: tambah profile login_session (hardcoded ARN) ────────────────────
+add_login_session_profile() {
     local profile="$1"
-    local region="$2"
-    local description="$3"
+    local arn="$2"
+    local region="$3"
 
     if profile_exists "$profile"; then
         info "Profile '${profile}' sudah ada, skip."
-        return
-    fi
-
-    echo
-    warn "Profile '${profile}' (${description}) menggunakan assumed role / IAM credentials."
-    echo "  Masukkan ARN assumed role atau IAM user untuk profile ini."
-    echo "  Contoh assumed role : arn:aws:sts::123456789012:assumed-role/role-name/session"
-    echo "  Contoh IAM user     : arn:aws:iam::123456789012:user/username"
-    echo "  Kosongkan dan tekan Enter untuk SKIP profile ini."
-    echo -n "  ARN untuk '${profile}': "
-    read -r user_arn
-
-    if [[ -z "$user_arn" ]]; then
-        warn "Skip profile '${profile}'."
         return
     fi
 
     cat >> "$AWS_CONFIG" <<EOF
 
 [profile ${profile}]
-login_session = ${user_arn}
+login_session = ${arn}
 region = ${region}
 EOF
     success "Ditambahkan: profile ${profile} (login_session)"
-    warn "  CATATAN: login_session tidak di-refresh otomatis oleh AWS CLI."
-    warn "  Credentials ini perlu diupdate manual jika expired."
-}
-
-# ─── Helper: tambah IAM user profile ──────────────────────────────────────────
-add_iam_user_profile() {
-    local profile="$1"
-    local region="$2"
-    local description="$3"
-
-    if profile_exists "$profile"; then
-        info "Profile '${profile}' sudah ada, skip."
-        return
-    fi
-
-    echo
-    warn "Profile '${profile}' (${description}) menggunakan IAM user credentials."
-    echo "  Masukkan Access Key ID dan Secret Access Key."
-    echo "  Kosongkan Access Key dan tekan Enter untuk SKIP."
-    echo -n "  AWS Access Key ID untuk '${profile}': "
-    read -r access_key
-
-    if [[ -z "$access_key" ]]; then
-        warn "Skip profile '${profile}'."
-        return
-    fi
-
-    echo -n "  AWS Secret Access Key: "
-    read -rs secret_key
-    echo
-
-    aws configure set aws_access_key_id "$access_key" --profile "$profile"
-    aws configure set aws_secret_access_key "$secret_key" --profile "$profile"
-    aws configure set region "$region" --profile "$profile"
-    success "Ditambahkan: profile ${profile} (IAM user)"
 }
 
 # ─── Setup: SSO Sessions ──────────────────────────────────────────────────────
@@ -272,28 +223,33 @@ setup_hungryhub_profiles() {
     add_sso_profile "prod-sandbox"   "HungryHub" "079994049689" "AWSReadOnlyAccess"  "ap-southeast-1"
 }
 
-# ─── Setup: profiles dengan login_session / IAM (perlu input manual) ──────────
-setup_manual_profiles() {
-    header "Setup profiles dengan credentials manual..."
-    echo "  Profile berikut tidak menggunakan SSO — perlu input ARN atau credentials."
+# ─── Setup: profiles dengan login_session (hardcoded ARN) ────────────────────
+setup_login_session_profiles() {
+    header "Setup profiles login_session..."
 
-    # fresnel-master (assumed role)
-    add_assumed_role_profile "fresnel-master" "ap-southeast-3" "Fresnel Master"
+    add_login_session_profile "fresnel-master" \
+        "arn:aws:sts::466650104955:assumed-role/ics-awsc-msw/bagus" \
+        "ap-southeast-3"
 
-    # nikp (assumed role)
-    add_assumed_role_profile "nikp" "ap-southeast-1" "NIKP"
+    add_login_session_profile "nikp" \
+        "arn:aws:sts::038361715485:assumed-role/ics-awsc-msw/bagus" \
+        "ap-southeast-1"
 
-    # sandbox (assumed role)
-    add_assumed_role_profile "sandbox" "us-east-1" "Sandbox ICS"
+    add_login_session_profile "sandbox" \
+        "arn:aws:sts::339712808680:assumed-role/ics-awsc-msa/bagus.faqihuddin@icscompute.com" \
+        "us-east-1"
 
-    # rumahmedia (assumed role)
-    add_assumed_role_profile "rumahmedia" "ap-southeast-2" "Rumahmedia"
+    add_login_session_profile "rumahmedia" \
+        "arn:aws:sts::975050309328:assumed-role/ics-awsc-msw/bagus.faqihuddin@icscompute.com" \
+        "ap-southeast-2"
 
-    # asg (IAM user)
-    add_iam_user_profile "asg" "ap-southeast-3" "Agung Sedayu Group"
+    add_login_session_profile "asg" \
+        "arn:aws:iam::264887202956:user/bagusfaqihuddin.ics" \
+        "ap-southeast-3"
 
-    # arista-web (IAM user)
-    add_iam_user_profile "arista-web" "ap-southeast-1" "Arista Web"
+    add_login_session_profile "arista-web" \
+        "arn:aws:iam::717271747993:user/arista-webmarketing-admin" \
+        "ap-southeast-1"
 }
 
 # ─── Set default region ───────────────────────────────────────────────────────
@@ -380,7 +336,7 @@ main() {
     setup_aryanoble_profiles
     setup_nabati_profiles
     setup_hungryhub_profiles
-    setup_manual_profiles
+    setup_login_session_profiles
     prompt_sso_login
     verify_setup
 

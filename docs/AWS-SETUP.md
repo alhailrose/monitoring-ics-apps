@@ -183,33 +183,20 @@ region = ap-southeast-3
 | prod-root | 891572013503 | AWSPowerUserAccess |
 | prod-sandbox | 079994049689 | AWSReadOnlyAccess |
 
-### Profiles dengan Credentials Manual
+### Profiles dengan login_session
 
-Profile berikut **tidak menggunakan SSO**. Credentials berbeda per user — minta ke admin atau PIC masing-masing customer.
+Profile berikut tidak menggunakan SSO — sudah di-hardcode ARN-nya di script (sama dengan konfigurasi pemilik repo).
 
-| Profile | Tipe | Region | Keterangan |
-|---------|------|--------|-----------|
-| fresnel-master | Assumed Role | ap-southeast-3 | Fresnel Master — minta ARN ke PIC |
-| nikp | Assumed Role | ap-southeast-1 | NIKP — minta ARN ke PIC |
-| sandbox | Assumed Role | us-east-1 | Sandbox ICS |
-| rumahmedia | Assumed Role | ap-southeast-2 | RumahMedia |
-| asg | IAM User | ap-southeast-3 | Agung Sedayu — minta access key ke PIC |
-| arista-web | IAM User | ap-southeast-1 | Arista Web — minta access key ke PIC |
+| Profile | ARN | Region |
+|---------|-----|--------|
+| fresnel-master | `arn:aws:sts::466650104955:assumed-role/ics-awsc-msw/bagus` | ap-southeast-3 |
+| nikp | `arn:aws:sts::038361715485:assumed-role/ics-awsc-msw/bagus` | ap-southeast-1 |
+| sandbox | `arn:aws:sts::339712808680:assumed-role/ics-awsc-msa/bagus.faqihuddin@icscompute.com` | us-east-1 |
+| rumahmedia | `arn:aws:sts::975050309328:assumed-role/ics-awsc-msw/bagus.faqihuddin@icscompute.com` | ap-southeast-2 |
+| asg | `arn:aws:iam::264887202956:user/bagusfaqihuddin.ics` | ap-southeast-3 |
+| arista-web | `arn:aws:iam::717271747993:user/arista-webmarketing-admin` | ap-southeast-1 |
 
-Untuk assumed role, isi dengan ARN yang diberikan:
-```ini
-[profile nikp]
-login_session = arn:aws:sts::<account-id>:assumed-role/<role-name>/<session>
-region = ap-southeast-1
-```
-
-Untuk IAM user, gunakan `aws configure`:
-```bash
-aws configure --profile asg
-# Masukkan Access Key ID dan Secret Access Key
-```
-
-> **Catatan:** `login_session` adalah field custom untuk monitoring-hub, bukan field standar AWS CLI. Credentials ini tidak di-refresh otomatis.
+> **Catatan:** `login_session` adalah field custom untuk monitoring-hub. Profile ini tidak di-refresh otomatis oleh AWS CLI — jika credentials expired, perlu update manual di `~/.aws/config`.
 
 ---
 
