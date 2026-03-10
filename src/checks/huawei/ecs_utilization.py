@@ -117,49 +117,121 @@ class HuaweiECSUtilizationChecker(BaseChecker):
         self.util_hours = int(kwargs.get("util_hours", 12))
         self.rise_threshold = float(kwargs.get("rise_threshold", 70.0))
         self.top = int(kwargs.get("top", 10))
+        self.page_limit = int(kwargs.get("page_limit", 1000))
         self.cli = HcloudCli()
 
     def _list_server_map(self, profile: str, region: str) -> tuple[dict[str, dict[str, str]], str | None]:
-        data, err = self.cli.run_json(
-            [
-                "ECS",
-                "ListServersDetails",
-                f"--cli-profile={profile}",
-                f"--cli-region={region}",
-                "--limit=1000",
-                "--cli-output=json",
-            ]
-        )
-        if not isinstance(data, dict):
-            return {}, err
-
         out: dict[str, dict[str, str]] = {}
-        for row in data.get("servers") or []:
-            sid = str(row.get("id", ""))
-            if not sid:
-                continue
-            out[sid] = {
-                "name": str(row.get("name", "-")),
-                "status": str(row.get("status", "-")),
-            }
+        offset = 1
+        fetched = 0
+        total_count: int | None = None
+        last_err: str | None = None
+
+        while True:
+            data, err = self.cli.run_json(
+                [
+                    "ECS",
+                    "ListServersDetails",
+                    f"--cli-profile={profile}",
+                    f"--cli-region={region}",
+                    f"--limit={self.page_limit}",
+                    f"--offset={offset}",
+                    "--cli-output=json",
+                ]
+            )
+            if not isinstance(data, dict):
+                last_err = err
+                if out:
+                    break
+                return {}, err
+
+            servers = data.get("servers") or []
+            if not isinstance(servers, list):
+                servers = []
+
+            count_val = data.get("count")
+            if isinstance(count_val, int):
+                total_count = count_val
+
+            if not servers:
+                break
+
+            fetched += len(servers)
+            for row in servers:
+                sid = str(row.get("id", ""))
+                if not sid:
+                    continue
+                out[sid] = {
+                    "name": str(row.get("name", "-")),
+                    "status": str(row.get("status", "-")),
+                }
+
+            if total_count is not None:
+                if fetched >= total_count:
+                    break
+            elif len(servers) < self.page_limit:
+                break
+            offset += 1
+
+        if not out and last_err:
+            return {}, last_err
         return out, None
 
     def _list_metrics(self, profile: str, region: str, namespace: str, metric_name: str) -> list[dict[str, Any]]:
-        data, _ = self.cli.run_json(
-            [
+        metrics: list[dict[str, Any]] = []
+        start_token: str | None = None
+        seen_tokens: set[str] = set()
+        total_count: int | None = None
+
+        while True:
+            args = [
                 "CES",
                 "ListMetrics",
                 f"--cli-profile={profile}",
                 f"--cli-region={region}",
-                "--limit=1000",
+                f"--limit={self.page_limit}",
                 f"--namespace={namespace}",
                 f"--metric_name={metric_name}",
                 "--cli-output=json",
             ]
-        )
-        if not isinstance(data, dict):
-            return []
-        return data.get("metrics") or []
+            if start_token:
+                args.append(f"--start={start_token}")
+
+            data, _ = self.cli.run_json(args)
+            if not isinstance(data, dict):
+                break
+
+            page_metrics = data.get("metrics") or []
+            if not isinstance(page_metrics, list):
+                page_metrics = []
+
+            for item in page_metrics:
+                if isinstance(item, dict):
+                    metrics.append(item)
+
+            meta_data = data.get("meta_data")
+            if isinstance(meta_data, dict):
+                total_val = meta_data.get("total")
+                if isinstance(total_val, int):
+                    total_count = total_val
+                next_token = meta_data.get("marker")
+            else:
+                next_token = None
+
+            if total_count is not None and len(metrics) >= total_count:
+                break
+
+            if not isinstance(next_token, str) or not next_token:
+                break
+            if next_token in seen_tokens:
+                break
+            seen_tokens.add(next_token)
+            start_token = next_token
+
+            if not page_metrics:
+                break
+
+        return metrics
 
     def _metric_instance_ids(self, metrics: list[dict[str, Any]]) -> list[str]:
         ids: set[str] = set()

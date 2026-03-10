@@ -15,7 +15,7 @@ def test_classify_memory_behavior_spike():
     assert classify_memory_behavior(row, 70.0) == "SPIKE"
 
 
-def test_format_report_contains_block():
+def test_format_report_contains_compact_note_paragraph():
     checker = HuaweiECSUtilizationChecker()
     report = checker.format_report(
         {
@@ -45,8 +45,8 @@ def test_format_report_contains_block():
         }
     )
     assert "Daily Monitoring Utilisasi ECS Darmahenwa" in report
-    assert "[BLOCK - SPIKE / IDLE TINGGI]" in report
-    assert "SPIKE" in report
+    assert "Catatan:" in report
+    assert "[BLOCK - SPIKE / IDLE TINGGI]" not in report
 
 
 def test_hcloud_cli_injects_timeout_and_retry_flags(monkeypatch):
@@ -135,3 +135,84 @@ def test_hcloud_cli_falls_back_without_transport_flags_when_unsupported(monkeypa
     assert "--cli-read-timeout=30" not in calls[1]
     assert "--cli-connect-timeout=10" not in calls[1]
     assert "--cli-retry-count=2" not in calls[1]
+
+
+def test_list_server_map_fetches_all_pages(monkeypatch):
+    checker = HuaweiECSUtilizationChecker()
+    calls = []
+
+    def _fake_run_json(args):
+        calls.append(args)
+        offset = "1"
+        for a in args:
+            if a.startswith("--offset="):
+                offset = a.split("=", 1)[1]
+                break
+
+        if offset == "1":
+            return {
+                "count": 3,
+                "servers": [
+                    {"id": "i-1", "name": "srv-1", "status": "ACTIVE"},
+                    {"id": "i-2", "name": "srv-2", "status": "ACTIVE"},
+                ],
+            }, None
+
+        if offset == "2":
+            return {
+                "count": 3,
+                "servers": [
+                    {"id": "i-3", "name": "srv-3", "status": "SHUTOFF"},
+                ],
+            }, None
+
+        return {"count": 3, "servers": []}, None
+
+    monkeypatch.setattr(checker, "cli", type("_Cli", (), {"run_json": staticmethod(_fake_run_json)})())
+
+    server_map, err = checker._list_server_map("demo-profile", "ap-southeast-4")
+
+    assert err is None
+    assert sorted(server_map.keys()) == ["i-1", "i-2", "i-3"]
+    assert len(calls) >= 2
+
+
+def test_list_metrics_fetches_all_pages_with_start_marker(monkeypatch):
+    checker = HuaweiECSUtilizationChecker()
+    calls = []
+
+    first_marker = "AGT.ECS.mem_usedPercent.instance_id:i-2.index:2"
+
+    def _fake_run_json(args):
+        calls.append(args)
+        start_token = None
+        for a in args:
+            if a.startswith("--start="):
+                start_token = a.split("=", 1)[1]
+                break
+
+        if start_token is None:
+            return {
+                "metrics": [
+                    {"dimensions": [{"name": "instance_id", "value": "i-1"}]},
+                    {"dimensions": [{"name": "instance_id", "value": "i-2"}]},
+                ],
+                "meta_data": {"total": 3, "marker": first_marker},
+            }, None
+
+        if start_token == first_marker:
+            return {
+                "metrics": [
+                    {"dimensions": [{"name": "instance_id", "value": "i-3"}]},
+                ],
+                "meta_data": {"total": 3, "marker": "AGT.ECS.mem_usedPercent.instance_id:i-3.index:3"},
+            }, None
+
+        return {"metrics": [], "meta_data": {"total": 3}}, None
+
+    monkeypatch.setattr(checker, "cli", type("_Cli", (), {"run_json": staticmethod(_fake_run_json)})())
+
+    metrics = checker._list_metrics("demo-profile", "ap-southeast-4", "AGT.ECS", "mem_usedPercent")
+
+    assert len(metrics) == 3
+    assert len(calls) >= 2

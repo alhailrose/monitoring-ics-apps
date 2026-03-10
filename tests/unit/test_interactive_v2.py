@@ -275,6 +275,56 @@ def test_huawei_utilization_runs_consolidated_over_fixed_profiles(monkeypatch):
     assert call_kwargs["output_mode"] == "huawei_legacy"
 
 
+def test_selecting_huawei_submenu_back_does_not_run_checks(monkeypatch):
+    from src.app.tui import common
+
+    selections = iter(["huawei_check", "back", "exit"])
+    prompt_values = []
+
+    def _fake_select_prompt(_message, choices):
+        available_values = [choice.value for choice in choices]
+        prompt_values.append(available_values)
+        return next(selections)
+
+    monkeypatch.setattr(common, "_select_prompt", _fake_select_prompt)
+    monkeypatch.setattr(common, "_pause", lambda: None)
+    monkeypatch.setattr(interactive.console, "clear", lambda: None)
+    monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
+    monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
+    monkeypatch.setattr(
+        interactive,
+        "run_all_checks",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("run_all_checks should not be called when choosing back")
+        ),
+    )
+
+    interactive.run_interactive()
+
+    assert any("back" in values for values in prompt_values)
+
+
+def test_huawei_utilization_shows_error_when_check_not_registered(monkeypatch):
+    errors = []
+
+    monkeypatch.setitem(interactive.AVAILABLE_CHECKS, "huawei-ecs-util", None)
+    monkeypatch.setattr(
+        interactive,
+        "run_all_checks",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("run_all_checks should not run when checker is missing")
+        ),
+    )
+    monkeypatch.setattr(interactive, "print_mini_banner", lambda: None)
+    monkeypatch.setattr(interactive, "print_section_header", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(interactive, "print_error", lambda message: errors.append(message))
+
+    interactive.run_huawei_utilization()
+
+    assert errors
+    assert "huawei-ecs-util" in errors[0]
+
+
 def test_check_choices_do_not_include_daily_arbel():
     """CHECK_CHOICES should not include daily-arbel (it's customer-specific)."""
     check_values = [c.value for c in interactive.CHECK_CHOICES]

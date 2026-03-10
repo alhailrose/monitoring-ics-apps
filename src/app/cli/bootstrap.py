@@ -141,14 +141,12 @@ def main():
   # Initialize config file
   monitoring-hub --init-config
 
-  # Huawei SSO login (external hcloud helper)
-  cd /home/heilrose/Work/Monitoring/huawei
+  # Huawei SSO login (repo helper)
   hcloud configure sso --cli-profile=dh_prod_erp-ro
-  ./sync_sso_token.sh --source dh_prod_erp-ro
+  ./scripts/huawei/sync_sso_token.sh --source dh_prod_erp-ro
   monitoring-hub --check huawei-ecs-util --profile dh_prod_erp-ro --region ap-southeast-4
 
-  # Note: sync_sso_token.sh is not bundled with monitoring-hub package
-  # and must exist on your local machine.
+  # Note: helper scripts live in repository scripts/huawei/.
 
 {ICONS["check"]} Available checks: health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list, huawei-ecs-util
 

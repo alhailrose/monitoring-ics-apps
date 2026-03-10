@@ -1,5 +1,6 @@
 from src.core.formatting.reports import (
     build_huawei_legacy_consolidated_report,
+    build_huawei_legacy_whatsapp_report,
     build_huawei_utilization_customer_report,
     classify_huawei_memory_behavior,
 )
@@ -41,10 +42,11 @@ def test_build_huawei_utilization_customer_report_includes_block():
         }
     )
     assert "Daily Monitoring Utilisasi ECS Darmahenwa" in report
-    assert "[BLOCK - SPIKE / IDLE TINGGI]" in report
+    assert "Catatan:" in report
+    assert "[BLOCK - SPIKE / IDLE TINGGI]" not in report
 
 
-def test_build_huawei_legacy_consolidated_report_contains_numbered_accounts_and_block():
+def test_build_huawei_legacy_consolidated_report_contains_numbered_accounts_and_note():
     all_results = {
         "dh_prod_nonerp-ro": {
             "status": "success",
@@ -76,7 +78,12 @@ def test_build_huawei_legacy_consolidated_report_contains_numbered_accounts_and_
     assert "Daily Monitoring Utilisasi ECS Darmahenwa" in text
     assert "1. dh_prod_nonerp" in text
     assert "2. afco_prod_erp" in text
-    assert "[BLOCK - SPIKE / IDLE TINGGI]" in text
+    assert "Catatan:" in text
+    assert "[BLOCK - SPIKE / IDLE TINGGI]" not in text
+    assert "stabil tinggi terus" in text
+    assert "spike" in text
+    assert "HIGH-STABLE" not in text
+    assert "IDLE tinggi" not in text
 
 
 def test_build_huawei_legacy_consolidated_report_summarizes_no_data_accounts_at_bottom():
@@ -158,5 +165,44 @@ def test_build_huawei_legacy_consolidated_report_does_not_promote_spike_as_alert
         ordered_profiles=["dh_prod_nonerp-ro"],
     )
 
-    assert "Terdapat kenaikan signifikan memory" not in text
+    assert "Terdapat usage tinggi sesaat (spike)" in text
     assert "- SPIKE:" not in text
+
+
+def test_build_huawei_legacy_whatsapp_report_compact_and_neat():
+    all_results = {
+        "dh_prod_nonerp-ro": {
+            "status": "success",
+            "account": "dh_prod_nonerp",
+            "rise_threshold": 70.0,
+            "util_window": {"to": "2026-03-06 10:00:00 WIB"},
+            "util": {
+                "cpu_avg_12h": 3.4,
+                "cpu_peak_overall": {"name": "app-1", "peak": 10.0},
+                "mem_avg_12h": 72.0,
+                "mem_peak_overall": {
+                    "name": "db-1",
+                    "peak": 75.0,
+                    "avg_12h": 72.0,
+                    "latest": 74.5,
+                },
+                "top_mem_hot": [{"name": "db-1", "peak": 75.0, "behavior": "HIGH_STABLE"}],
+            },
+        },
+        "afco_prod_erp-ro": {"status": "error", "error": "timeout"},
+    }
+
+    text = build_huawei_legacy_whatsapp_report(
+        all_results=all_results,
+        errors=[("afco_prod_erp-ro", "timeout")],
+        ordered_profiles=["dh_prod_nonerp-ro", "afco_prod_erp-ro", "dh_log-ro"],
+    )
+
+    assert "*Daily Monitoring Utilisasi ECS Darmahenwa*" in text
+    assert "1) *dh_prod_nonerp*" in text
+    assert "2) *afco_prod_erp*: ERROR - timeout." in text
+    assert "Tanpa data utilisasi: dh_log." in text
+    assert "stabil tinggi terus" in text
+    assert "spike" in text
+    assert "HIGH-STABLE" not in text
+    assert "IDLE tinggi" not in text
