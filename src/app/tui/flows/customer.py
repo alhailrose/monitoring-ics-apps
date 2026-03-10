@@ -497,7 +497,10 @@ def _run_customer_auto(cfg):
 
 
 def run_customer_report():
-    """Main Customer Report flow."""
+    """Main Customer Report flow.
+
+    Escape at customer picker returns to mode selector.
+    """
     print_mini_banner()
     print_section_header("Customer Report", ICONS["star"])
 
@@ -509,7 +512,6 @@ def run_customer_report():
 
     _render_customer_dashboard(customers)
 
-    # Mode selection
     mode_choices = [
         questionary.Choice(
             f"{ICONS['star']} Satu Customer  — pilih 1 customer, tanya checks & akun",
@@ -520,94 +522,109 @@ def run_customer_report():
             value="multi",
         ),
     ]
-    mode = common._select_prompt(f"{ICONS['check']} Mode Eksekusi", mode_choices)
-    if not mode:
-        return
 
-    if mode == "multi":
-        customer_choices = [
-            questionary.Choice(
-                f"{c['display_name']} ({c['account_count']} akun)",
-                value=c["customer_id"],
-                checked=False,
+    step = "mode"
+
+    while True:
+        if step == "mode":
+            mode = common._select_prompt(
+                f"{ICONS['check']} Mode Eksekusi", mode_choices, allow_back=True
             )
-            for c in customers
-        ]
-        selected_ids = common._checkbox_prompt(
-            f"{ICONS['all']} Pilih Customer", customer_choices
-        )
-        if not selected_ids:
-            print_error("Tidak ada customer dipilih.")
-            return
+            if not mode:
+                return  # Escape at top-level = exit flow
 
-        for cid in selected_ids:
+            if mode == "multi":
+                customer_choices = [
+                    questionary.Choice(
+                        f"{c['display_name']} ({c['account_count']} akun)",
+                        value=c["customer_id"],
+                        checked=False,
+                    )
+                    for c in customers
+                ]
+                selected_ids = common._checkbox_prompt(
+                    f"{ICONS['all']} Pilih Customer", customer_choices, allow_back=True
+                )
+                if selected_ids is None:
+                    # Escape from multi customer picker = back to mode
+                    continue  # step is still "mode"
+                if not selected_ids:
+                    print_error("Tidak ada customer dipilih.")
+                    continue
+
+                for cid in selected_ids:
+                    try:
+                        cfg = load_customer_config(cid)
+                    except Exception as exc:
+                        print_error(f"Gagal load config {cid}: {exc}")
+                        continue
+                    display = cfg.get("display_name", cid)
+                    console.print(f"\n[bold cyan]{ICONS['star']} {display}[/bold cyan]")
+                    _run_customer_auto(cfg)
+                return
+
+            # single mode
+            step = "single_customer"
+
+        elif step == "single_customer":
             try:
-                cfg = load_customer_config(cid)
-            except Exception as exc:
-                print_error(f"Gagal load config {cid}: {exc}")
+                search_query = questionary.text(
+                    "Kata kunci customer (opsional):",
+                    default="",
+                ).ask()
+            except KeyboardInterrupt:
+                # Escape at keyword search = back to mode picker
+                step = "mode"
                 continue
-            display = cfg.get("display_name", cid)
-            console.print(f"\n[bold cyan]{ICONS['star']} {display}[/bold cyan]")
-            _run_customer_auto(cfg)
 
-        return
+            normalized_search = (search_query or "").strip().lower()
+            filtered_customers = customers
+            if normalized_search:
+                filtered_customers = [
+                    c
+                    for c in customers
+                    if normalized_search
+                    in f"{c.get('display_name', c.get('customer_id', ''))} {c.get('customer_id', '')}".lower()
+                ]
 
-    try:
-        search_query = questionary.text(
-            "Kata kunci customer (opsional):",
-            default="",
-        ).ask()
-    except KeyboardInterrupt:
-        common._handle_interrupt(exit_direct=True)
-        return
+            if not filtered_customers:
+                print_error("Tidak ada customer yang cocok dengan kata kunci.")
+                continue  # Stay on single_customer step, re-prompt keyword
 
-    normalized_search = (search_query or "").strip().lower()
-    filtered_customers = customers
-    if normalized_search:
-        filtered_customers = [
-            c
-            for c in customers
-            if normalized_search
-            in f"{c.get('display_name', c.get('customer_id', ''))} {c.get('customer_id', '')}".lower()
-        ]
+            customer_choices = [
+                questionary.Choice(
+                    f"{c['display_name']} ({c['account_count']} akun)",
+                    value=c["customer_id"],
+                )
+                for c in filtered_customers
+            ]
 
-    if not filtered_customers:
-        print_error("Tidak ada customer yang cocok dengan kata kunci.")
-        return
+            selected_id = common._select_prompt(
+                f"{ICONS['star']} Pilih Customer", customer_choices, allow_back=True
+            )
+            if not selected_id:
+                # Escape = back to mode picker
+                step = "mode"
+                continue
 
-    # Pick customer
-    customer_choices = [
-        questionary.Choice(
-            f"{c['display_name']} ({c['account_count']} akun)",
-            value=c["customer_id"],
-        )
-        for c in filtered_customers
-    ]
+            try:
+                cfg = load_customer_config(selected_id)
+            except Exception as exc:
+                print_error(f"Gagal load config: {exc}")
+                continue
 
-    selected_id = common._select_prompt(
-        f"{ICONS['star']} Pilih Customer", customer_choices
-    )
-    if not selected_id:
-        return
+            display_name = cfg.get("display_name", selected_id)
+            console.print(f"\n[bold cyan]{ICONS['star']} {display_name}[/bold cyan]")
+            console.print(
+                f"[dim]Accounts: {len(cfg.get('accounts', []))} | "
+                f"Checks: {', '.join(cfg.get('checks', []))}[/dim]\n"
+            )
 
-    try:
-        cfg = load_customer_config(selected_id)
-    except Exception as exc:
-        print_error(f"Gagal load config: {exc}")
-        return
+            if selected_id == "aryanoble":
+                result = _run_aryanoble_subflow(cfg)
+            else:
+                result = _run_generic_customer(cfg)
 
-    display_name = cfg.get("display_name", selected_id)
-    console.print(f"\n[bold cyan]{ICONS['star']} {display_name}[/bold cyan]")
-    console.print(
-        f"[dim]Accounts: {len(cfg.get('accounts', []))} | "
-        f"Checks: {', '.join(cfg.get('checks', []))}[/dim]\n"
-    )
-
-    # Route to Aryanoble sub-flow or generic flow
-    if selected_id == "aryanoble":
-        result = _run_aryanoble_subflow(cfg)
-    else:
-        result = _run_generic_customer(cfg)
-
-    if result:
-        _prompt_slack(cfg)
+            if result:
+                _prompt_slack(cfg)
+            return

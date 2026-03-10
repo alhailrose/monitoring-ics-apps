@@ -126,14 +126,16 @@ def test_run_customer_report_filters_customer_choices_by_keyword(monkeypatch):
         lambda *args, **kwargs: SimpleNamespace(ask=lambda: "alp"),
     )
 
-    def fake_select(prompt, choices, default=None):
+    def fake_select(prompt, choices, default=None, **kwargs):
         select_calls["count"] += 1
         if select_calls["count"] == 1:
             # First call: mode selection — pick "single"
             return "single"
-        # Second call: customer picker — capture and return None
-        captured["prompt"] = prompt
-        captured["values"] = [choice.value for choice in choices]
+        # Second call: customer picker — capture and return None (escape)
+        # Subsequent calls (mode picker re-shown after back nav) → None (exit)
+        if "prompt" not in captured:
+            captured["prompt"] = prompt
+            captured["values"] = [choice.value for choice in choices]
         return None
 
     monkeypatch.setattr(customer.common, "_select_prompt", fake_select)
@@ -216,3 +218,33 @@ def test_pick_profiles_from_customers_uses_mode_selector(monkeypatch):
     assert back is False
     assert group_choice == "All Accounts"
     assert sorted(profiles) == ["prod-a", "prod-b"]
+
+
+def test_run_customer_report_back_from_customer_picker_to_mode(monkeypatch):
+    """Escape di customer picker harus kembali ke mode selector."""
+    customers = [
+        {"customer_id": "alpha", "display_name": "Alpha", "account_count": 1,
+         "checks": [], "slack_enabled": False},
+    ]
+
+    monkeypatch.setattr(customer, "print_mini_banner", lambda: None)
+    monkeypatch.setattr(customer, "print_section_header", lambda *a, **kw: None)
+    monkeypatch.setattr(customer, "_render_customer_dashboard", lambda *a: None)
+    monkeypatch.setattr(customer, "list_customers", lambda: customers)
+    monkeypatch.setattr(
+        customer.questionary, "text",
+        lambda *a, **kw: SimpleNamespace(ask=lambda: ""),
+    )
+
+    select_seq = iter([
+        "single",   # mode picker: single
+        None,       # customer picker: escape → back to mode
+        None,       # mode picker: escape → exit flow
+    ])
+    monkeypatch.setattr(
+        customer.common, "_select_prompt",
+        lambda _msg, _choices, **_kw: next(select_seq),
+    )
+
+    # Should complete without raising or hanging
+    customer.run_customer_report()
