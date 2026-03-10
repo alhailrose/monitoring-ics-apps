@@ -1,1 +1,0 @@
-"""Schema validators for configuration."""

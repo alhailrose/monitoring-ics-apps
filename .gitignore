@@ -5,3 +5,15 @@ __pycache__/
 *.egg-info/
 .DS_Store
 .opencode/
+
+# Build artifacts
+build/
+
+# Logs
+logs/
+
+# Tool/agent metadata
+.agents/
+.claude/
+.kiro/
+skills-lock.json

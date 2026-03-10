@@ -1,1 +1,0 @@
-"""Slack command integration helpers."""
