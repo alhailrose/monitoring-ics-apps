@@ -243,54 +243,66 @@ def _pick_profiles_from_customers():
 
 
 def _run_quick_check():
-    """Quick Check flow: pick 1 check + profiles, run."""
+    """Quick Check flow: pick 1 check + profiles, run.
+
+    Escape at profile step goes back to check picker.
+    """
     print_mini_banner()
     print_section_header("Quick Check", ICONS["single"])
 
-    # Pick 1 check
-    selected_check = common._select_prompt(
-        f"{ICONS['single']} Pilih Check", CHECK_CHOICES
-    )
-    if not selected_check:
-        return
+    step = "check"
+    selected_check = None
 
-    profiles, group_choice, back = _pick_profiles_from_customers()
-
-    if back:
-        return
-    if not profiles:
-        print_error("Tidak ada profil dipilih.")
-        return
-
-    region = common._choose_region(profiles)
-    if region is None:
-        return
-
-    # Build check_kwargs for checks that need extra params
-    check_kwargs = None
-    if selected_check == "alarm_verification":
-        alarm_names = []
-        for p in profiles:
-            alarm_names.extend(get_alarm_names_for_profile(p))
-        if not alarm_names:
-            print_error(
-                "Alarm belum dikonfigurasi untuk profil yang dipilih. "
-                "Tambahkan alarm_names di configs/customers/<customer>.yaml"
+    while True:
+        if step == "check":
+            selected_check = common._select_prompt(
+                f"{ICONS['single']} Pilih Check", CHECK_CHOICES, allow_back=True
             )
-            return
-        check_kwargs = {"alarm_names": alarm_names, "min_duration_minutes": 10}
+            if not selected_check:
+                return  # Escape at check picker = exit flow back to main menu
+            step = "profiles"
 
-    if len(profiles) > 1:
-        run_group_specific(
-            selected_check, profiles, region,
-            group_name=group_choice,
-            check_kwargs=check_kwargs,
-        )
-    else:
-        run_individual_check(
-            selected_check, profiles[0], region,
-            check_kwargs=check_kwargs,
-        )
+        elif step == "profiles":
+            profiles, group_choice, back = _pick_profiles_from_customers()
+            if not profiles:
+                # Empty profiles = user escaped all the way out of profile picker
+                # Go back to check picker
+                step = "check"
+                continue
+
+            region = common._choose_region(profiles)
+            if region is None:
+                # Escape at region = back to profile picker
+                step = "profiles"
+                continue
+
+            # Build check_kwargs for checks that need extra params
+            check_kwargs = None
+            if selected_check == "alarm_verification":
+                alarm_names = []
+                for p in profiles:
+                    alarm_names.extend(get_alarm_names_for_profile(p))
+                if not alarm_names:
+                    print_error(
+                        "Alarm belum dikonfigurasi untuk profil yang dipilih. "
+                        "Tambahkan alarm_names di configs/customers/<customer>.yaml"
+                    )
+                    step = "profiles"
+                    continue
+                check_kwargs = {"alarm_names": alarm_names, "min_duration_minutes": 10}
+
+            if len(profiles) > 1:
+                run_group_specific(
+                    selected_check, profiles, region,
+                    group_name=group_choice,
+                    check_kwargs=check_kwargs,
+                )
+            else:
+                run_individual_check(
+                    selected_check, profiles[0], region,
+                    check_kwargs=check_kwargs,
+                )
+            return  # Done
 
 
 def run_huawei_utilization():

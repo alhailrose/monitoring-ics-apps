@@ -450,3 +450,39 @@ def test_pick_profiles_per_customer_back_from_customer_to_mode(monkeypatch):
     assert not back
     assert group_name == "All Accounts"
     assert len(profiles) == 2
+
+
+def test_quick_check_back_from_profile_to_check_picker(monkeypatch):
+    """Escape di profile picker harus kembali ke check picker, bukan keluar."""
+    monkeypatch.setattr(interactive, "print_mini_banner", lambda: None)
+    monkeypatch.setattr(interactive, "print_section_header", lambda *a, **kw: None)
+
+    from src.app.tui import common
+
+    pick_calls = {"count": 0}
+    check_calls = []
+
+    # _pick_profiles_from_customers: first call returns empty (back), second returns profile
+    def fake_pick():
+        pick_calls["count"] += 1
+        if pick_calls["count"] == 1:
+            return [], None, False  # empty = back signal
+        return ["prod-a"], "Nabati", False
+
+    monkeypatch.setattr(interactive, "_pick_profiles_from_customers", fake_pick)
+
+    select_calls = iter(["health", "health"])  # check picker called twice
+    monkeypatch.setattr(
+        common, "_select_prompt", lambda _msg, _choices, **_kw: next(select_calls)
+    )
+    monkeypatch.setattr(common, "_choose_region", lambda profiles: "ap-southeast-3")
+    monkeypatch.setattr(
+        interactive,
+        "run_individual_check",
+        lambda check, profile, region, **kw: check_calls.append((check, profile)),
+    )
+
+    interactive._run_quick_check()
+
+    assert pick_calls["count"] == 2, "profile picker harus dipanggil 2x"
+    assert check_calls == [("health", "prod-a")]
