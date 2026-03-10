@@ -61,7 +61,10 @@ def _render_customer_dashboard(customers):
 
 
 def _run_aryanoble_subflow(cfg):
-    """Aryanoble-specific sub-flow: RDS Monitoring / Alarm Verification / Budget / Backup."""
+    """Aryanoble-specific sub-flow: RDS Monitoring / Alarm Verification / Budget / Backup.
+
+    Escape at any step goes back to previous step.
+    """
     arbel_profiles = [
         a["profile"] for a in cfg.get("accounts", [])
         if a.get("daily_arbel")
@@ -180,118 +183,139 @@ def _run_aryanoble_subflow(cfg):
         questionary.Choice(f"{ICONS['backup']} Backup", value="backup"),
     ]
 
-    choice = common._select_prompt(
-        f"{ICONS['arbel']} Aryanoble - Pilih Mode", arbel_choices
-    )
-    if not choice:
-        return None
-
     region = "ap-southeast-3"
+    step = "mode"
+    choice = None
+    selected_profiles = None
 
-    if choice == "backup":
-        run_group_specific("backup", all_profiles, region, group_name="Aryanoble")
-        return {"mode": "backup"}
-
-    # Pick profiles based on mode
-    if choice == "alarm-name":
-        # Alarm verification: show all accounts that have alarm catalog entries
-        alarm_profiles = list(arbel_alarm_catalog.keys())
-        profile_choices = [
-            questionary.Choice(p, value=p, checked=True)
-            for p in alarm_profiles
-        ]
-    else:
-        # RDS/Budget: show accounts with daily_arbel config
-        profile_choices = [
-            questionary.Choice(
-                p, value=p, checked=(p in default_rds_profiles)
+    while True:
+        if step == "mode":
+            choice = common._select_prompt(
+                f"{ICONS['arbel']} Aryanoble - Pilih Mode", arbel_choices, allow_back=True
             )
-            for p in arbel_profiles
-        ]
+            if choice is None:
+                return None  # Escape at top level = exit flow
 
-    selected_profiles = common._checkbox_prompt(
-        f"{ICONS['check']} Pilih akun Aryanoble", profile_choices
-    )
-    if not selected_profiles:
-        print_error("Tidak ada akun dipilih.")
-        return None
+            if choice == "backup":
+                run_group_specific("backup", all_profiles, region, group_name="Aryanoble")
+                return {"mode": "backup"}
 
-    if choice == "budget":
-        run_group_specific(
-            "daily-budget",
-            selected_profiles,
-            region,
-            group_name="Aryanoble Budget",
-        )
-        return {"mode": "budget"}
+            step = "accounts"
 
-    if choice == "alarm-name":
-        candidate_alarms = []
-        seen = set()
-        for profile in selected_profiles:
-            for alarm_name in arbel_alarm_catalog.get(profile, []):
-                if alarm_name not in seen:
-                    seen.add(alarm_name)
-                    candidate_alarms.append(alarm_name)
+        elif step == "accounts":
+            if choice == "alarm-name":
+                alarm_profiles = list(arbel_alarm_catalog.keys())
+                profile_choices = [
+                    questionary.Choice(p, value=p, checked=True)
+                    for p in alarm_profiles
+                ]
+            else:
+                profile_choices = [
+                    questionary.Choice(
+                        p, value=p, checked=(p in default_rds_profiles)
+                    )
+                    for p in arbel_profiles
+                ]
 
-        if candidate_alarms:
-            alarm_choices = [
-                questionary.Choice(a, value=a, checked=False)
-                for a in candidate_alarms
+            selected_profiles = common._checkbox_prompt(
+                f"{ICONS['check']} Pilih akun Aryanoble", profile_choices, allow_back=True
+            )
+            if selected_profiles is None:
+                # Escape = back to mode picker
+                step = "mode"
+                continue
+            if not selected_profiles:
+                print_error("Tidak ada akun dipilih.")
+                continue  # Stay on accounts step
+
+            if choice == "budget":
+                run_group_specific(
+                    "daily-budget",
+                    selected_profiles,
+                    region,
+                    group_name="Aryanoble Budget",
+                )
+                return {"mode": "budget"}
+
+            if choice == "alarm-name":
+                step = "alarm_select"
+            else:
+                step = "window"
+
+        elif step == "window":
+            window_choices = [
+                questionary.Choice("1 Jam", value=(1, "1 Hour")),
+                questionary.Choice("3 Jam", value=(3, "3 Hours")),
+                questionary.Choice("12 Jam", value=(12, "12 Hours")),
             ]
-            selected_alarms = common._checkbox_prompt(
-                f"{ICONS['alarm']} Pilih alarm", alarm_choices
+            selected_window = common._select_prompt(
+                f"{ICONS['rds']} Pilih Window RDS", window_choices,
+                default=(3, "3 Hours"), allow_back=True
             )
-            if not selected_alarms:
-                print_error("Nama alarm wajib diisi.")
-                return None
-        else:
-            try:
-                alarm_input = questionary.text(
-                    "Masukkan nama alarm (pisahkan dengan koma):",
-                    style=CUSTOM_STYLE,
-                ).ask()
-            except KeyboardInterrupt:
-                common._handle_interrupt(exit_direct=True)
-                return None
-            selected_alarms = [x.strip() for x in (alarm_input or "").split(",") if x.strip()]
-            if not selected_alarms:
-                print_error("Nama alarm wajib diisi.")
-                return None
+            if selected_window is None:
+                # Escape = back to account picker
+                step = "accounts"
+                continue
 
-        run_group_specific(
-            "alarm_verification",
-            selected_profiles,
-            region,
-            group_name="Aryanoble Alarm",
-            check_kwargs={
-                "alarm_names": selected_alarms,
-                "min_duration_minutes": 10,
-            },
-        )
-        return {"mode": "alarm"}
+            window_hours, suffix = selected_window
+            run_group_specific(
+                "daily-arbel",
+                selected_profiles,
+                region,
+                group_name=f"Aryanoble ({suffix})",
+                check_kwargs={"window_hours": window_hours},
+            )
+            return {"mode": "rds"}
 
-    # RDS Monitoring
-    window_choices = [
-        questionary.Choice("1 Jam", value=(1, "1 Hour")),
-        questionary.Choice("3 Jam", value=(3, "3 Hours")),
-        questionary.Choice("12 Jam", value=(12, "12 Hours")),
-    ]
-    selected_window = common._select_prompt(
-        f"{ICONS['rds']} Pilih Window RDS", window_choices, default=(3, "3 Hours")
-    )
-    if not selected_window:
-        return None
+        elif step == "alarm_select":
+            candidate_alarms = []
+            seen = set()
+            for profile in selected_profiles:
+                for alarm_name in arbel_alarm_catalog.get(profile, []):
+                    if alarm_name not in seen:
+                        seen.add(alarm_name)
+                        candidate_alarms.append(alarm_name)
 
-    window_hours, suffix = selected_window
-    run_group_specific(
-        "daily-arbel",
-        selected_profiles,
-        region,
-        group_name=f"Aryanoble ({suffix})",
-        check_kwargs={"window_hours": window_hours},
-    )
-    return {"mode": "rds"}
+            if candidate_alarms:
+                alarm_choices = [
+                    questionary.Choice(a, value=a, checked=False)
+                    for a in candidate_alarms
+                ]
+                selected_alarms = common._checkbox_prompt(
+                    f"{ICONS['alarm']} Pilih alarm", alarm_choices, allow_back=True
+                )
+                if selected_alarms is None:
+                    # Escape = back to account picker
+                    step = "accounts"
+                    continue
+                if not selected_alarms:
+                    print_error("Nama alarm wajib diisi.")
+                    continue  # Stay on alarm_select
+            else:
+                try:
+                    alarm_input = questionary.text(
+                        "Masukkan nama alarm (pisahkan dengan koma):",
+                        style=CUSTOM_STYLE,
+                    ).ask()
+                except KeyboardInterrupt:
+                    step = "accounts"
+                    continue
+                selected_alarms = [x.strip() for x in (alarm_input or "").split(",") if x.strip()]
+                if not selected_alarms:
+                    print_error("Nama alarm wajib diisi.")
+                    continue
+
+            run_group_specific(
+                "alarm_verification",
+                selected_profiles,
+                region,
+                group_name="Aryanoble Alarm",
+                check_kwargs={
+                    "alarm_names": selected_alarms,
+                    "min_duration_minutes": 10,
+                },
+            )
+            return {"mode": "alarm"}
 
 
 def _run_generic_customer(cfg):
