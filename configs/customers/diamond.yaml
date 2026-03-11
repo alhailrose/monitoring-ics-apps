@@ -17,6 +17,17 @@ accounts:
   - profile: Diamond
     account_id: "464587839665"
     display_name: "Diamond"
+    alarm_names:
+      - "DSM-Production-App-Disk-above-80"
+      - "DSM-Production-App-cpu-above-80"
+      - "DSM-Production-App-mem-above-80"
+      - "DSM-Production-App-mem-above-85"
+      - "DSM-Production-DB-Disk-above-80"
+      - "DSM-Production-DB-cpu-above-80"
+      - "DSM-Production-DB-mem-above-80"
+      - "DSM-Production-OpenVPN-Disk-above-80"
+      - "DSM-Production-OpenVPN-cpu-above-80"
+      - "DSM-Production-OpenVPN-mem-above-80"
   - profile: kurnia-phileo
     account_id: "452439730915"
     display_name: "Kurnia Phileo Selaras - Production"

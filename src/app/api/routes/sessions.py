@@ -17,9 +17,13 @@ def check_session_health(
 
     Returns per-profile status (ok/expired/error) grouped by SSO session,
     with login commands for expired sessions.
+
+    When notify=True and customer_id is provided, sends Slack alert to that
+    customer's configured webhook (if slack_enabled). When customer_id is
+    omitted with notify=True, notification is logged only (no webhook).
     """
     if notify:
-        report = service.check_and_notify(customer_id=customer_id)
+        report = service.check_and_notify_with_customer(customer_id=customer_id)
     else:
         report = service.check_all(customer_id=customer_id)
 

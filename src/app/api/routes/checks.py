@@ -27,6 +27,7 @@ def execute_check(payload: ExecuteCheckRequest, executor=Depends(get_check_execu
             check_name=payload.check_name,
             account_ids=payload.account_ids,
             send_slack=payload.send_slack,
+            region=payload.region,
             check_params=payload.check_params,
         )
         return result

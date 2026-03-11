@@ -80,6 +80,10 @@ export default function ArbelCheckPage() {
   const [sendSlack, setSendSlack] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
   const [result, setResult] = useState<ExecuteCheckResponse | null>(null)
+  // Alarm menu: { accountId: Set<alarmName> } — empty = account not participating
+  const [selectedAlarms, setSelectedAlarms] = useState<Record<string, Set<string>>>({})
+  // Track which alarm accordion cards are expanded
+  const [expandedAlarmAccounts, setExpandedAlarmAccounts] = useState<Set<string>>(new Set())
 
   const accounts = useMemo(() => {
     if (!customer) return []
@@ -119,6 +123,10 @@ export default function ArbelCheckPage() {
   const onToggleMenu = (key: ArbelMenu) => {
     if (activeMenu === key) {
       setActiveMenu(null)
+      if (key === "alarm") {
+        setSelectedAlarms({})
+        setExpandedAlarmAccounts(new Set())
+      }
       return
     }
     setActiveMenu(key)
@@ -128,9 +136,9 @@ export default function ArbelCheckPage() {
     setSelectAll(true)
     setWindowHours(12)
 
-    // Pre-select accounts based on menu
     if (key === "alarm") {
-      setSelectedAccountIds(alarmAccounts.map((a) => a.id))
+      setSelectedAlarms({})
+      setExpandedAlarmAccounts(new Set())
     } else {
       setSelectedAccountIds(accounts.map((a) => a.id))
     }
@@ -139,8 +147,7 @@ export default function ArbelCheckPage() {
   const onToggleSelectAll = (checked: boolean) => {
     setSelectAll(checked)
     if (checked) {
-      const pool = activeMenu === "alarm" ? alarmAccounts : accounts
-      setSelectedAccountIds(pool.map((a) => a.id))
+      setSelectedAccountIds(accounts.map((a) => a.id))
     } else {
       setSelectedAccountIds([])
     }
@@ -154,21 +161,40 @@ export default function ArbelCheckPage() {
 
   const onRun = async (menu: MenuConfig) => {
     if (!customer) return
-    if (selectedAccountIds.length === 0) {
-      setError("Select at least one account.")
-      return
-    }
 
     setIsExecuting(true)
     setError("")
     setResult(null)
 
-    const accountIds = selectAll ? null : selectedAccountIds
-
-    // Build check_params based on menu
+    let accountIds: string[] | null = null
     let checkParams: Record<string, unknown> | null = null
-    if (menu.key === "rds") {
-      checkParams = { window_hours: windowHours }
+
+    if (menu.key === "alarm") {
+      // Build per-account alarm map; skip accounts with no alarms selected
+      const accountAlarmNames: Record<string, string[]> = {}
+      for (const [accountId, alarms] of Object.entries(selectedAlarms)) {
+        if (alarms.size > 0) {
+          accountAlarmNames[accountId] = [...alarms]
+        }
+      }
+      const participatingIds = Object.keys(accountAlarmNames)
+      if (participatingIds.length === 0) {
+        setError("Select at least one alarm.")
+        setIsExecuting(false)
+        return
+      }
+      accountIds = participatingIds
+      checkParams = { account_alarm_names: accountAlarmNames }
+    } else {
+      if (selectedAccountIds.length === 0) {
+        setError("Select at least one account.")
+        setIsExecuting(false)
+        return
+      }
+      accountIds = selectAll ? null : selectedAccountIds
+      if (menu.key === "rds") {
+        checkParams = { window_hours: windowHours }
+      }
     }
 
     try {
@@ -186,6 +212,138 @@ export default function ArbelCheckPage() {
     } finally {
       setIsExecuting(false)
     }
+  }
+
+  const toggleAlarm = (accountId: string, alarmName: string) => {
+    setSelectedAlarms((cur) => {
+      const next = { ...cur }
+      const set = new Set(cur[accountId] ?? [])
+      if (set.has(alarmName)) {
+        set.delete(alarmName)
+      } else {
+        set.add(alarmName)
+      }
+      next[accountId] = set
+      return next
+    })
+  }
+
+  const selectAllAlarmsForAccount = (accountId: string, alarmNames: string[]) => {
+    setSelectedAlarms((cur) => ({ ...cur, [accountId]: new Set(alarmNames) }))
+  }
+
+  const clearAlarmsForAccount = (accountId: string) => {
+    setSelectedAlarms((cur) => ({ ...cur, [accountId]: new Set() }))
+  }
+
+  const toggleAlarmAccountExpanded = (accountId: string) => {
+    setExpandedAlarmAccounts((cur) => {
+      const next = new Set(cur)
+      if (next.has(accountId)) {
+        next.delete(accountId)
+      } else {
+        next.add(accountId)
+      }
+      return next
+    })
+  }
+
+  const renderAlarmSelector = () => {
+    if (alarmAccounts.length === 0) {
+      return (
+        <p className="checks-help">
+          No accounts have alarm_names configured. Run seed_alarms script first.
+        </p>
+      )
+    }
+
+    return (
+      <div className="arbel-alarm-accordion">
+        {alarmAccounts.map((account) => {
+          const alarmNames = getAlarmNames(account)
+          const selected = selectedAlarms[account.id] ?? new Set<string>()
+          const isExpanded = expandedAlarmAccounts.has(account.id)
+          const selectedCount = selected.size
+          const allSelected = selectedCount === alarmNames.length && alarmNames.length > 0
+          const someSelected = selectedCount > 0 && selectedCount < alarmNames.length
+
+          return (
+            <div key={account.id} className="arbel-alarm-account-card">
+              <div className="arbel-alarm-account-header">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelected
+                  }}
+                  onChange={() => {
+                    if (allSelected || someSelected) {
+                      clearAlarmsForAccount(account.id)
+                    } else {
+                      selectAllAlarmsForAccount(account.id, alarmNames)
+                    }
+                  }}
+                  disabled={isExecuting}
+                />
+                <span
+                  className="arbel-alarm-account-label"
+                  onClick={() => toggleAlarmAccountExpanded(account.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === "Enter" && toggleAlarmAccountExpanded(account.id)}
+                >
+                  {account.display_name} ({account.profile_name})
+                </span>
+                <span className="arbel-alarm-count-badge">
+                  {selectedCount}/{alarmNames.length} selected
+                </span>
+                <div className="arbel-alarm-account-actions">
+                  <button
+                    type="button"
+                    className="arbel-alarm-action-btn"
+                    onClick={() => selectAllAlarmsForAccount(account.id, alarmNames)}
+                    disabled={isExecuting}
+                  >
+                    all
+                  </button>
+                  <button
+                    type="button"
+                    className="arbel-alarm-action-btn"
+                    onClick={() => clearAlarmsForAccount(account.id)}
+                    disabled={isExecuting}
+                  >
+                    none
+                  </button>
+                  <button
+                    type="button"
+                    className="arbel-alarm-action-btn"
+                    onClick={() => toggleAlarmAccountExpanded(account.id)}
+                  >
+                    {isExpanded ? "▲" : "▼"}
+                  </button>
+                </div>
+              </div>
+
+              {isExpanded ? (
+                <div className="arbel-alarm-list">
+                  {alarmNames.map((name) => (
+                    <label key={name} className="arbel-alarm-item">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(name)}
+                        onChange={() => toggleAlarm(account.id, name)}
+                        disabled={isExecuting}
+                      />
+                      {name}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
   const renderAccountSelector = (pool: Account[]) => (
@@ -212,11 +370,6 @@ export default function ArbelCheckPage() {
               disabled={selectAll || isExecuting}
             />
             {account.display_name} ({account.profile_name})
-            {activeMenu === "alarm" ? (
-              <span className="arbel-alarm-count">
-                {getAlarmNames(account).length} alarms
-              </span>
-            ) : null}
           </label>
         ))}
       </div>
@@ -224,11 +377,9 @@ export default function ArbelCheckPage() {
   )
 
   const renderSubMenu = (menu: MenuConfig) => {
-    const pool = menu.key === "alarm" ? alarmAccounts : accounts
-
     return (
       <div className="arbel-submenu">
-        {renderAccountSelector(pool)}
+        {menu.key === "alarm" ? renderAlarmSelector() : renderAccountSelector(accounts)}
 
         {menu.key === "rds" ? (
           <div className="arbel-option-row">
@@ -249,12 +400,6 @@ export default function ArbelCheckPage() {
           </div>
         ) : null}
 
-        {menu.key === "alarm" && alarmAccounts.length === 0 ? (
-          <p className="checks-help">
-            No accounts have alarm_names configured. Run seed_alarms script first.
-          </p>
-        ) : null}
-
         <div className="arbel-run-row">
           <label className="checks-inline-checkbox">
             <input
@@ -269,7 +414,11 @@ export default function ArbelCheckPage() {
             className="ops-button"
             type="button"
             onClick={() => onRun(menu)}
-            disabled={isExecuting || selectedAccountIds.length === 0}
+            disabled={isExecuting || (
+              menu.key === "alarm"
+                ? Object.values(selectedAlarms).every((s) => s.size === 0)
+                : selectedAccountIds.length === 0
+            )}
           >
             {isExecuting ? "Running..." : `Run ${menu.label}`}
           </button>

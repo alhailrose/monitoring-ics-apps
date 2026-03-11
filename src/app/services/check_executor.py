@@ -591,13 +591,13 @@ class CheckExecutor:
                             check_kwargs = {}
                         check_kwargs.setdefault("alarm_names", account.alarm_names)
 
-                    # Apply per-account alarm_names override (only for checks that use alarm_names)
-                    if chk_name in ("cloudwatch", "alarm_verification"):
-                        account_alarms = per_account_alarms.get(str(account.id))
-                        if account_alarms:
-                            if check_kwargs is None:
-                                check_kwargs = {}
-                            check_kwargs["alarm_names"] = account_alarms
+                    # Apply per-account alarm_names override unconditionally; checks that
+                    # don't accept alarm_names will ignore it via **kwargs or their own constructor
+                    account_alarms = per_account_alarms.get(str(account.id))
+                    if account_alarms:
+                        if check_kwargs is None:
+                            check_kwargs = {}
+                        check_kwargs["alarm_names"] = account_alarms
 
                     # Merge remaining check_params (e.g. window_hours) — overrides everything
                     if remaining_check_params:

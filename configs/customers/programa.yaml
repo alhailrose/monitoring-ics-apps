@@ -15,6 +15,16 @@ accounts:
   - profile: programa
     account_id: "779060063462"
     display_name: "Programa Reka Piranti"
+    alarm_names:
+      - "IDAS-Prod-OpenEdge-Client-cpu-above-80"
+      - "IDAS-Prod-OpenEdge-Client-disk-above-80"
+      - "IDAS-Prod-OpenEdge-Client-mem-above-80"
+      - "IDAS-Prod-PRP-OpenVPN-cpu-above-80"
+      - "IDAS-Prod-PRP-OpenVPN-disk-above-80"
+      - "IDAS-Prod-PRP-OpenVPN-mem-above-80"
+      - "IDAS-Prod-PRP-cpu-above-80"
+      - "IDAS-Prod-PRP-disk-above-80"
+      - "IDAS-Prod-PRP-mem-above-80"
   
 # Untuk menggunakan alarm_verification check, tambahkan:
 # alarm_names:

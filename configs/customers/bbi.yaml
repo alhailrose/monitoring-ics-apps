@@ -17,6 +17,20 @@ accounts:
     account_id: "940404076348"
     display_name: "BBI"
     region: ap-southeast-1
+    alarm_names:
+      - "BBI-NetworkOur-Apps>"
+      - "bintangbaliindah-Production-OpenVPN-cpu-above-80"
+      - "bintangbaliindah-Production-OpenVPN-disk-above-80"
+      - "bintangbaliindah-Production-OpenVPN-mem-above-80"
+      - "bintangbaliindah-Production-application-server-cpu-above-80"
+      - "bintangbaliindah-Production-application-server-disk-above-80"
+      - "bintangbaliindah-Production-application-server-mem-above-80"
+      - "bintangbaliindah-Production-database-backup-server-cpu-above-80"
+      - "bintangbaliindah-Production-database-backup-server-disk-above-80"
+      - "bintangbaliindah-Production-database-backup-server-mem-above-80"
+      - "bintangbaliindah-Production-database-server-cpu-above-80"
+      - "bintangbaliindah-Production-database-server-disk-above-80"
+      - "bintangbaliindah-Production-database-server-mem-above-80"
 
 # Untuk menggunakan alarm_verification check, tambahkan:
 # alarm_names:

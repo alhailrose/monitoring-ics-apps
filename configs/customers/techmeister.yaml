@@ -17,6 +17,17 @@ accounts:
   - profile: Techmeister
     account_id: "763944546283"
     display_name: "Techmeister"
+    alarm_names:
+      - "prod-tb-rf-database-FreeStorageSpace-under-20"
+      - "prod-tb-rf-database-cpu-above-80"
+      - "prod-tb-rf-database-memory-under-20"
+      - "techbros-production-Tb-Tableau-2024-cpu-above-80"
+      - "techbros-production-Tb-Tableau-2024-disk-C-above-80"
+      - "techbros-production-Tb-Tableau-2024-disk-D-above-80"
+      - "techbros-production-Tb-Tableau-2024-memory-above-80"
+      - "techbros-production-openvpn-cpu-above-80"
+      - "techbros-production-openvpn-disk-above-80"
+      - "techbros-production-openvpn-mem-above-80"
 
 # Untuk menggunakan alarm_verification check, tambahkan:
 # alarm_names:

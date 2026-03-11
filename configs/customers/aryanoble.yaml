@@ -40,14 +40,15 @@ accounts:
     account_id: "451916275465"
     display_name: "CIS ERHA"
     alarm_names:
-      - cis-prod-rds-acu-writer-alarm
-      - cis-prod-rds-cpu-writer-alarm
-      - cis-prod-rds-memory-writer-alarm
-      - cis-prod-rds-connection-writer-alarm
-      - cis-prod-rds-acu-reader-alarm
-      - cis-prod-rds-cpu-reader-alarm
-      - cis-prod-rds-memory-reader-alarm
-      - cis-prod-rds-connection-reader-alarm
+      - "CIS Aurora Writer - Memory Alarm"
+      - "CIS Aurora Reader - ACU Alarm"
+      - "CIS Aurora Reader - Memory Alarm"
+      - "CIS Aurora Reader - IOs Pricing Alarm"
+      - "CIS Aurora Writer - ACU Alarm"
+      - "CIS Aurora Writer - IOs Pricing Alarm"
+      - "CIS RabbitMQ - CPU Alarm"
+      - "CIS Aurora Reader - Connection Alarm"
+      - "CIS Aurora Writer - Connection Alarm"
     daily_arbel:
       cluster_id: cis-prod-rds
       instances:

@@ -1,17 +1,39 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, test, vi } from "vitest"
 
 import ArbelCheckPage from "../app/checks/arbel/page"
 
 afterEach(() => {
+  cleanup()
   vi.restoreAllMocks()
 })
+
+const makeExecuteResponse = (checkName: string) => ({
+  ok: true,
+  headers: new Headers({ "content-type": "application/json" }),
+  json: async () => ({
+    check_run_id: `run-${checkName}`,
+    execution_time_seconds: 1.5,
+    consolidated_output: `${checkName} output`,
+    slack_sent: false,
+    results: [
+      {
+        account: { id: "acc-1", profile_name: "aryanoble-prod", display_name: "Prod" },
+        check_name: checkName,
+        status: "OK",
+        summary: `${checkName} healthy`,
+        output: `${checkName} result`,
+      },
+    ],
+  }),
+} as Response)
 
 const aryanobleFixture = {
   id: "cust-ary",
   name: "aryanoble",
   display_name: "Aryanoble",
-  checks: ["cost", "guardduty", "cloudwatch"],
+  checks: [],
+  sso_session: null,
   slack_webhook_url: null,
   slack_channel: null,
   slack_enabled: false,
@@ -24,6 +46,8 @@ const aryanobleFixture = {
       account_id: "123",
       display_name: "Prod",
       is_active: true,
+      region: null,
+      alarm_names: ["Alarm1", "Alarm2"],
       config_extra: null,
       created_at: "2026-03-04T00:00:00Z",
     },
@@ -33,96 +57,173 @@ const aryanobleFixture = {
       account_id: "456",
       display_name: "Dev",
       is_active: true,
+      region: null,
+      alarm_names: null,
       config_extra: null,
       created_at: "2026-03-04T00:00:00Z",
     },
   ],
 }
 
+const mockListCustomers = () =>
+  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+    ok: true,
+    headers: new Headers({ "content-type": "application/json" }),
+    json: async () => ({ customers: [aryanobleFixture] }),
+  } as Response)
+
 describe("ArbelCheckPage", () => {
-  test("lets user choose arbel features and specific accounts before running", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce({
-        ok: true,
-        headers: new Headers({ "content-type": "application/json" }),
-        json: async () => ({ customers: [aryanobleFixture] }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        headers: new Headers({ "content-type": "application/json" }),
-        json: async () => ({
-          checks: [
-            { name: "cost", class: "CostCheck" },
-            { name: "guardduty", class: "GuardDutyCheck" },
-            { name: "cloudwatch", class: "CloudWatchCheck" },
-          ],
-        }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        headers: new Headers({ "content-type": "application/json" }),
-        json: async () => ({
-          check_run_id: "run-cost",
-          execution_time_seconds: 3.2,
-          consolidated_output: "cost output",
-          slack_sent: false,
-          results: [
-            {
-              account: { id: "acc-1", profile_name: "aryanoble-prod", display_name: "Prod" },
-              check_name: "cost",
-              status: "OK",
-              summary: "Cost healthy",
-              output: "cost result",
-            },
-          ],
-        }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        headers: new Headers({ "content-type": "application/json" }),
-        json: async () => ({
-          check_run_id: "run-guardduty",
-          execution_time_seconds: 4.1,
-          consolidated_output: "guardduty output",
-          slack_sent: false,
-          results: [
-            {
-              account: { id: "acc-1", profile_name: "aryanoble-prod", display_name: "Prod" },
-              check_name: "guardduty",
-              status: "WARN",
-              summary: "Needs review",
-              output: "guardduty result",
-            },
-          ],
-        }),
-      } as Response)
+  test("renders the page with menu cards after loading", async () => {
+    mockListCustomers()
 
     render(<ArbelCheckPage />)
 
-    expect(await screen.findByDisplayValue(/aryanoble/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/cost/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/guardduty/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/cloudwatch/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Aryanoble — 2 active accounts/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /backup status/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /rds \/ ec2 metrics/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /alarm verification/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /daily budget/i })).toBeInTheDocument()
+  })
 
-    fireEvent.click(screen.getByLabelText(/cloudwatch/i))
-    fireEvent.click(screen.getByLabelText(/select all accounts/i))
-    fireEvent.click(screen.getByLabelText(/prod \(aryanoble-prod\)/i))
-    fireEvent.click(screen.getByRole("button", { name: /run selected arbel checks/i }))
+  test("opens Backup menu and shows account list, runs check with specific accounts", async () => {
+    const fetchMock = mockListCustomers()
+    fetchMock.mockResolvedValueOnce(makeExecuteResponse("backup"))
+
+    render(<ArbelCheckPage />)
+
+    // Wait for load and open the Backup menu
+    expect(await screen.findByText(/Aryanoble — 2 active accounts/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /backup status/i }))
+
+    // Account selector should appear with both accounts
+    expect(await screen.findByText(/Prod \(aryanoble-prod\)/)).toBeInTheDocument()
+    expect(screen.getByText(/Dev \(aryanoble-dev\)/)).toBeInTheDocument()
+
+    // Uncheck "Select All" to enable individual selection, then pick only Prod
+    const selectAllCheckbox = screen.getByRole("checkbox", { name: /select all/i })
+    fireEvent.click(selectAllCheckbox) // deselect all
+    const prodCheckbox = screen.getAllByRole("checkbox", {
+      name: /prod \(aryanoble-prod\)/i,
+    })[0]
+    fireEvent.click(prodCheckbox)
+
+    // Click Run
+    fireEvent.click(screen.getByRole("button", { name: /run backup status/i }))
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(4)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
     })
 
-    const executeCalls = fetchMock.mock.calls.slice(2)
-    const payloads = executeCalls.map((call) => JSON.parse(String((call[1] as RequestInit).body)))
+    const executeCall = fetchMock.mock.calls[1]
+    const payload = JSON.parse(String((executeCall[1] as RequestInit).body))
+    expect(payload.check_name).toBe("backup")
+    expect(payload.account_ids).toEqual(["acc-1"])
+    expect(payload.mode).toBe("single")
+  })
 
-    expect(payloads).toHaveLength(2)
-    expect(payloads.map((payload) => payload.check_name).sort()).toEqual(["cost", "guardduty"])
-    expect(payloads.every((payload) => payload.mode === "single")).toBe(true)
-    expect(payloads.every((payload) => JSON.stringify(payload.account_ids) === JSON.stringify(["acc-1"]))).toBe(true)
+  test("alarm verification accordion shows only accounts with alarm_names", async () => {
+    mockListCustomers()
 
-    expect(await screen.findByText(/runs:\s*2/i)).toBeInTheDocument()
-    expect(screen.getByText(/guardduty result/i)).toBeInTheDocument()
+    render(<ArbelCheckPage />)
+
+    // Wait for load and open the Alarm Verification menu
+    expect(await screen.findByText(/Aryanoble — 2 active accounts/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /alarm verification/i }))
+
+    // The accordion card for Prod (has alarms) should appear
+    expect(await screen.findByText(/Prod \(aryanoble-prod\)/)).toBeInTheDocument()
+
+    // Dev has null alarm_names — it should NOT appear in the alarm accordion
+    expect(screen.queryByText(/Dev \(aryanoble-dev\)/)).not.toBeInTheDocument()
+
+    // Prod shows 0/2 selected initially
+    expect(screen.getByText(/0\/2 selected/)).toBeInTheDocument()
+  })
+
+  test("alarm verification: selecting an alarm and running includes account_alarm_names in payload", async () => {
+    const fetchMock = mockListCustomers()
+    fetchMock.mockResolvedValueOnce(makeExecuteResponse("alarm_verification"))
+
+    render(<ArbelCheckPage />)
+
+    // Wait for load and open the Alarm Verification menu
+    expect(await screen.findByText(/Aryanoble — 2 active accounts/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /alarm verification/i }))
+
+    // Expand the Prod account accordion to see individual alarms
+    const prodCard = await screen.findByText(/Prod \(aryanoble-prod\)/)
+    const accountCard = prodCard.closest(".arbel-alarm-account-card")!
+    const expandButton = within(accountCard as HTMLElement).getByRole("button", { name: /▼/ })
+    fireEvent.click(expandButton)
+
+    // Individual alarm checkboxes should now be visible
+    expect(await screen.findByText("Alarm1")).toBeInTheDocument()
+    expect(screen.getByText("Alarm2")).toBeInTheDocument()
+
+    // Select Alarm1
+    const alarm1Checkbox = screen.getByRole("checkbox", { name: /alarm1/i })
+    fireEvent.click(alarm1Checkbox)
+
+    // Badge should update to 1/2
+    expect(screen.getByText(/1\/2 selected/)).toBeInTheDocument()
+
+    // Run button should be enabled; click it
+    const runButton = screen.getByRole("button", { name: /run alarm verification/i })
+    expect(runButton).not.toBeDisabled()
+    fireEvent.click(runButton)
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    const executeCall = fetchMock.mock.calls[1]
+    const payload = JSON.parse(String((executeCall[1] as RequestInit).body))
+    expect(payload.check_name).toBe("alarm_verification")
+    expect(payload.check_params.account_alarm_names).toEqual({ "acc-1": ["Alarm1"] })
+    expect(payload.account_ids).toEqual(["acc-1"])
+  })
+
+  test("alarm verification: master checkbox in indeterminate state clears all on click", async () => {
+    mockListCustomers()
+
+    render(<ArbelCheckPage />)
+
+    expect(await screen.findByText(/Aryanoble — 2 active accounts/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /alarm verification/i }))
+
+    // Expand the Prod account accordion
+    const prodCard = await screen.findByText(/Prod \(aryanoble-prod\)/)
+    const accountCard = prodCard.closest(".arbel-alarm-account-card")!
+    const expandButton = within(accountCard as HTMLElement).getByRole("button", { name: /▼/ })
+    fireEvent.click(expandButton)
+
+    // Select only Alarm1 — puts master checkbox into indeterminate state (1/2 selected)
+    const alarm1Checkbox = await screen.findByRole("checkbox", { name: /alarm1/i })
+    fireEvent.click(alarm1Checkbox)
+    expect(screen.getByText(/1\/2 selected/)).toBeInTheDocument()
+
+    // The master checkbox for the account card (first checkbox in the header)
+    const masterCheckbox = within(accountCard as HTMLElement).getAllByRole("checkbox")[0]
+
+    // Click master checkbox — should clear all (indeterminate → clear, not select all)
+    fireEvent.click(masterCheckbox)
+
+    // Badge should go back to 0/2 selected
+    expect(screen.getByText(/0\/2 selected/)).toBeInTheDocument()
+  })
+
+  test("alarm verification: Run button is disabled when no alarms are selected", async () => {
+    mockListCustomers()
+
+    render(<ArbelCheckPage />)
+
+    expect(await screen.findByText(/Aryanoble — 2 active accounts/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /alarm verification/i }))
+
+    await screen.findByText(/Prod \(aryanoble-prod\)/)
+
+    // No alarms selected — Run button should be disabled
+    const runButton = screen.getByRole("button", { name: /run alarm verification/i })
+    expect(runButton).toBeDisabled()
   })
 })

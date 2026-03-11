@@ -40,6 +40,7 @@ def get_check_executor():
             customer_repo=customer_repo,
             region=settings.default_region,
             max_workers=settings.max_workers,
+            timeout=settings.execution_timeout,
         )
     finally:
         session.close()

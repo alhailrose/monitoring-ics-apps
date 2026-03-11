@@ -17,6 +17,7 @@ accounts:
   - profile: fresnel-ykai
     account_id: "339712722804"
     display_name: "Fresnel YKAI"
+    alarm_names: []
 
   - profile: fresnel-pialang
     account_id: "510940807875"
@@ -25,6 +26,20 @@ accounts:
   - profile: fresnel-phoenix
     account_id: "197353582440"
     display_name: "Fresnel Phoenix"
+    alarm_names:
+      - "TargetTracking-Infra-ECS-Cluster-fresnel-pelindo-test-cluster-00136645-ECSAutoScalingGroup-RxIuooKujxV2-AlarmHigh-e9de35f9-16bb-4834-8609-ac0e5160fc83"
+      - "TargetTracking-Infra-ECS-Cluster-fresnel-pelindo-test-cluster-00136645-ECSAutoScalingGroup-RxIuooKujxV2-AlarmLow-f9c85eaf-dbd3-4ef7-98cf-1c47d0daa4a9"
+      - "TargetTracking-Infra-ECS-Cluster-fresnel-phoenix-dev-cluster-aa66c2b1-ECSAutoScalingGroup-BY3ZNN2dJnkD-AlarmHigh-2ea19c52-34fd-4bdc-99c2-889e716582cd"
+      - "TargetTracking-Infra-ECS-Cluster-fresnel-phoenix-dev-cluster-aa66c2b1-ECSAutoScalingGroup-BY3ZNN2dJnkD-AlarmLow-d1681a0c-9514-43a8-b73b-0099f2641ed0"
+      - "fresnel-phoenix-dev-openvpn-cpu-above-80"
+      - "fresnel-phoenix-dev-openvpn-disk-above-80"
+      - "fresnel-phoenix-dev-openvpn-mem-above-80"
+      - "fresnel-phoenix-revamp-app-cpu-above-80"
+      - "fresnel-phoenix-revamp-app-disk-above-80"
+      - "fresnel-phoenix-revamp-app-mem-above-80"
+      - "fresnel-phoenix-revamp-openvpn-cpu-above-80"
+      - "fresnel-phoenix-revamp-openvpn-disk-above-80"
+      - "fresnel-phoenix-revamp-openvpn-mem-above-80"
 
   - profile: fresnel-master
     account_id: "466650104955"

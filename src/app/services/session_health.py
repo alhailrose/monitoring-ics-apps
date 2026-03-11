@@ -199,6 +199,38 @@ class SessionHealthService:
         report.sso_sessions = sso_sessions
         return report
 
+    def check_and_notify_with_customer(
+        self,
+        customer_id: str | None = None,
+    ) -> SessionHealthReport:
+        """Check session health and notify via customer's configured Slack webhook.
+
+        Resolves the customer's slack_webhook_url and slack_channel from the
+        database (only when customer_id is provided and slack_enabled is True)
+        before delegating to check_and_notify().
+
+        Args:
+            customer_id: Optional customer filter. If provided, uses that
+                         customer's Slack config for notification.
+
+        Returns:
+            SessionHealthReport
+        """
+        slack_webhook_url = None
+        slack_channel = None
+
+        if customer_id:
+            customer = self.customer_repo.get_customer(customer_id)
+            if customer and customer.slack_enabled and customer.slack_webhook_url:
+                slack_webhook_url = customer.slack_webhook_url
+                slack_channel = customer.slack_channel
+
+        return self.check_and_notify(
+            customer_id=customer_id,
+            slack_webhook_url=slack_webhook_url,
+            slack_channel=slack_channel,
+        )
+
     def check_and_notify(
         self,
         customer_id: str | None = None,

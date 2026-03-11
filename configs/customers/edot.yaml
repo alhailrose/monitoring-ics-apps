@@ -18,6 +18,9 @@ accounts:
     account_id: "261622543538"
     display_name: "Edot"
     region: ap-southeast-1
+    alarm_names:
+      - "elastic-node-1-disk-alarm"
+      - "elastic-node-2-disk-alarm"
 
 # Untuk menggunakan alarm_verification check, tambahkan:
 # alarm_names:

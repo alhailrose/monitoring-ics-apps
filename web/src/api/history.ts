@@ -54,3 +54,7 @@ export function listHistory(options: HistoryQueryOptions): Promise<HistoryListRe
 export function getHistoryDetail(checkRunId: string): Promise<HistoryDetail> {
   return apiRequest<HistoryDetail>(`/history/${checkRunId}`)
 }
+
+export function getHistoryReport(checkRunId: string): Promise<{ report: string }> {
+  return apiRequest<{ report: string }>(`/history/${checkRunId}/report`)
+}
