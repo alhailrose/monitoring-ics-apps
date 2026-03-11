@@ -331,11 +331,12 @@ class CheckExecutor:
     and optionally sends to Slack.
     """
 
-    def __init__(self, check_repo, customer_repo, region: str, max_workers: int = DEFAULT_WORKERS):
+    def __init__(self, check_repo, customer_repo, region: str, max_workers: int = DEFAULT_WORKERS, timeout: int = 300):
         self.check_repo = check_repo
         self.customer_repo = customer_repo
         self.region = region
         self.max_workers = max_workers
+        self.timeout = timeout
 
     def execute(
         self,
@@ -344,6 +345,7 @@ class CheckExecutor:
         check_name: str | None = None,
         account_ids: list[str] | None = None,
         send_slack: bool = False,
+        region: str | None = None,
         check_params: dict | None = None,
     ) -> dict:
         """Execute checks and return results.
@@ -354,6 +356,7 @@ class CheckExecutor:
             check_name: Required for "single" mode
             account_ids: Specific account IDs, or None for all
             send_slack: Whether to send results to Slack
+            region: AWS region override; falls back to executor's default region
             check_params: Extra params passed to checker constructor (e.g. window_hours, alarm_names)
 
         Returns:
@@ -361,6 +364,7 @@ class CheckExecutor:
             consolidated_output (for all/arbel), slack_sent
         """
         start_time = time.time()
+        effective_region = region if region else self.region
 
         # Get customer and accounts
         customer = self.customer_repo.get_customer(customer_id)
@@ -390,7 +394,7 @@ class CheckExecutor:
         )
 
         # Execute checks in parallel
-        raw_results = self._execute_parallel(accounts, checks_to_run, check_params)
+        raw_results = self._execute_parallel(accounts, checks_to_run, effective_region, check_params)
 
         # Build per-profile results structure for consolidated report
         # raw_results is {account: {check_name: result_dict}}
@@ -420,7 +424,7 @@ class CheckExecutor:
             if chk_name not in checkers_map:
                 checker_class = AVAILABLE_CHECKS.get(chk_name)
                 if checker_class:
-                    checkers_map[chk_name] = checker_class(region=self.region)
+                    checkers_map[chk_name] = checker_class(region=effective_region)
 
         # Determine clean accounts
         profiles = [acc.profile_name for acc in accounts]
@@ -482,7 +486,7 @@ class CheckExecutor:
                 check_errors=check_errors,
                 clean_accounts=clean_accounts,
                 errors_by_check=errors_by_check,
-                region=self.region,
+                region=effective_region,
                 group_name=group_name,
             )
         elif mode == "single":
@@ -558,7 +562,7 @@ class CheckExecutor:
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
-    def _execute_parallel(self, accounts: list, checks: dict, check_params: dict | None = None) -> dict:
+    def _execute_parallel(self, accounts: list, checks: dict, region: str, check_params: dict | None = None) -> dict:
         """Run checks across accounts in parallel."""
         results = {}
 
@@ -571,17 +575,26 @@ class CheckExecutor:
                     if account.config_extra and chk_name in account.config_extra:
                         check_kwargs = dict(account.config_extra[chk_name])
 
-                    # Merge check_params from API request (overrides DB config)
+                    # Inject alarm_names from DB for cloudwatch check (if not already in config_extra)
+                    if chk_name == "cloudwatch" and account.alarm_names:
+                        if check_kwargs is None:
+                            check_kwargs = {}
+                        check_kwargs.setdefault("alarm_names", account.alarm_names)
+
+                    # Merge check_params from API request (overrides everything)
                     if check_params:
                         if check_kwargs is None:
                             check_kwargs = {}
                         check_kwargs.update(check_params)
 
+                    # Use account's own region if set, otherwise fall back to effective_region
+                    region_for_account = account.region or region
+
                     future = executor.submit(
                         _run_single_check,
                         chk_name,
                         account.profile_name,
-                        self.region,
+                        region_for_account,
                         check_kwargs,
                     )
                     futures[future] = (account, chk_name)
@@ -589,7 +602,9 @@ class CheckExecutor:
             for future in as_completed(futures):
                 account, chk_name = futures[future]
                 try:
-                    raw_result = future.result()
+                    raw_result = future.result(timeout=self.timeout)
+                except TimeoutError:
+                    raw_result = {"status": "error", "error": f"Check timed out after {self.timeout}s"}
                 except Exception as exc:
                     raw_result = {"status": "error", "error": str(exc)}
 
