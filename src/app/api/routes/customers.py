@@ -17,6 +17,7 @@ class CreateCustomerRequest(BaseModel):
     slack_webhook_url: str | None = None
     slack_channel: str | None = None
     slack_enabled: bool = False
+    sso_session: str | None = None
 
 
 class UpdateCustomerRequest(BaseModel):
@@ -25,18 +26,23 @@ class UpdateCustomerRequest(BaseModel):
     slack_webhook_url: str | None = None
     slack_channel: str | None = None
     slack_enabled: bool | None = None
+    sso_session: str | None = None
 
 
 class AddAccountRequest(BaseModel):
     profile_name: str = Field(min_length=1, max_length=128)
     display_name: str = Field(min_length=1, max_length=256)
     config_extra: dict | None = None
+    region: str | None = None
+    alarm_names: list[str] | None = None
 
 
 class UpdateAccountRequest(BaseModel):
     display_name: str | None = None
     is_active: bool | None = None
     config_extra: dict | None = None
+    region: str | None = None
+    alarm_names: list[str] | None = None
 
 
 # -- Endpoints --
@@ -64,6 +70,7 @@ def create_customer(payload: CreateCustomerRequest, service=Depends(get_customer
             slack_webhook_url=payload.slack_webhook_url,
             slack_channel=payload.slack_channel,
             slack_enabled=payload.slack_enabled,
+            sso_session=payload.sso_session,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
@@ -104,6 +111,8 @@ def add_account(
             profile_name=payload.profile_name,
             display_name=payload.display_name,
             config_extra=payload.config_extra,
+            region=payload.region,
+            alarm_names=payload.alarm_names,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -128,3 +137,15 @@ def update_account(
 def delete_account(account_id: str, service=Depends(get_customer_service)):
     if not service.delete_account(account_id):
         raise HTTPException(status_code=404, detail="Account not found")
+
+
+@router.post("/{customer_id}/reimport")
+def reimport_customer(customer_id: str, service=Depends(get_customer_service)):
+    """Re-import customer config from YAML file and update DB."""
+    from src.configs.loader import load_customer_config
+    try:
+        config = load_customer_config(customer_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No YAML config found for '{customer_id}'")
+    result = service.import_from_yaml(config)
+    return result
