@@ -22,6 +22,7 @@ class CustomerRepository:
         slack_webhook_url: str | None = None,
         slack_channel: str | None = None,
         slack_enabled: bool = False,
+        sso_session: str | None = None,
     ) -> Customer:
         customer = Customer(
             name=name,
@@ -30,6 +31,7 @@ class CustomerRepository:
             slack_webhook_url=slack_webhook_url,
             slack_channel=slack_channel,
             slack_enabled=slack_enabled,
+            sso_session=sso_session,
         )
         self.session.add(customer)
         self.session.flush()
@@ -88,6 +90,8 @@ class CustomerRepository:
         display_name: str,
         account_id: str | None = None,
         config_extra: dict | None = None,
+        region: str | None = None,
+        alarm_names: list[str] | None = None,
     ) -> Account:
         account = Account(
             customer_id=customer_id,
@@ -95,6 +99,8 @@ class CustomerRepository:
             display_name=display_name,
             account_id=account_id,
             config_extra=config_extra,
+            region=region,
+            alarm_names=alarm_names,
         )
         self.session.add(account)
         self.session.flush()
