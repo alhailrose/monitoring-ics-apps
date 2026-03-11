@@ -151,52 +151,84 @@ class CustomerService:
         cid = customer_config.get("customer_id", "")
         display = customer_config.get("display_name", cid)
         slack_cfg = customer_config.get("slack", {})
+        checks = customer_config.get("checks", [])
+        sso_session = customer_config.get("sso_session")
 
         # Create or get customer
         existing = self.repo.get_customer_by_name(cid)
         if existing:
             customer = existing
+            # Update fields that may have changed
+            self.repo.update_customer(
+                customer.id,
+                checks=checks,
+                sso_session=sso_session,
+                slack_webhook_url=slack_cfg.get("webhook_url"),
+                slack_channel=slack_cfg.get("channel"),
+                slack_enabled=bool(slack_cfg.get("enabled", False)),
+            )
         else:
             customer = self.repo.create_customer(
                 name=cid,
                 display_name=display,
+                checks=checks,
+                sso_session=sso_session,
                 slack_webhook_url=slack_cfg.get("webhook_url"),
                 slack_channel=slack_cfg.get("channel"),
                 slack_enabled=bool(slack_cfg.get("enabled", False)),
             )
 
-        # Add accounts
+        # Add / update accounts
         added = 0
+        updated = 0
         for acct in customer_config.get("accounts", []):
             profile = acct.get("profile")
             if not profile:
                 continue
 
-            # Check if already exists
             existing_accounts = self.repo.get_accounts_by_customer(customer.id, active_only=False)
-            if any(a.profile_name == profile for a in existing_accounts):
-                continue
+            existing_acct = next((a for a in existing_accounts if a.profile_name == profile), None)
 
             # Extract check-specific config as config_extra
             config_extra = {}
             for key in ("daily_arbel", "daily_budget"):
                 if key in acct:
                     config_extra[key] = acct[key]
+            # sso: false stored in config_extra too
+            if "sso" in acct:
+                config_extra["sso"] = acct["sso"]
 
-            self.repo.add_account(
-                customer_id=customer.id,
-                profile_name=profile,
-                display_name=acct.get("display_name", profile),
-                account_id=acct.get("account_id"),
-                config_extra=config_extra if config_extra else None,
-            )
-            added += 1
+            alarm_names = acct.get("alarm_names") or None
+            region = acct.get("region") or None
+
+            if existing_acct:
+                self.repo.update_account(
+                    existing_acct.id,
+                    display_name=acct.get("display_name", profile),
+                    account_id=acct.get("account_id", existing_acct.account_id),
+                    config_extra=config_extra if config_extra else existing_acct.config_extra,
+                    alarm_names=alarm_names,
+                    region=region,
+                )
+                updated += 1
+            else:
+                self.repo.add_account(
+                    customer_id=customer.id,
+                    profile_name=profile,
+                    display_name=acct.get("display_name", profile),
+                    account_id=acct.get("account_id"),
+                    config_extra=config_extra if config_extra else None,
+                    alarm_names=alarm_names,
+                    region=region,
+                )
+                added += 1
 
         self.repo.commit()
         return {
             "customer_id": customer.id,
             "name": customer.name,
             "accounts_added": added,
+            "accounts_updated": updated,
         }
 
     # -- Serialization --
