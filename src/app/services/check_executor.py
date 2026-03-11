@@ -340,7 +340,7 @@ class CheckExecutor:
 
     def execute(
         self,
-        customer_id: str,
+        customer_ids: list[str],
         mode: str,
         check_name: str | None = None,
         account_ids: list[str] | None = None,
@@ -348,179 +348,197 @@ class CheckExecutor:
         region: str | None = None,
         check_params: dict | None = None,
     ) -> dict:
-        """Execute checks and return results.
+        """Execute checks for one or more customers and return combined results.
 
         Args:
-            customer_id: Database customer ID
+            customer_ids: List of database customer IDs (min 1)
             mode: "single", "all", or "arbel"
             check_name: Required for "single" mode
             account_ids: Specific account IDs, or None for all
             send_slack: Whether to send results to Slack
             region: AWS region override; falls back to executor's default region
-            check_params: Extra params passed to checker constructor (e.g. window_hours, alarm_names)
+            check_params: Extra params passed to checker constructor
 
         Returns:
-            Dict with check_run_id, execution_time, results,
-            consolidated_output (for all/arbel), slack_sent
+            Dict with check_runs list, execution_time, results (flat),
+            consolidated_outputs (dict keyed by customer_id)
         """
         start_time = time.time()
         effective_region = region if region else self.region
 
-        # Get customer and accounts
-        customer = self.customer_repo.get_customer(customer_id)
-        if customer is None:
-            raise ValueError(f"Customer not found: {customer_id}")
+        check_runs_list = []
+        all_result_items = []
+        consolidated_outputs = {}
+        warnings = []
 
-        # Resolve accounts
-        if account_ids:
-            accounts = [
-                acc for acc in customer.accounts
-                if acc.id in account_ids and acc.is_active
-            ]
-        else:
-            accounts = [acc for acc in customer.accounts if acc.is_active]
+        for customer_id in customer_ids:
+            # Resolve customer
+            customer = self.customer_repo.get_customer(customer_id)
+            if customer is None:
+                logger.warning(f"Customer not found, skipping: {customer_id}")
+                warnings.append(f"Customer not found: {customer_id}")
+                continue
 
-        if not accounts:
-            raise ValueError("No active accounts selected")
+            # Resolve accounts
+            if account_ids:
+                accounts = [
+                    acc for acc in customer.accounts
+                    if acc.id in account_ids and acc.is_active
+                ]
+            else:
+                accounts = [acc for acc in customer.accounts if acc.is_active]
 
-        # Resolve checks to run
-        checks_to_run = self._resolve_checks(mode, check_name, customer)
+            if not accounts:
+                logger.warning(f"No active accounts for customer {customer_id}, skipping")
+                warnings.append(f"No active accounts: {customer_id}")
+                continue
 
-        # Create check run record
-        check_run = self.check_repo.create_check_run(
-            customer_id=customer_id,
-            check_mode=mode,
-            check_name=check_name if mode == "single" else None,
-        )
+            # Resolve checks to run
+            checks_to_run = self._resolve_checks(mode, check_name, customer)
 
-        # Execute checks in parallel
-        raw_results = self._execute_parallel(accounts, checks_to_run, effective_region, check_params)
-
-        # Build per-profile results structure for consolidated report
-        # raw_results is {account: {check_name: result_dict}}
-        # We need {profile: {check_name: result_dict}} for the report builder
-        profile_results = {}
-        checkers_map = {}  # {check_name: checker_instance}
-        check_errors = []
-        errors_by_check = {}
-
-        for account, check_results in raw_results.items():
-            profile = account.profile_name
-            profile_results[profile] = {}
-            for chk_name, raw_result in check_results.items():
-                profile_results[profile][chk_name] = raw_result
-                # Collect checker instances
-                checker_inst = raw_result.pop("_checker_instance", None)
-                if checker_inst and chk_name not in checkers_map:
-                    checkers_map[chk_name] = checker_inst
-                # Collect errors
-                if raw_result.get("status") == "error":
-                    err_msg = raw_result.get("error", "Unknown error")
-                    check_errors.append((profile, chk_name, err_msg))
-                    errors_by_check.setdefault(chk_name, []).append((profile, err_msg))
-
-        # Ensure all checks have a checker instance (even if all errored)
-        for chk_name in checks_to_run:
-            if chk_name not in checkers_map:
-                checker_class = AVAILABLE_CHECKS.get(chk_name)
-                if checker_class:
-                    checkers_map[chk_name] = checker_class(region=effective_region)
-
-        # Determine clean accounts
-        profiles = [acc.profile_name for acc in accounts]
-        clean_accounts = []
-        for profile in profiles:
-            has_issues = False
-            for chk_name, checker in checkers_map.items():
-                result = profile_results.get(profile, {}).get(chk_name, {})
-                if result.get("status") == "error" or checker.count_issues(result) > 0:
-                    has_issues = True
-                    break
-            if not has_issues:
-                clean_accounts.append(profile)
-
-        # Save results to DB and build response items
-        result_items = []
-        for account, check_results in raw_results.items():
-            for chk_name, raw_result in check_results.items():
-                status = _normalize_status(raw_result, chk_name)
-                summary = _build_summary(raw_result, chk_name)
-                output = raw_result.get("_formatted_output", "")
-
-                details = _json_safe({
-                    k: v for k, v in raw_result.items()
-                    if not k.startswith("_")
-                })
-
-                self.check_repo.add_result(
-                    check_run_id=check_run.id,
-                    account_id=account.id,
-                    check_name=chk_name,
-                    status=status,
-                    summary=summary,
-                    output=output,
-                    details=details,
-                )
-
-                result_items.append({
-                    "account": {
-                        "id": account.id,
-                        "profile_name": account.profile_name,
-                        "display_name": account.display_name,
-                    },
-                    "check_name": chk_name,
-                    "status": status,
-                    "summary": summary,
-                    "output": output,
-                })
-
-        # Build consolidated output for all/arbel modes, or concatenated output for single
-        consolidated_output = ""
-        if mode in ("all", "arbel"):
-            group_name = customer.display_name
-            consolidated_output = _build_consolidated_report(
-                profiles=profiles,
-                all_results=profile_results,
-                checks=list(checks_to_run.keys()),
-                checkers=checkers_map,
-                check_errors=check_errors,
-                clean_accounts=clean_accounts,
-                errors_by_check=errors_by_check,
-                region=effective_region,
-                group_name=group_name,
+            # Create check run record
+            check_run = self.check_repo.create_check_run(
+                customer_id=customer_id,
+                check_mode=mode,
+                check_name=check_name if mode == "single" else None,
             )
-        elif mode == "single":
-            # Concatenate per-account formatted outputs
-            parts = []
-            for item in result_items:
-                acct = item["account"]
-                header = f"=== {acct['display_name']} ({acct['profile_name']}) ==="
-                parts.append(header)
-                parts.append(item.get("output", "") or item["summary"])
-                parts.append("")
-            consolidated_output = "\n".join(parts)
 
-        execution_time = time.time() - start_time
+            # Execute checks in parallel
+            raw_results = self._execute_parallel(accounts, checks_to_run, effective_region, check_params)
 
-        # Send to Slack if requested
-        slack_sent = False
-        if send_slack and customer.slack_enabled and customer.slack_webhook_url:
-            slack_sent = self._send_slack(customer, consolidated_output, mode, check_name)
+            # Build per-profile results structure for consolidated report
+            profile_results = {}
+            checkers_map = {}
+            check_errors = []
+            errors_by_check = {}
 
-        # Finalize check run
-        self.check_repo.finish_check_run(
-            check_run_id=check_run.id,
-            execution_time_seconds=round(execution_time, 2),
-            slack_sent=slack_sent,
-        )
+            for account, check_results in raw_results.items():
+                profile = account.profile_name
+                profile_results[profile] = {}
+                for chk_name, raw_result in check_results.items():
+                    profile_results[profile][chk_name] = raw_result
+                    checker_inst = raw_result.pop("_checker_instance", None)
+                    if checker_inst and chk_name not in checkers_map:
+                        checkers_map[chk_name] = checker_inst
+                    if raw_result.get("status") == "error":
+                        err_msg = raw_result.get("error", "Unknown error")
+                        check_errors.append((profile, chk_name, err_msg))
+                        errors_by_check.setdefault(chk_name, []).append((profile, err_msg))
+
+            # Ensure all checks have a checker instance (even if all errored)
+            for chk_name in checks_to_run:
+                if chk_name not in checkers_map:
+                    checker_class = AVAILABLE_CHECKS.get(chk_name)
+                    if checker_class:
+                        checkers_map[chk_name] = checker_class(region=effective_region)
+
+            # Determine clean accounts
+            profiles = [acc.profile_name for acc in accounts]
+            clean_accounts = []
+            for profile in profiles:
+                has_issues = False
+                for chk_name, checker in checkers_map.items():
+                    result = profile_results.get(profile, {}).get(chk_name, {})
+                    if result.get("status") == "error" or checker.count_issues(result) > 0:
+                        has_issues = True
+                        break
+                if not has_issues:
+                    clean_accounts.append(profile)
+
+            # Save results to DB and build response items
+            result_items = []
+            for account, check_results in raw_results.items():
+                for chk_name, raw_result in check_results.items():
+                    status = _normalize_status(raw_result, chk_name)
+                    summary = _build_summary(raw_result, chk_name)
+                    output = raw_result.get("_formatted_output", "")
+
+                    details = _json_safe({
+                        k: v for k, v in raw_result.items()
+                        if not k.startswith("_")
+                    })
+
+                    self.check_repo.add_result(
+                        check_run_id=check_run.id,
+                        account_id=account.id,
+                        check_name=chk_name,
+                        status=status,
+                        summary=summary,
+                        output=output,
+                        details=details,
+                    )
+
+                    result_items.append({
+                        "customer_id": customer_id,
+                        "account": {
+                            "id": account.id,
+                            "profile_name": account.profile_name,
+                            "display_name": account.display_name,
+                        },
+                        "check_name": chk_name,
+                        "status": status,
+                        "summary": summary,
+                        "output": output,
+                    })
+
+            all_result_items.extend(result_items)
+
+            # Build consolidated output for all/arbel modes, or concatenated output for single
+            consolidated = ""
+            if mode in ("all", "arbel"):
+                consolidated = _build_consolidated_report(
+                    profiles=profiles,
+                    all_results=profile_results,
+                    checks=list(checks_to_run.keys()),
+                    checkers=checkers_map,
+                    check_errors=check_errors,
+                    clean_accounts=clean_accounts,
+                    errors_by_check=errors_by_check,
+                    region=effective_region,
+                    group_name=customer.display_name,
+                )
+            elif mode == "single":
+                parts = []
+                for item in result_items:
+                    acct = item["account"]
+                    header = f"=== {acct['display_name']} ({acct['profile_name']}) ==="
+                    parts.append(header)
+                    parts.append(item.get("output", "") or item["summary"])
+                    parts.append("")
+                consolidated = "\n".join(parts)
+
+            consolidated_outputs[customer_id] = consolidated
+
+            # Send to Slack if requested
+            slack_sent = False
+            if send_slack and customer.slack_enabled and customer.slack_webhook_url:
+                slack_sent = self._send_slack(customer, consolidated, mode, check_name)
+
+            # Finalize check run
+            self.check_repo.finish_check_run(
+                check_run_id=check_run.id,
+                execution_time_seconds=round(time.time() - start_time, 2),
+                slack_sent=slack_sent,
+            )
+
+            check_runs_list.append({
+                "customer_id": customer_id,
+                "check_run_id": check_run.id,
+                "slack_sent": slack_sent,
+            })
+
+        if not check_runs_list:
+            raise ValueError(
+                f"No valid customers processed. Warnings: {'; '.join(warnings)}"
+            )
+
         self.check_repo.commit()
 
         return {
-            "check_run_id": check_run.id,
-            "execution_time_seconds": round(execution_time, 2),
-            "results": result_items,
-            "consolidated_output": consolidated_output,
-            "slack_sent": slack_sent,
+            "check_runs": check_runs_list,
+            "execution_time_seconds": round(time.time() - start_time, 2),
+            "results": all_result_items,
+            "consolidated_outputs": consolidated_outputs,
         }
 
     def _resolve_checks(self, mode: str, check_name: str | None, customer=None) -> dict:
