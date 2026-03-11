@@ -6,20 +6,12 @@ import { listCustomers } from "../../../api/customers"
 import { CopyableOutput } from "../../../components/common/CopyableOutput"
 import { LoadingState } from "../../../components/common/LoadingState"
 import { StatusBadge } from "../../../components/common/StatusBadge"
-import type { Account, AvailableCheck, Customer, ExecuteCheckResponse } from "../../../types/api"
-
-const pickActiveAccounts = (customer: Customer | null): Account[] => {
-  if (!customer) {
-    return []
-  }
-
-  return customer.accounts.filter((account) => account.is_active)
-}
+import type { AvailableCheck, Customer, ExecuteCheckResponse } from "../../../types/api"
 
 export default function SingleCheckPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [checks, setChecks] = useState<AvailableCheck[]>([])
-  const [selectedCustomerId, setSelectedCustomerId] = useState("")
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([])
   const [selectedCheckName, setSelectedCheckName] = useState("")
   const [selectAllAccounts, setSelectAllAccounts] = useState(false)
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([])
@@ -47,9 +39,7 @@ export default function SingleCheckPage() {
         setChecks(checkRows)
 
         const firstCustomer = customerRows[0]
-        if (firstCustomer) {
-          setSelectedCustomerId(firstCustomer.id)
-        }
+        setSelectedCustomerIds(firstCustomer ? [firstCustomer.id] : [])
 
         const firstCheck = checkRows[0]
         if (firstCheck) {
@@ -73,16 +63,25 @@ export default function SingleCheckPage() {
     }
   }, [])
 
-  const selectedCustomer = useMemo(
-    () => customers.find((customer) => customer.id === selectedCustomerId) ?? null,
-    [customers, selectedCustomerId],
+  const selectedCustomers = useMemo(
+    () => customers.filter((c) => selectedCustomerIds.includes(c.id)),
+    [customers, selectedCustomerIds],
   )
-  const accounts = useMemo(() => pickActiveAccounts(selectedCustomer), [selectedCustomer])
+  const accounts = useMemo(
+    () => selectedCustomers.flatMap((c) => c.accounts.filter((a) => a.is_active)),
+    [selectedCustomers],
+  )
 
   useEffect(() => {
     setSelectedAccountIds([])
     setSelectAllAccounts(false)
-  }, [selectedCustomerId, accounts])
+  }, [selectedCustomerIds])
+
+  const toggleCustomer = (id: string) => {
+    setSelectedCustomerIds((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
+    )
+  }
 
   const onToggleSelectAll = (checked: boolean) => {
     setSelectAllAccounts(checked)
@@ -105,7 +104,7 @@ export default function SingleCheckPage() {
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    if (!selectedCustomerId || !selectedCheckName) {
+    if (!selectedCustomerIds.length || !selectedCheckName) {
       setError("Customer and check type are required.")
       return
     }
@@ -120,7 +119,7 @@ export default function SingleCheckPage() {
 
     try {
       const executeResult = await executeChecks({
-        customer_id: selectedCustomerId,
+        customer_ids: selectedCustomerIds,
         mode: "single",
         check_name: selectedCheckName,
         account_ids: selectAllAccounts ? null : selectedAccountIds,
@@ -146,24 +145,19 @@ export default function SingleCheckPage() {
           <LoadingState title="Loading data..." detail="Fetching customers and check types." />
         ) : (
           <form className="checks-form" onSubmit={onSubmit}>
-            <label htmlFor="single-customer">Customer</label>
-            <select
-              id="single-customer"
-              className="ops-select"
-              value={selectedCustomerId}
-              onChange={(event) => setSelectedCustomerId(event.target.value)}
-              required
-              disabled={isExecuting}
-            >
-              <option value="" disabled>
-                Select customer
-              </option>
+            <fieldset className="checks-fieldset" disabled={isExecuting}>
+              <legend>Customers</legend>
               {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
+                <label key={customer.id} className="checks-inline-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={selectedCustomerIds.includes(customer.id)}
+                    onChange={() => toggleCustomer(customer.id)}
+                  />
                   {customer.display_name} ({customer.name})
-                </option>
+                </label>
               ))}
-            </select>
+            </fieldset>
 
             <label htmlFor="single-check">Check Type</label>
             <select
@@ -238,8 +232,10 @@ export default function SingleCheckPage() {
       {result ? (
         <section className="ops-glass-panel checks-result" aria-label="Single check output">
           <p className="checks-meta">Execution time: {result.execution_time_seconds}s</p>
-          <CopyableOutput title="Consolidated Output" text={result.consolidated_output} />
-
+          {Object.entries(result.consolidated_outputs).map(([custId, output]) => {
+            const custName = customers.find((c) => c.id === custId)?.display_name ?? custId
+            return <CopyableOutput key={custId} title={`${custName} — Output`} text={output} />
+          })}
           {result.results.map((item, index) => (
             <article key={`${item.account.id}-${item.check_name}-${index}`} className="checks-result-row">
               <header>

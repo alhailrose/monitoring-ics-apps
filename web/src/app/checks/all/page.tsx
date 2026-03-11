@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 
 import { executeChecks } from "../../../api/checks"
 import { toUserMessage } from "../../../api/client"
@@ -8,24 +8,9 @@ import { LoadingState } from "../../../components/common/LoadingState"
 import { StatusBadge } from "../../../components/common/StatusBadge"
 import type { Customer, ExecuteCheckResponse } from "../../../types/api"
 
-const groupByCheck = (result: ExecuteCheckResponse | null) => {
-  if (!result) {
-    return [] as Array<{ checkName: string; items: ExecuteCheckResponse["results"] }>
-  }
-
-  const grouped = new Map<string, ExecuteCheckResponse["results"]>()
-  for (const item of result.results) {
-    const bucket = grouped.get(item.check_name) ?? []
-    bucket.push(item)
-    grouped.set(item.check_name, bucket)
-  }
-
-  return Array.from(grouped.entries()).map(([checkName, items]) => ({ checkName, items }))
-}
-
 export default function AllCheckPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [selectedCustomerId, setSelectedCustomerId] = useState("")
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([])
   const [sendSlack, setSendSlack] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isExecuting, setIsExecuting] = useState(false)
@@ -47,7 +32,7 @@ export default function AllCheckPage() {
 
         setCustomers(rows)
         if (rows[0]) {
-          setSelectedCustomerId(rows[0].id)
+          setSelectedCustomerIds([rows[0].id])
         }
       } catch (loadError) {
         if (isMounted) {
@@ -67,17 +52,15 @@ export default function AllCheckPage() {
     }
   }, [])
 
-  const selectedCustomer = useMemo(
-    () => customers.find((customer) => customer.id === selectedCustomerId) ?? null,
-    [customers, selectedCustomerId],
-  )
-
-  const groupedResults = useMemo(() => groupByCheck(result), [result])
-  const activeAccountCount = selectedCustomer?.accounts.filter((account) => account.is_active).length ?? 0
+  const toggleCustomer = (id: string) => {
+    setSelectedCustomerIds((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id],
+    )
+  }
 
   const onRun = async () => {
-    if (!selectedCustomerId) {
-      setError("Customer is required.")
+    if (selectedCustomerIds.length === 0) {
+      setError("Select at least one customer.")
       return
     }
 
@@ -87,7 +70,7 @@ export default function AllCheckPage() {
 
     try {
       const data = await executeChecks({
-        customer_id: selectedCustomerId,
+        customer_ids: selectedCustomerIds,
         mode: "all",
         send_slack: sendSlack,
       })
@@ -103,7 +86,7 @@ export default function AllCheckPage() {
     <main className="ops-page checks-page" aria-labelledby="all-check-title">
       <section className="ops-glass-panel checks-header">
         <h1 id="all-check-title">All Check</h1>
-        <p>Run template checks for selected customer across all active accounts.</p>
+        <p>Run template checks for selected customers across all active accounts.</p>
       </section>
 
       <section className="ops-glass-panel checks-form-panel">
@@ -111,29 +94,22 @@ export default function AllCheckPage() {
           <LoadingState title="Loading customers..." />
         ) : (
           <div className="checks-form">
-            <label htmlFor="all-customer">Customer</label>
-            <select
-              id="all-customer"
-              className="ops-select"
-              value={selectedCustomerId}
-              onChange={(event) => setSelectedCustomerId(event.target.value)}
-              disabled={isExecuting || customers.length === 0}
-            >
-              <option value="" disabled>
-                Select customer
-              </option>
+            <fieldset className="checks-fieldset" disabled={isExecuting}>
+              <legend>Customers</legend>
+              {customers.length === 0 ? (
+                <p className="checks-help">No customers available. Add one in Customer Management.</p>
+              ) : null}
               {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
+                <label key={customer.id} className="checks-inline-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={selectedCustomerIds.includes(customer.id)}
+                    onChange={() => toggleCustomer(customer.id)}
+                  />
                   {customer.display_name} ({customer.name})
-                </option>
+                </label>
               ))}
-            </select>
-
-            <p>Active accounts: {activeAccountCount}</p>
-            {customers.length === 0 ? <p className="checks-help">No customers available. Add one in Customer Management.</p> : null}
-            {selectedCustomerId && activeAccountCount === 0 ? (
-              <p className="checks-help">Selected customer has no active accounts.</p>
-            ) : null}
+            </fieldset>
 
             <label className="checks-inline-checkbox">
               <input
@@ -149,7 +125,7 @@ export default function AllCheckPage() {
               className="ops-button"
               type="button"
               onClick={onRun}
-              disabled={isExecuting || !selectedCustomerId || activeAccountCount === 0}
+              disabled={isExecuting || selectedCustomerIds.length === 0}
             >
               {isExecuting ? "Executing..." : "Run All Checks"}
             </button>
@@ -161,22 +137,40 @@ export default function AllCheckPage() {
       </section>
 
       {result ? (
-        <section className="ops-glass-panel checks-result" aria-label="All check output">
+        <>
           <p className="checks-meta">Execution time: {result.execution_time_seconds}s</p>
-          <CopyableOutput title="Consolidated Output" text={result.consolidated_output} />
+          {result.check_runs.map((run) => {
+            const custName = customers.find((c) => c.id === run.customer_id)?.display_name ?? run.customer_id
+            const output = result.consolidated_outputs[run.customer_id] ?? ""
+            const custResults = result.results.filter((r) => r.customer_id === run.customer_id)
+            const grouped = Array.from(
+              custResults.reduce((map, item) => {
+                const bucket = map.get(item.check_name) ?? []
+                bucket.push(item)
+                map.set(item.check_name, bucket)
+                return map
+              }, new Map<string, typeof custResults>()),
+            )
 
-          {groupedResults.map((group) => (
-            <article key={group.checkName} className="checks-result-row">
-              <h2>{group.checkName}</h2>
-              {group.items.map((item, index) => (
-                <div key={`${item.account.id}-${index}`} className="checks-result-line">
-                  <span>{item.account.display_name} ({item.account.profile_name})</span>
-                  <StatusBadge status={item.status} />
-                </div>
-              ))}
-            </article>
-          ))}
-        </section>
+            return (
+              <section key={run.customer_id} className="ops-glass-panel checks-result" aria-label={`${custName} output`}>
+                <h2>{custName}</h2>
+                <CopyableOutput title="Consolidated Output" text={output} />
+                {grouped.map(([checkName, items]) => (
+                  <article key={checkName} className="checks-result-row">
+                    <h3>{checkName}</h3>
+                    {items.map((item, index) => (
+                      <div key={`${item.account.id}-${index}`} className="checks-result-line">
+                        <span>{item.account.display_name} ({item.account.profile_name})</span>
+                        <StatusBadge status={item.status} />
+                      </div>
+                    ))}
+                  </article>
+                ))}
+              </section>
+            )
+          })}
+        </>
       ) : null}
     </main>
   )

@@ -45,9 +45,9 @@ const MENUS: MenuConfig[] = [
 ]
 
 const WINDOW_OPTIONS = [
-  { value: 6, label: "6 jam" },
+  { value: 1, label: "1 jam" },
+  { value: 3, label: "3 jam" },
   { value: 12, label: "12 jam" },
-  { value: 24, label: "24 jam" },
 ]
 
 const getAlarmNames = (account: Account): string[] => {
@@ -199,7 +199,7 @@ export default function ArbelCheckPage() {
 
     try {
       const run = await executeChecks({
-        customer_id: customer.id,
+        customer_ids: [customer.id],
         mode: "single",
         check_name: menu.checkName,
         account_ids: accountIds,
@@ -496,7 +496,7 @@ export default function ArbelCheckPage() {
           <p className="checks-meta">
             Execution time: {result.execution_time_seconds}s
           </p>
-          <CopyableOutput title="Output" text={result.consolidated_output} />
+          <CopyableOutput title="Output" text={result.consolidated_outputs[Object.keys(result.consolidated_outputs)[0]] ?? ""} />
 
           {result.results.map((item, index) => (
             <article
