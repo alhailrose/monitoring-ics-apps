@@ -43,6 +43,7 @@ class Customer(Base):
     slack_webhook_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     slack_channel: Mapped[str | None] = mapped_column(String(128), nullable=True)
     slack_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sso_session: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
 
@@ -71,6 +72,8 @@ class Account(Base):
     display_name: Mapped[str] = mapped_column(String(256), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     config_extra: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    region: Mapped[str | None] = mapped_column(Text, nullable=True)
+    alarm_names: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
 
