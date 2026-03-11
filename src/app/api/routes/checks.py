@@ -9,7 +9,7 @@ router = APIRouter(prefix="/checks", tags=["checks"])
 
 
 class ExecuteCheckRequest(BaseModel):
-    customer_id: str
+    customer_ids: list[str] = Field(min_length=1)
     mode: str = Field(pattern="^(single|all|arbel)$")
     check_name: str | None = None
     account_ids: list[str] | None = None
@@ -22,7 +22,7 @@ class ExecuteCheckRequest(BaseModel):
 def execute_check(payload: ExecuteCheckRequest, executor=Depends(get_check_executor)):
     try:
         result = executor.execute(
-            customer_id=payload.customer_id,
+            customer_ids=payload.customer_ids,
             mode=payload.mode,
             check_name=payload.check_name,
             account_ids=payload.account_ids,
