@@ -69,6 +69,7 @@ class CustomerService:
         slack_webhook_url: str | None = None,
         slack_channel: str | None = None,
         slack_enabled: bool = False,
+        sso_session: str | None = None,
     ) -> dict:
         existing = self.repo.get_customer_by_name(name)
         if existing:
@@ -81,6 +82,7 @@ class CustomerService:
             slack_webhook_url=slack_webhook_url,
             slack_channel=slack_channel,
             slack_enabled=slack_enabled,
+            sso_session=sso_session,
         )
         self.repo.commit()
         return self._serialize_customer(customer)
@@ -104,6 +106,8 @@ class CustomerService:
         profile_name: str,
         display_name: str,
         config_extra: dict | None = None,
+        region: str | None = None,
+        alarm_names: list[str] | None = None,
     ) -> dict:
         # Auto-detect AWS account ID
         account_id = detect_account_id(profile_name)
@@ -114,6 +118,8 @@ class CustomerService:
             display_name=display_name,
             account_id=account_id,
             config_extra=config_extra,
+            region=region,
+            alarm_names=alarm_names,
         )
         self.repo.commit()
         return self._serialize_account(account)
@@ -240,6 +246,7 @@ class CustomerService:
             "name": customer.name,
             "display_name": customer.display_name,
             "checks": customer.checks or [],
+            "sso_session": customer.sso_session,
             "slack_webhook_url": customer.slack_webhook_url,
             "slack_channel": customer.slack_channel,
             "slack_enabled": customer.slack_enabled,
@@ -260,5 +267,7 @@ class CustomerService:
             "display_name": account.display_name,
             "is_active": account.is_active,
             "config_extra": account.config_extra,
+            "region": account.region,
+            "alarm_names": account.alarm_names,
             "created_at": account.created_at.isoformat(),
         }
