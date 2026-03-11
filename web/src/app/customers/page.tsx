@@ -10,6 +10,8 @@ import {
   updateCustomer,
 } from "../../api/customers"
 import { toUserMessage } from "../../api/client"
+import { checkSessionHealth } from "../../api/sessions"
+import type { ProfileStatus } from "../../types/api"
 import { LoadingState } from "../../components/common/LoadingState"
 import { StatusBadge } from "../../components/common/StatusBadge"
 import type { Customer } from "../../types/api"
@@ -19,6 +21,33 @@ const pickExistingOrFirst = (rows: Customer[], currentId: string): string => {
     return currentId
   }
   return rows[0]?.id ?? ""
+}
+
+type AuthType = "sso" | "iam" | "key" | null
+
+function getAuthType(profile: ProfileStatus | undefined): AuthType {
+  if (!profile) return null
+  // Truthy check handles both empty string and potential null from API
+  if (profile.sso_session) return "sso"
+  if (profile.status === "ok") return "iam"
+  // "no_config" means unconfigured in ~/.aws/config — not a key-based credential
+  if (profile.status === "error") return "key"
+  // "expired"/"unknown"/"no_config" intentionally return null — no badge shown
+  return null
+}
+
+function AuthBadge({ authType }: { authType: AuthType }) {
+  if (!authType) return null
+  const labels: Record<NonNullable<AuthType>, string> = {
+    sso: "SSO",
+    iam: "IAM",
+    key: "Key?",
+  }
+  return (
+    <span className="auth-badge" data-auth={authType}>
+      {labels[authType]}
+    </span>
+  )
 }
 
 export default function CustomersPage() {
@@ -40,6 +69,8 @@ export default function CustomersPage() {
   const [botChannel, setBotChannel] = useState("")
   const [botEnabled, setBotEnabled] = useState(false)
 
+  const [profileStatusMap, setProfileStatusMap] = useState<Record<string, ProfileStatus>>({})
+
   const selectedBotCustomer = useMemo(
     () => customers.find((customer) => customer.id === botCustomerId) ?? null,
     [botCustomerId, customers],
@@ -54,15 +85,30 @@ export default function CustomersPage() {
   const loadCustomers = async () => {
     setIsLoading(true)
     setError("")
+    setProfileStatusMap({})
 
     try {
-      const rows = await listCustomers()
-      setCustomers(rows)
+      const [rows, healthReport] = await Promise.allSettled([
+        listCustomers(),
+        checkSessionHealth(),
+      ])
 
-      setTargetCustomerId((current) => pickExistingOrFirst(rows, current))
-      setBotCustomerId((current) => pickExistingOrFirst(rows, current))
-    } catch (loadError) {
-      setError(toUserMessage(loadError, "Failed to load customers."))
+      if (rows.status === "fulfilled") {
+        setCustomers(rows.value)
+        setTargetCustomerId((current) => pickExistingOrFirst(rows.value, current))
+        setBotCustomerId((current) => pickExistingOrFirst(rows.value, current))
+      } else {
+        setError(toUserMessage(rows.reason, "Failed to load customers."))
+      }
+
+      if (healthReport.status === "fulfilled") {
+        const map: Record<string, ProfileStatus> = {}
+        for (const profile of healthReport.value.profiles) {
+          map[profile.profile_name] = profile
+        }
+        setProfileStatusMap(map)
+      }
+      // Session health failure is non-fatal — badges just won't show
     } finally {
       setIsLoading(false)
     }
@@ -429,6 +475,7 @@ export default function CustomersPage() {
                   <p>
                     {account.display_name} ({account.profile_name})
                     {account.account_id ? ` | ${account.account_id}` : ""}
+                    <AuthBadge authType={getAuthType(profileStatusMap[account.profile_name])} />
                   </p>
                   <div className="checks-actions">
                     <button
