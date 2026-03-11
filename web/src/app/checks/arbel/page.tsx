@@ -51,6 +51,11 @@ const WINDOW_OPTIONS = [
 ]
 
 const getAlarmNames = (account: Account): string[] => {
+  // Prefer top-level typed field (populated by reimport_yaml_configs)
+  if (account.alarm_names && account.alarm_names.length > 0) {
+    return account.alarm_names
+  }
+  // Fallback: legacy config_extra path (for accounts not yet re-imported)
   const extra = account.config_extra as Record<string, unknown> | null
   if (!extra) return []
   const av = extra.alarm_verification as Record<string, unknown> | undefined
