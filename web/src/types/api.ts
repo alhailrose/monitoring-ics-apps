@@ -34,6 +34,7 @@ export type AvailableCheck = {
 }
 
 export type CheckResultItem = {
+  customer_id: string
   account: {
     id: string
     profile_name: string
@@ -45,8 +46,14 @@ export type CheckResultItem = {
   output: string
 }
 
-export type ExecuteCheckRequest = {
+export type CheckRunSummary = {
   customer_id: string
+  check_run_id: string
+  slack_sent: boolean
+}
+
+export type ExecuteCheckRequest = {
+  customer_ids: string[]
   mode: CheckMode
   check_name?: string
   account_ids?: string[] | null
@@ -55,11 +62,10 @@ export type ExecuteCheckRequest = {
 }
 
 export type ExecuteCheckResponse = {
-  check_run_id: string
+  check_runs: CheckRunSummary[]
   execution_time_seconds: number
   results: CheckResultItem[]
-  consolidated_output: string
-  slack_sent: boolean
+  consolidated_outputs: Record<string, string>
 }
 
 export type HistorySummary = {
