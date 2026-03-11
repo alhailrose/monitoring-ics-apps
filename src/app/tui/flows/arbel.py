@@ -7,6 +7,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from src.app.tui import common
+from src.configs.loader import load_customer_config
 from src.core.runtime.config import PROFILE_GROUPS, CUSTOM_STYLE
 from src.core.runtime.runners import run_group_specific
 from src.core.runtime.ui import (
@@ -30,39 +31,22 @@ def run_arbel_check(is_dense_mode):
         "public-web",
     ]
     default_profiles = ["dermies-max", "cis-erha", "connect-prod"]
-    arbel_alarm_catalog = {
-        "connect-prod": [
-            "noncis-prod-rds-acu-alarm",
-            "noncis-prod-rds-cpu-alarm",
-            "noncis-prod-rds-freeable-memory-alarm",
-            "noncis-prod-rds-databaseconnections-cluster-alarm",
-        ],
-        "cis-erha": [
-            "cis-prod-rds-acu-writer-alarm",
-            "cis-prod-rds-cpu-writer-alarm",
-            "cis-prod-rds-memory-writer-alarm",
-            "cis-prod-rds-connection-writer-alarm",
-            "cis-prod-rds-acu-reader-alarm",
-            "cis-prod-rds-cpu-reader-alarm",
-            "cis-prod-rds-memory-reader-alarm",
-            "cis-prod-rds-connection-reader-alarm",
-        ],
-        "dermies-max": [
-            "dermies-prod-rds-writer-acu-alarm",
-            "dermies-prod-rds-writer-cpu-alarm",
-            "dermies-prod-rds-writer-freeable-memory-alarm",
-            "dermies-prod-rds-writer-connections-alarm",
-            "dermies-prod-rds-reader-acu-alarm",
-            "dermies-prod-rds-reader-cpu-alarm",
-            "dermies-prod-rds-reader-freeable-memory-alarm",
-            "dermies-prod-rds-reader-connections-alarm",
-        ],
-        "erha-buddy": [
-            "erhabuddy-prod-rds-cpu-alarm",
-            "erhabuddy-prod-rds-connections-alarm",
-            "erhabuddy-prod-rds-freeable-memory-alarm",
-        ],
-    }
+
+    def _load_alarm_catalog():
+        """Build alarm catalog from aryanoble.yaml alarm_names per account."""
+        catalog: dict[str, list[str]] = {}
+        try:
+            cfg = load_customer_config("aryanoble")
+            for account in cfg.get("accounts", []):
+                profile = account.get("profile", "")
+                alarm_names = account.get("alarm_names", [])
+                if profile and alarm_names:
+                    catalog[profile] = list(alarm_names)
+        except Exception:
+            pass
+        return catalog
+
+    arbel_alarm_catalog = _load_alarm_catalog()
 
     def _render_arbel_dashboard():
         default_alarm_count = sum(
@@ -155,11 +139,11 @@ def run_arbel_check(is_dense_mode):
 
         if candidate_alarm_names:
             alarm_choices = [
-                questionary.Choice(alarm_name, value=alarm_name, checked=True)
+                questionary.Choice(alarm_name, value=alarm_name, checked=False)
                 for alarm_name in candidate_alarm_names
             ]
             selected_alarm_names = common._checkbox_prompt(
-                f"{ICONS['alarm']} Pilih nama alarm (default semua tercentang)",
+                f"{ICONS['alarm']} Pilih nama alarm",
                 alarm_choices,
             )
             return selected_alarm_names or []
