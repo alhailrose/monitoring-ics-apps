@@ -72,109 +72,20 @@ def _run_aryanoble_subflow(cfg):
     all_profiles = [a["profile"] for a in cfg.get("accounts", [])]
     default_rds_profiles = ["dermies-max", "cis-erha", "connect-prod"]
 
-    arbel_alarm_catalog = {
-        "connect-prod": [
-            "noncis-prod-rds-acu-alarm",
-            "noncis-prod-rds-cpu-alarm",
-            "noncis-prod-rds-freeable-memory-alarm",
-            "noncis-prod-rds-databaseconnections-cluster-alarm",
-        ],
-        "cis-erha": [
-            "cis-prod-rds-acu-writer-alarm",
-            "cis-prod-rds-cpu-writer-alarm",
-            "cis-prod-rds-memory-writer-alarm",
-            "cis-prod-rds-connection-writer-alarm",
-            "cis-prod-rds-acu-reader-alarm",
-            "cis-prod-rds-cpu-reader-alarm",
-            "cis-prod-rds-memory-reader-alarm",
-            "cis-prod-rds-connection-reader-alarm",
-        ],
-        "dermies-max": [
-            "dermies-prod-rds-writer-acu-alarm",
-            "dermies-prod-rds-writer-cpu-alarm",
-            "dermies-prod-rds-writer-freeable-memory-alarm",
-            "dermies-prod-rds-writer-connections-alarm",
-            "dermies-prod-rds-reader-acu-alarm",
-            "dermies-prod-rds-reader-cpu-alarm",
-            "dermies-prod-rds-reader-freeable-memory-alarm",
-            "dermies-prod-rds-reader-connections-alarm",
-        ],
-        "erha-buddy": [
-            "erhabuddy-prod-rds-cpu-alarm",
-            "erhabuddy-prod-rds-connections-alarm",
-            "erhabuddy-prod-rds-freeable-memory-alarm",
-        ],
-        "public-web": [
-            "CPU Utilization RDS (Mysql)",
-            "CPU Utilization RDS (Postgre)",
-            "FreeableMemory RDS (Mysql)",
-            "FreeableMemory RDS (Postgre)",
-            "Total Connection RDS (Mysql)",
-            "Total Connection RDS (Postgre)",
-        ],
-        "fee-doctor": [
-            "feedoctor-production-rds-cpu-above-70",
-            "feedoctor-production-rds-mem < 2GB",
-            "feedoctor-production-backend-cpu-above-70",
-            "feedoctor-production-backend-disk-above-70",
-            "feedoctor-production-backend-mem-above-70",
-            "feedoctor-production-frontend-cpu-above-70",
-            "feedoctor-production-frontend-disk-above-70",
-            "feedoctor-production-frontend-mem-above-70",
-        ],
-        "iris-prod": [
-            "rnd-formulation-production-rds-cpu-above-70",
-            "rnd-formulation-production-appserver-cpu-above-70",
-            "rnd-formulation-production-appserver-disk-above-70",
-            "rnd-formulation-production-appserver-mem-above-70",
-        ],
-        "iris-dev": [
-            "rnd-formulation-dev-appserver-cpu-above-70",
-            "rnd-formulation-dev-appserver-disk-above-70",
-            "rnd-formulation-dev-appserver-mem-above-70",
-            "rnd-formulation-dev-database-cpu-above-70",
-            "rnd-formulation-dev-database-disk-above-70",
-            "rnd-formulation-dev-database-mem-above-70",
-        ],
-        "HRIS": [
-            "aryanoble-prod-Window2019Base-webserver-cpu-above-80",
-            "aryanoble-prod-Window2019Base-webserver-mem-above-80",
-            "aryanoble-prod-Windows2019+SQL2019Standard-database-cpu-above-80",
-            "aryanoble-prod-Windows2019+SQL2019Standard-database-mem-above-80",
-            "aryanoble-prod-Ubuntu20.04-openvpn-cpu-above-80",
-            "aryanoble-prod-Ubuntu20.04-openvpn-mem-above-80",
-            "aryanoble-prod-Ubuntu20.04-openvpn-disk-above-80",
-        ],
-        "sfa": [
-            "vm-sfa-cpu-above-70",
-            "vm-sfa-disk-above-70",
-            "vm-sfa-mem-above-70",
-            "vm-database-cpu-above-70",
-            "vm-database-mem-above-70",
-            "vm-jobs-cpu-above-70",
-            "vm-jobs-disk-above-70",
-            "vm-jobs-mem-above-70",
-            "vm-dms-cpu-above-70",
-            "vm-dms-mem-above-70",
-        ],
-        "dwh": [
-            "dc-dwh-db-cpu-above-70",
-            "dc-dwh-db-memory-above-70",
-            "dc-dwh-olap-cpu-above-70",
-            "dc-dwh-olap-memory-above-70",
-        ],
-        "tgw": [
-            "VPN Tunnel State",
-            "Second VPN Tunnel State",
-        ],
-        "backup-hris": [
-            "Disk C Free Space is Below 20%",
-            "Disk D Free Space Below 20%",
-            "Disk E Free Space Below 20%",
-            "Disk F Free Space Below 20%",
-            "Disk G Free Space Below 20%",
-        ],
-    }
+    def _load_alarm_catalog():
+        """Build alarm catalog from aryanoble.yaml alarm_names per account."""
+        catalog: dict[str, list[str]] = {}
+        try:
+            for account in cfg.get("accounts", []):
+                profile = account.get("profile", "")
+                alarm_names = account.get("alarm_names", [])
+                if profile and alarm_names:
+                    catalog[profile] = list(alarm_names)
+        except Exception:
+            pass
+        return catalog
+
+    arbel_alarm_catalog = _load_alarm_catalog()
 
     arbel_choices = [
         questionary.Choice(f"{ICONS['rds']} RDS Monitoring", value="rds"),
@@ -206,7 +117,7 @@ def _run_aryanoble_subflow(cfg):
             if choice == "alarm-name":
                 alarm_profiles = list(arbel_alarm_catalog.keys())
                 profile_choices = [
-                    questionary.Choice(p, value=p, checked=(p in default_rds_profiles))
+                    questionary.Choice(p, value=p, checked=False)
                     for p in alarm_profiles
                 ]
             else:
