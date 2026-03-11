@@ -1162,28 +1162,29 @@ class DailyArbelChecker(BaseChecker):
 
         for role, data in instances.items():
             inst_id = data.get("instance_id", "N/A")
+            inst_name = data.get("instance_name", "") or role
             for metric_name, info in data.get("metrics", {}).items():
                 if metric_name not in metric_data:
                     metric_data[metric_name] = []
                     metric_order.append(metric_name)
                 metric_data[metric_name].append(
-                    (inst_id, role, info.get("status", "ok"), info.get("raw_data", info.get("message", "")))
+                    (inst_id, inst_name, role, info.get("status", "ok"), info.get("raw_data", info.get("message", "")))
                 )
 
         for metric_name in metric_order:
             entries = metric_data[metric_name]
 
             if metric_name == "CPUUtilization":
-                spiked = [(iid, role, msg) for iid, role, st, msg in entries if st in ("warn", "past-warn")]
+                spiked = [(iid, iname, role, msg) for iid, iname, role, st, msg in entries if st in ("warn", "past-warn")]
                 if spiked:
                     parts = []
-                    for iid, role, msg in spiked:
+                    for iid, iname, role, msg in spiked:
                         # Extract time info from message (e.g. "pukul 08:15-08:45 WIB (30 menit)")
                         time_info = ""
                         idx = msg.find("pukul ")
                         if idx >= 0:
                             time_info = " " + msg[idx:]
-                        parts.append(f"{iid} ({role}){time_info}")
+                        parts.append(f"{iname}{time_info}")
                     lines.append(f"- CPU utilization = Terdapat spike pada " + ", ".join(parts))
                 else:
                     lines.append("- CPU utilization = Tidak terdapat spike yang signifikan")
@@ -1192,7 +1193,7 @@ class DailyArbelChecker(BaseChecker):
                 label = metric_name
                 # Collect all spike periods from all instances
                 all_spike_periods = []
-                for iid, role, st, raw_data in entries:
+                for iid, iname, role, st, raw_data in entries:
                     if st == "past-warn" and isinstance(raw_data, list):
                         all_spike_periods.extend(raw_data)
 
@@ -1209,8 +1210,7 @@ class DailyArbelChecker(BaseChecker):
                         by_instance[key].append(sp)
                     for inst_id_key, periods in by_instance.items():
                         inst_name = periods[0]["inst_name"] or inst_id_key
-                        inst_id_short = inst_id_key[:10] + "..." if len(inst_id_key) > 10 else inst_id_key
-                        lines.append(f"    {inst_name} ({inst_id_short}):")
+                        lines.append(f"    {inst_name}:")
                         for sp in periods:
                             lines.append(
                                 f"      * {sp['start_str']}-{sp['end_str']} WIB "
@@ -1218,7 +1218,7 @@ class DailyArbelChecker(BaseChecker):
                             )
 
             else:
-                for iid, role, st, msg in entries:
+                for iid, iname, role, st, msg in entries:
                     lines.append(f"- {msg}")
 
         # Disk / Memory alarms section
