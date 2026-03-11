@@ -1,3 +1,5 @@
+import subprocess
+
 from src.checks.huawei.ecs_utilization import (
     HuaweiECSUtilizationChecker,
     HcloudCli,
@@ -57,7 +59,7 @@ def test_hcloud_cli_injects_timeout_and_retry_flags(monkeypatch):
         stdout = '{"ok": true}'
         stderr = ""
 
-    def _fake_run(cmd, stdout, stderr, text):
+    def _fake_run(cmd, stdout, stderr, text, timeout=None):
         captured["cmd"] = cmd
         return _Proc()
 
@@ -86,7 +88,7 @@ def test_hcloud_cli_retries_once_on_timeout_error(monkeypatch):
         stdout = '{"servers": []}'
         stderr = ""
 
-    def _fake_run(_cmd, stdout, stderr, text):
+    def _fake_run(_cmd, stdout, stderr, text, timeout=None):
         calls["count"] += 1
         if calls["count"] == 1:
             return _ErrProc()
@@ -115,7 +117,7 @@ def test_hcloud_cli_falls_back_without_transport_flags_when_unsupported(monkeypa
         stdout = '{"servers": []}'
         stderr = ""
 
-    def _fake_run(cmd, stdout, stderr, text):
+    def _fake_run(cmd, stdout, stderr, text, timeout=None):
         calls.append(cmd)
         if len(calls) == 1:
             return _InvalidParamProc()
@@ -135,6 +137,24 @@ def test_hcloud_cli_falls_back_without_transport_flags_when_unsupported(monkeypa
     assert "--cli-read-timeout=30" not in calls[1]
     assert "--cli-connect-timeout=10" not in calls[1]
     assert "--cli-retry-count=2" not in calls[1]
+
+
+def test_hcloud_cli_returns_timeout_error_when_subprocess_hangs(monkeypatch):
+    calls = {"count": 0}
+
+    def _fake_run(*_args, **_kwargs):
+        calls["count"] += 1
+        raise subprocess.TimeoutExpired(cmd="hcloud", timeout=45)
+
+    monkeypatch.setattr("src.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
+
+    cli = HcloudCli(max_attempts=2)
+    data, err = cli.run_json(["ECS", "ListServersDetails", "--cli-profile=demo"])
+
+    assert data is None
+    assert err is not None
+    assert "timed out" in err.lower()
+    assert calls["count"] == 2
 
 
 def test_list_server_map_fetches_all_pages(monkeypatch):

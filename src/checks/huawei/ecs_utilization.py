@@ -65,9 +65,14 @@ class HcloudCli:
         text = (message or "").lower()
         return "invalid parameter" in text
 
+    def _process_timeout_seconds(self) -> int:
+        # Hard-stop hcloud process to avoid indefinite hangs in interactive mode.
+        return max(10, self.read_timeout + self.connect_timeout + 5)
+
     def run_json(self, args: list[str]) -> tuple[dict[str, Any] | list[Any] | None, str | None]:
         last_error: str | None = None
         use_transport_flags = True
+        process_timeout = self._process_timeout_seconds()
 
         for attempt in range(self.max_attempts):
             cmd_args = self._with_transport_flags(args) if use_transport_flags else list(args)
@@ -77,9 +82,17 @@ class HcloudCli:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    timeout=process_timeout,
                 )
             except FileNotFoundError:
                 return None, "hcloud binary not found in PATH"
+            except subprocess.TimeoutExpired as exc:
+                timed_out_after = int(getattr(exc, "timeout", process_timeout) or process_timeout)
+                last_error = f"hcloud command timed out after {timed_out_after} seconds"
+                should_retry = attempt < (self.max_attempts - 1)
+                if should_retry:
+                    continue
+                break
 
             out = proc.stdout or ""
             err = proc.stderr or ""
