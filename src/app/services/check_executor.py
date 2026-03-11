@@ -568,6 +568,16 @@ class CheckExecutor:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {}
+
+            # Pre-extract per-account alarm overrides and remaining params from check_params
+            per_account_alarms: dict = {}
+            remaining_check_params: dict | None = None
+            if check_params:
+                per_account_alarms = check_params.get("account_alarm_names") or {}
+                remaining_check_params = {
+                    k: v for k, v in check_params.items() if k != "account_alarm_names"
+                } or None  # empty dict → None to skip the merge block
+
             for account in accounts:
                 for chk_name, _checker_class in checks.items():
                     # Start with config_extra from DB
@@ -575,17 +585,25 @@ class CheckExecutor:
                     if account.config_extra and chk_name in account.config_extra:
                         check_kwargs = dict(account.config_extra[chk_name])
 
-                    # Inject alarm_names from DB for cloudwatch check (if not already in config_extra)
-                    if chk_name == "cloudwatch" and account.alarm_names:
+                    # Inject alarm_names from DB for cloudwatch and alarm_verification checks
+                    if chk_name in ("cloudwatch", "alarm_verification") and account.alarm_names:
                         if check_kwargs is None:
                             check_kwargs = {}
                         check_kwargs.setdefault("alarm_names", account.alarm_names)
 
-                    # Merge check_params from API request (overrides everything)
-                    if check_params:
+                    # Apply per-account alarm_names override (only for checks that use alarm_names)
+                    if chk_name in ("cloudwatch", "alarm_verification"):
+                        account_alarms = per_account_alarms.get(str(account.id))
+                        if account_alarms:
+                            if check_kwargs is None:
+                                check_kwargs = {}
+                            check_kwargs["alarm_names"] = account_alarms
+
+                    # Merge remaining check_params (e.g. window_hours) — overrides everything
+                    if remaining_check_params:
                         if check_kwargs is None:
                             check_kwargs = {}
-                        check_kwargs.update(check_params)
+                        check_kwargs.update(remaining_check_params)
 
                     # Use account's own region if set, otherwise fall back to effective_region
                     region_for_account = account.region or region
