@@ -206,7 +206,7 @@ def _run_aryanoble_subflow(cfg):
             if choice == "alarm-name":
                 alarm_profiles = list(arbel_alarm_catalog.keys())
                 profile_choices = [
-                    questionary.Choice(p, value=p, checked=True)
+                    questionary.Choice(p, value=p, checked=(p in default_rds_profiles))
                     for p in alarm_profiles
                 ]
             else:
