@@ -9,6 +9,8 @@ export type Account = {
   display_name: string
   is_active: boolean
   config_extra: Record<string, unknown> | null
+  region: string | null
+  alarm_names: string[] | null
   created_at: string
 }
 
@@ -17,6 +19,7 @@ export type Customer = {
   name: string
   display_name: string
   checks: string[]
+  sso_session: string | null
   slack_webhook_url: string | null
   slack_channel: string | null
   slack_enabled: boolean
@@ -119,6 +122,7 @@ export type CreateCustomerRequest = {
   slack_webhook_url?: string | null
   slack_channel?: string | null
   slack_enabled?: boolean
+  sso_session?: string | null
 }
 
 export type UpdateCustomerRequest = Partial<
@@ -132,10 +136,42 @@ export type CreateAccountRequest = {
   profile_name: string
   display_name: string
   config_extra?: Record<string, unknown> | null
+  region?: string | null
+  alarm_names?: string[] | null
 }
 
 export type UpdateAccountRequest = {
   display_name?: string
   is_active?: boolean
   config_extra?: Record<string, unknown> | null
+  region?: string | null
+  alarm_names?: string[] | null
+}
+
+export type ProfileStatus = {
+  profile_name: string
+  account_id: string | null
+  display_name: string
+  status: "ok" | "expired" | "error" | "no_config" | "unknown"
+  error: string
+  sso_session: string
+  login_command: string
+}
+
+export type SsoSessionInfo = {
+  session_name: string
+  login_command: string
+  status: "ok" | "expired" | "error"
+  profiles_ok: string[]
+  profiles_expired: string[]
+  profiles_error: string[]
+}
+
+export type SessionHealthReport = {
+  total_profiles: number
+  ok: number
+  expired: number
+  error: number
+  profiles: ProfileStatus[]
+  sso_sessions: Record<string, SsoSessionInfo>
 }
