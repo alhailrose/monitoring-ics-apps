@@ -138,7 +138,9 @@ export default function AllCheckPage() {
 
       {result ? (
         <>
-          <p className="checks-meta">Execution time: {result.execution_time_seconds}s</p>
+          <section className="ops-glass-panel checks-meta-panel">
+            <p className="checks-meta">Execution time: {result.execution_time_seconds}s</p>
+          </section>
           {result.check_runs.map((run) => {
             const custName = customers.find((c) => c.id === run.customer_id)?.display_name ?? run.customer_id
             const output = result.consolidated_outputs[run.customer_id] ?? ""
