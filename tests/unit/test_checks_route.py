@@ -59,3 +59,29 @@ def test_execute_rejects_old_customer_id_field():
         "send_slack": False,
     })
     assert r.status_code == 422
+
+
+def test_execute_rejects_blank_customer_id():
+    """customer_ids items must not be blank strings."""
+    mock_executor = MagicMock()
+    client = TestClient(_make_app(mock_executor))
+
+    r = client.post("/api/v1/checks/execute", json={
+        "customer_ids": [""],
+        "mode": "all",
+        "send_slack": False,
+    })
+    assert r.status_code == 422
+
+
+def test_execute_rejects_duplicate_customer_ids():
+    """customer_ids must not contain duplicates."""
+    mock_executor = MagicMock()
+    client = TestClient(_make_app(mock_executor))
+
+    r = client.post("/api/v1/checks/execute", json={
+        "customer_ids": ["cust-1", "cust-1"],
+        "mode": "all",
+        "send_slack": False,
+    })
+    assert r.status_code == 422

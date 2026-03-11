@@ -1,7 +1,9 @@
 """Check execution endpoints."""
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from src.app.api.dependencies import get_check_executor
 
@@ -9,13 +11,20 @@ router = APIRouter(prefix="/checks", tags=["checks"])
 
 
 class ExecuteCheckRequest(BaseModel):
-    customer_ids: list[str] = Field(min_length=1)
+    customer_ids: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
     mode: str = Field(pattern="^(single|all|arbel)$")
     check_name: str | None = None
     account_ids: list[str] | None = None
     send_slack: bool = False
     region: str | None = None
     check_params: dict | None = None  # Extra params passed to checker (e.g. window_hours, alarm_names)
+
+    @field_validator("customer_ids")
+    @classmethod
+    def unique_customer_ids(cls, v: list[str]) -> list[str]:
+        if len(v) != len(set(v)):
+            raise ValueError("customer_ids must not contain duplicates")
+        return v
 
 
 @router.post("/execute")

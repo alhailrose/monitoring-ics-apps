@@ -125,7 +125,7 @@ class TestCheckExecution:
     def test_single_check_guardduty(self):
         global _check_run_id
         r = client.post("/api/v1/checks/execute", json={
-            "customer_id": _customer_id,
+            "customer_ids": [_customer_id],
             "mode": "single",
             "check_name": "guardduty",
         })
@@ -148,7 +148,7 @@ class TestCheckExecution:
 
     def test_single_check_cost(self):
         r = client.post("/api/v1/checks/execute", json={
-            "customer_id": _customer_id,
+            "customer_ids": [_customer_id],
             "mode": "single",
             "check_name": "cost",
         })
@@ -165,7 +165,7 @@ class TestCheckExecution:
         })
 
         r = client.post("/api/v1/checks/execute", json={
-            "customer_id": _customer_id,
+            "customer_ids": [_customer_id],
             "mode": "all",
         })
         assert r.status_code == 200, r.text
@@ -187,14 +187,14 @@ class TestCheckExecution:
 
     def test_invalid_mode(self):
         r = client.post("/api/v1/checks/execute", json={
-            "customer_id": _customer_id,
+            "customer_ids": [_customer_id],
             "mode": "invalid",
         })
         assert r.status_code == 422  # pydantic validation
 
     def test_single_without_check_name(self):
         r = client.post("/api/v1/checks/execute", json={
-            "customer_id": _customer_id,
+            "customer_ids": [_customer_id],
             "mode": "single",
         })
         assert r.status_code == 400
