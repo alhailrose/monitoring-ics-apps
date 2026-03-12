@@ -7,6 +7,7 @@ def _make_app(executor_mock):
     from fastapi import FastAPI
     from src.app.api.routes.checks import router
     import src.app.api.dependencies as deps
+
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[deps.get_check_executor] = lambda: executor_mock
@@ -17,18 +18,23 @@ def test_execute_accepts_customer_ids_list():
     """POST /api/v1/checks/execute should accept customer_ids as a list."""
     mock_executor = MagicMock()
     mock_executor.execute.return_value = {
-        "check_runs": [{"customer_id": "cust-1", "check_run_id": "run-1", "slack_sent": False}],
+        "check_runs": [
+            {"customer_id": "cust-1", "check_run_id": "run-1", "slack_sent": False}
+        ],
         "execution_time_seconds": 1.0,
         "results": [],
         "consolidated_outputs": {"cust-1": "report"},
     }
     client = TestClient(_make_app(mock_executor))
 
-    r = client.post("/api/v1/checks/execute", json={
-        "customer_ids": ["cust-1"],
-        "mode": "all",
-        "send_slack": False,
-    })
+    r = client.post(
+        "/api/v1/checks/execute",
+        json={
+            "customer_ids": ["cust-1"],
+            "mode": "all",
+            "send_slack": False,
+        },
+    )
     assert r.status_code == 200
     data = r.json()
     assert "check_runs" in data
@@ -40,25 +46,42 @@ def test_execute_rejects_empty_customer_ids():
     mock_executor = MagicMock()
     client = TestClient(_make_app(mock_executor))
 
-    r = client.post("/api/v1/checks/execute", json={
-        "customer_ids": [],
-        "mode": "all",
-        "send_slack": False,
-    })
+    r = client.post(
+        "/api/v1/checks/execute",
+        json={
+            "customer_ids": [],
+            "mode": "all",
+            "send_slack": False,
+        },
+    )
     assert r.status_code == 422  # Pydantic validation error
 
 
-def test_execute_rejects_old_customer_id_field():
-    """Old customer_id field (without 's') should be rejected (422 validation error)."""
+def test_execute_accepts_legacy_customer_id_field():
+    """Old customer_id field remains supported via compatibility layer."""
     mock_executor = MagicMock()
+    mock_executor.execute.return_value = {
+        "check_runs": [
+            {"customer_id": "cust-1", "check_run_id": "run-1", "slack_sent": False}
+        ],
+        "execution_time_seconds": 1.0,
+        "results": [],
+        "consolidated_outputs": {"cust-1": "report"},
+    }
     client = TestClient(_make_app(mock_executor))
 
-    r = client.post("/api/v1/checks/execute", json={
-        "customer_id": "cust-1",   # old field — no longer valid
-        "mode": "all",
-        "send_slack": False,
-    })
-    assert r.status_code == 422
+    r = client.post(
+        "/api/v1/checks/execute",
+        json={
+            "customer_id": "cust-1",  # old field — no longer valid
+            "mode": "all",
+            "send_slack": False,
+        },
+    )
+    assert r.status_code == 200
+    mock_executor.execute.assert_called_once()
+    kwargs = mock_executor.execute.call_args.kwargs
+    assert kwargs["customer_ids"] == ["cust-1"]
 
 
 def test_execute_rejects_blank_customer_id():
@@ -66,11 +89,14 @@ def test_execute_rejects_blank_customer_id():
     mock_executor = MagicMock()
     client = TestClient(_make_app(mock_executor))
 
-    r = client.post("/api/v1/checks/execute", json={
-        "customer_ids": [""],
-        "mode": "all",
-        "send_slack": False,
-    })
+    r = client.post(
+        "/api/v1/checks/execute",
+        json={
+            "customer_ids": [""],
+            "mode": "all",
+            "send_slack": False,
+        },
+    )
     assert r.status_code == 422
 
 
@@ -79,9 +105,27 @@ def test_execute_rejects_duplicate_customer_ids():
     mock_executor = MagicMock()
     client = TestClient(_make_app(mock_executor))
 
-    r = client.post("/api/v1/checks/execute", json={
-        "customer_ids": ["cust-1", "cust-1"],
-        "mode": "all",
-        "send_slack": False,
-    })
+    r = client.post(
+        "/api/v1/checks/execute",
+        json={
+            "customer_ids": ["cust-1", "cust-1"],
+            "mode": "all",
+            "send_slack": False,
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_execute_single_mode_requires_check_name():
+    mock_executor = MagicMock()
+    client = TestClient(_make_app(mock_executor))
+
+    r = client.post(
+        "/api/v1/checks/execute",
+        json={
+            "customer_ids": ["cust-1"],
+            "mode": "single",
+            "send_slack": False,
+        },
+    )
     assert r.status_code == 422

@@ -25,7 +25,10 @@ export function createCustomer(payload: CreateCustomerRequest): Promise<Customer
   })
 }
 
-export function updateCustomer(customerId: string, payload: UpdateCustomerRequest): Promise<Customer> {
+export function updateCustomer(
+  customerId: string,
+  payload: UpdateCustomerRequest,
+): Promise<Customer> {
   return apiRequest<Customer>(`/customers/${customerId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

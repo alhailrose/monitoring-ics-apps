@@ -29,3 +29,17 @@ Reference contract: `docs/architecture/target-structure-contract.md`
 ## Remaining follow-up (non-blocking)
 
 1. Continue planned API/dashboard implementation under `src/app/api`.
+
+## Phase 2 scaffold + CI/CD baseline (incremental)
+
+- Added target app scaffolds:
+  - `apps/web/` (placeholder, runtime still in `web/` Vite)
+  - `apps/api/main.py` (compatibility wrapper to `src.app.api.main`)
+  - `apps/tui/main.py` (compatibility wrapper to CLI entrypoint)
+- Added split CI pipelines with path-based triggers:
+  - `.github/workflows/ci-web.yml`
+  - `.github/workflows/ci-api.yml`
+  - `.github/workflows/ci-tui.yml`
+- Added deployment approval/rollback gate:
+  - `.github/workflows/deploy-manual.yml`
+  - `docs/operations/deployment-flow.md`

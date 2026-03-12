@@ -1,0 +1,114 @@
+name: Deploy Manual Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deployment target"
+        required: true
+        type: choice
+        options:
+          - web
+          - api
+          - tui
+      environment:
+        description: "Environment name (must be pre-configured in GitHub Environments)"
+        required: true
+        type: string
+      approval_notes:
+        description: "Approval reference (ticket/approver/risk acceptance)"
+        required: true
+        type: string
+      rollback_notes:
+        description: "Rollback command or runbook reference"
+        required: true
+        type: string
+      run_smoke:
+        description: "Run post-deploy smoke check"
+        required: true
+        default: true
+        type: boolean
+      web_base_url:
+        description: "Base URL for web smoke (required when target=web and run_smoke=true)"
+        required: false
+        type: string
+      api_base_url:
+        description: "Base URL for api smoke (required when target=api and run_smoke=true)"
+        required: false
+        type: string
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Print deployment gate metadata
+        run: |
+          echo "target=${{ inputs.target }}"
+          echo "environment=${{ inputs.environment }}"
+          echo "approval_notes=${{ inputs.approval_notes }}"
+          echo "rollback_notes=${{ inputs.rollback_notes }}"
+          echo "run_smoke=${{ inputs.run_smoke }}"
+          echo "web_base_url=${{ inputs.web_base_url }}"
+          echo "api_base_url=${{ inputs.api_base_url }}"
+
+      - name: Validate smoke inputs
+        if: ${{ inputs.run_smoke }}
+        run: |
+          if [ "${{ inputs.target }}" = "web" ] && [ -z "${{ inputs.web_base_url }}" ]; then
+            echo "web_base_url is required for web smoke check" >&2
+            exit 2
+          fi
+          if [ "${{ inputs.target }}" = "api" ] && [ -z "${{ inputs.api_base_url }}" ]; then
+            echo "api_base_url is required for api smoke check" >&2
+            exit 2
+          fi
+
+      - name: Setup Python for TUI smoke
+        if: ${{ inputs.run_smoke && inputs.target == 'tui' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv for TUI smoke
+        if: ${{ inputs.run_smoke && inputs.target == 'tui' }}
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies for TUI smoke
+        if: ${{ inputs.run_smoke && inputs.target == 'tui' }}
+        run: uv sync
+
+      - name: Run post-deploy smoke check
+        if: ${{ inputs.run_smoke }}
+        run: |
+          case "${{ inputs.target }}" in
+            web)
+              WEB_BASE_URL="${{ inputs.web_base_url }}" bash scripts/ci/smoke-web.sh
+              ;;
+            api)
+              API_BASE_URL="${{ inputs.api_base_url }}" bash scripts/ci/smoke-api.sh
+              ;;
+            tui)
+              bash scripts/ci/smoke-tui.sh
+              ;;
+          esac
+
+      - name: Write gate summary
+        run: |
+          {
+            echo "## Deployment Gate"
+            echo "- Target: ${{ inputs.target }}"
+            echo "- Environment: ${{ inputs.environment }}"
+            echo "- Approval Notes: ${{ inputs.approval_notes }}"
+            echo "- Rollback Notes: ${{ inputs.rollback_notes }}"
+            echo "- Smoke Check: ${{ inputs.run_smoke }}"
+            if [ "${{ inputs.target }}" = "web" ]; then
+              echo "- Web Base URL: ${{ inputs.web_base_url }}"
+            fi
+            if [ "${{ inputs.target }}" = "api" ]; then
+              echo "- API Base URL: ${{ inputs.api_base_url }}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

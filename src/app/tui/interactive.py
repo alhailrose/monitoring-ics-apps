@@ -91,9 +91,13 @@ CHECK_CHOICES = [
     questionary.Choice(f"{ICONS['cost']} Cost Anomalies", value="cost"),
     questionary.Choice(f"{ICONS['guardduty']} GuardDuty Findings", value="guardduty"),
     questionary.Choice(f"{ICONS['cloudwatch']} CloudWatch Alarms", value="cloudwatch"),
-    questionary.Choice(f"{ICONS['notifications']} Notifications", value="notifications"),
+    questionary.Choice(
+        f"{ICONS['notifications']} Notifications", value="notifications"
+    ),
     questionary.Choice(f"{ICONS['backup']} Backup Status", value="backup"),
-    questionary.Choice(f"{ICONS['alarm']} Alarm Verification (>10m)", value="alarm_verification"),
+    questionary.Choice(
+        f"{ICONS['alarm']} Alarm Verification (>10m)", value="alarm_verification"
+    ),
     questionary.Choice(f"{ICONS['ec2list']} EC2 List", value="ec2list"),
 ]
 
@@ -182,7 +186,11 @@ def _pick_profiles_from_customers():
 
             _current_accounts = _current_cfg.get("accounts", [])
             _current_display = next(
-                (c.get("display_name", selected_id) for c in customers if c["customer_id"] == selected_id),
+                (
+                    c.get("display_name", selected_id)
+                    for c in customers
+                    if c["customer_id"] == selected_id
+                ),
                 selected_id,
             )
 
@@ -293,15 +301,22 @@ def _run_quick_check():
 
             if len(profiles) > 1:
                 run_group_specific(
-                    selected_check, profiles, region,
+                    selected_check,
+                    profiles,
+                    region,
                     group_name=group_choice,
                     check_kwargs=check_kwargs,
                 )
             else:
-                run_individual_check(
-                    selected_check, profiles[0], region,
-                    check_kwargs=check_kwargs,
-                )
+                if check_kwargs is None:
+                    run_individual_check(selected_check, profiles[0], region)
+                else:
+                    run_individual_check(
+                        selected_check,
+                        profiles[0],
+                        region,
+                        check_kwargs=check_kwargs,
+                    )
             return  # Done
 
 

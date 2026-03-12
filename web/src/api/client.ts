@@ -72,9 +72,10 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
 
   if (!response.ok) {
     const detail = isRecord(payload) ? payload.detail : null
-    const message = typeof detail === "string" && detail.trim().length > 0
-      ? detail
-      : statusMessage(response.status)
+    const message =
+      typeof detail === "string" && detail.trim().length > 0
+        ? detail
+        : statusMessage(response.status)
     throw new ApiError(message, response.status)
   }
 

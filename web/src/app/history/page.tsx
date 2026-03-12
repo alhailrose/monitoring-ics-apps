@@ -6,7 +6,13 @@ import { getHistoryDetail, listHistory } from "../../api/history"
 import { CopyableOutput } from "../../components/common/CopyableOutput"
 import { LoadingState } from "../../components/common/LoadingState"
 import { StatusBadge } from "../../components/common/StatusBadge"
-import type { CheckMode, CheckStatus, Customer, HistoryDetail, HistorySummary } from "../../types/api"
+import type {
+  CheckMode,
+  CheckStatus,
+  Customer,
+  HistoryDetail,
+  HistorySummary,
+} from "../../types/api"
 
 type Filters = {
   customerId: string
@@ -221,7 +227,9 @@ export default function HistoryPage() {
             id="history-customer"
             className="ops-select"
             value={filters.customerId}
-            onChange={(event) => setFilters((current) => ({ ...current, customerId: event.target.value }))}
+            onChange={(event) =>
+              setFilters((current) => ({ ...current, customerId: event.target.value }))
+            }
             required
             disabled={isLoading}
           >
@@ -241,7 +249,9 @@ export default function HistoryPage() {
             className="ops-input"
             type="date"
             value={filters.startDate}
-            onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))}
+            onChange={(event) =>
+              setFilters((current) => ({ ...current, startDate: event.target.value }))
+            }
             max={todayDate()}
             disabled={isLoading}
           />
@@ -252,7 +262,9 @@ export default function HistoryPage() {
             className="ops-input"
             type="date"
             value={filters.endDate}
-            onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))}
+            onChange={(event) =>
+              setFilters((current) => ({ ...current, endDate: event.target.value }))
+            }
             max={todayDate()}
             disabled={isLoading}
           />
@@ -281,7 +293,9 @@ export default function HistoryPage() {
             id="history-check-name"
             className="ops-input"
             value={filters.checkName}
-            onChange={(event) => setFilters((current) => ({ ...current, checkName: event.target.value }))}
+            onChange={(event) =>
+              setFilters((current) => ({ ...current, checkName: event.target.value }))
+            }
             placeholder="guardduty"
             disabled={isLoading}
           />
@@ -293,7 +307,11 @@ export default function HistoryPage() {
       </section>
 
       {isLoading ? <LoadingState title="Loading history..." detail="Fetching check runs." /> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       <section className="ops-glass-panel checks-result history-results" aria-label="History table">
         <header className="history-table-header">
@@ -314,13 +332,19 @@ export default function HistoryPage() {
                   </header>
                   <p className="history-run-meta">{formatDateTime(item.created_at)}</p>
                   <p className="history-run-meta">
-                    Mode: {item.check_mode} | Duration: {formatDuration(item.execution_time_seconds)}
+                    Mode: {item.check_mode} | Duration:{" "}
+                    {formatDuration(item.execution_time_seconds)}
                   </p>
                   <p className="history-run-meta">
-                    OK {item.results_summary.ok} | WARN {item.results_summary.warn} | ERROR {item.results_summary.error}
+                    OK {item.results_summary.ok} | WARN {item.results_summary.warn} | ERROR{" "}
+                    {item.results_summary.error}
                   </p>
                   <p className="history-run-meta">Slack: {item.slack_sent ? "sent" : "not sent"}</p>
-                  <button type="button" className="ops-button" onClick={() => onViewDetail(item.check_run_id)}>
+                  <button
+                    type="button"
+                    className="ops-button"
+                    onClick={() => onViewDetail(item.check_run_id)}
+                  >
                     Open Detail
                   </button>
                 </li>
@@ -354,11 +378,16 @@ export default function HistoryPage() {
                       <td>{item.check_name ?? "-"}</td>
                       <td>{formatDuration(item.execution_time_seconds)}</td>
                       <td>
-                        <StatusBadge status={aggregateStatus(item)} /> OK {item.results_summary.ok} | WARN {item.results_summary.warn} | ERROR {item.results_summary.error}
+                        <StatusBadge status={aggregateStatus(item)} /> OK {item.results_summary.ok}{" "}
+                        | WARN {item.results_summary.warn} | ERROR {item.results_summary.error}
                       </td>
                       <td>{item.slack_sent ? "Yes" : "No"}</td>
                       <td>
-                        <button type="button" className="ops-button" onClick={() => onViewDetail(item.check_run_id)}>
+                        <button
+                          type="button"
+                          className="ops-button"
+                          onClick={() => onViewDetail(item.check_run_id)}
+                        >
                           View Details
                         </button>
                       </td>
@@ -390,7 +419,9 @@ export default function HistoryPage() {
         </div>
       </section>
 
-      {isLoadingDetail ? <LoadingState title="Loading detail..." detail="Fetching check run detail." /> : null}
+      {isLoadingDetail ? (
+        <LoadingState title="Loading detail..." detail="Fetching check run detail." />
+      ) : null}
 
       {detail ? (
         <section className="ops-glass-panel checks-result" aria-label="History detail">
@@ -400,16 +431,27 @@ export default function HistoryPage() {
               Close Detail
             </button>
           </header>
-          <p>{detail.customer.display_name} | mode: {detail.check_mode} | Slack: {detail.slack_sent ? "sent" : "not sent"}</p>
+          <p>
+            {detail.customer.display_name} | mode: {detail.check_mode} | Slack:{" "}
+            {detail.slack_sent ? "sent" : "not sent"}
+          </p>
 
           {detail.results.map((result, index) => (
-            <article key={`${result.account.id}-${result.check_name}-${index}`} className="checks-result-row">
+            <article
+              key={`${result.account.id}-${result.check_name}-${index}`}
+              className="checks-result-row"
+            >
               <header>
-                <h3>{result.account.display_name} ({result.account.profile_name})</h3>
+                <h3>
+                  {result.account.display_name} ({result.account.profile_name})
+                </h3>
                 <StatusBadge status={result.status} />
               </header>
               <p>{result.summary}</p>
-              <CopyableOutput title={`${result.check_name} output`} text={result.output || result.summary} />
+              <CopyableOutput
+                title={`${result.check_name} output`}
+                text={result.output || result.summary}
+              />
             </article>
           ))}
         </section>

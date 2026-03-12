@@ -14,6 +14,27 @@ class _CloudWatchStub:
         }
 
 
+class _CloudWatchMetricAlarmsStub:
+    def __init__(self, thresholds):
+        self.thresholds = thresholds
+
+    def describe_alarms_for_metric(self, Namespace, MetricName, Dimensions):
+        _ = Namespace, MetricName, Dimensions
+        return {"MetricAlarms": [{"Threshold": value} for value in self.thresholds]}
+
+
+class _CloudWatchRoleAwareStub:
+    def describe_alarms_for_metric(self, Namespace, MetricName, Dimensions):
+        _ = Namespace, MetricName
+        dimensions_set = {(d.get("Name"), d.get("Value")) for d in Dimensions}
+        if dimensions_set == {
+            ("DBClusterIdentifier", "cis-prod-rds"),
+            ("Role", "WRITER"),
+        }:
+            return {"MetricAlarms": [{"Threshold": 24.0}]}
+        return {"MetricAlarms": []}
+
+
 def test_resolve_role_thresholds_uses_alarm_threshold_for_freeable_memory():
     checker = DailyArbelChecker(region="ap-southeast-3", window_hours=3)
     cfg = ACCOUNT_CONFIG["dermies-max"]
@@ -119,3 +140,152 @@ def test_evaluate_metric_uses_alarm_history_when_metric_breach_missing():
     assert status == "past-warn"
     assert "sekarang normal" in msg
     assert "ALARM pukul 12:32-12:45 WIB (13 menit)" in msg
+
+
+def test_should_emphasize_alarm_message_for_10min_or_more():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+
+    assert checker._should_emphasize_alarm_message(
+        {
+            "status": "warn",
+            "message": "CPU Utilization: 90% (di atas 75%) | ALARM pukul 12:00-12:15 WIB (15 menit)",
+        }
+    )
+
+
+def test_format_rds_detail_bolds_long_alarm_message():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    lines = []
+    checker._format_rds_detail(
+        {
+            "instances": {
+                "writer": {
+                    "instance_id": "cis-prod-rds-instance",
+                    "metrics": {
+                        "CPUUtilization": {
+                            "status": "warn",
+                            "message": "CPU Utilization: 90% (di atas 75%) | ALARM pukul 12:00-12:15 WIB (15 menit)",
+                        }
+                    },
+                }
+            }
+        },
+        lines,
+    )
+
+    assert (
+        "* *CPU Utilization: 90% (di atas 75%) | ALARM pukul 12:00-12:15 WIB (15 menit)*"
+        in lines
+    )
+
+
+def test_count_issues_includes_extra_sections():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    result = {
+        "status": "ATTENTION REQUIRED",
+        "instances": {
+            "writer": {
+                "metrics": {
+                    "CPUUtilization": {
+                        "status": "ok",
+                        "message": "CPU Utilization: 50% (normal)",
+                    }
+                }
+            }
+        },
+        "extra_sections": [
+            {
+                "section_name": "CIS ERHA EC2",
+                "service_type": "ec2",
+                "instances": {
+                    "rabbitmq": {
+                        "metrics": {
+                            "CPUUtilization": {
+                                "status": "warn",
+                                "message": "CPU Utilization: 85% (di atas 75%) | ALARM pukul 10:00-10:20 WIB (20 menit)",
+                            }
+                        }
+                    }
+                },
+            }
+        ],
+    }
+
+    assert checker.count_issues(result) == 1
+
+
+def test_format_report_renders_extra_ec2_section():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    report = checker.format_report(
+        {
+            "status": "OK",
+            "profile": "cis-erha",
+            "account_id": "451916275465",
+            "account_name": "CIS ERHA",
+            "service_type": "rds",
+            "instances": {},
+            "extra_sections": [
+                {
+                    "section_name": "CIS ERHA EC2",
+                    "service_type": "ec2",
+                    "instances": {
+                        "rabbitmq": {
+                            "instance_id": "i-076e1d2c0c3478c21",
+                            "metrics": {
+                                "CPUUtilization": {
+                                    "status": "ok",
+                                    "message": "CPU Utilization: 40% (normal)",
+                                }
+                            },
+                            "disk_memory_alarms": [],
+                        }
+                    },
+                }
+            ],
+        }
+    )
+
+    assert "CIS ERHA EC2:" in report
+
+
+def test_resolve_live_threshold_uses_min_for_above_metrics():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    cw = _CloudWatchMetricAlarmsStub([85, 75, 80])
+
+    threshold = checker._resolve_live_threshold(
+        cw,
+        "rds",
+        "cis-prod-rds-instance",
+        "CPUUtilization",
+    )
+
+    assert threshold == 75
+
+
+def test_resolve_live_threshold_uses_max_for_below_metrics():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    cw = _CloudWatchMetricAlarmsStub([400 * 1024**2, 800 * 1024**2])
+
+    threshold = checker._resolve_live_threshold(
+        cw,
+        "rds",
+        "erhabuddy-prod-mysql-db",
+        "FreeableMemory",
+    )
+
+    assert threshold == 800 * 1024**2
+
+
+def test_resolve_live_threshold_supports_cluster_role_dimensions():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+
+    threshold = checker._resolve_live_threshold(
+        _CloudWatchRoleAwareStub(),
+        "rds",
+        "cis-prod-rds-instance",
+        "ServerlessDatabaseCapacity",
+        cluster_id="cis-prod-rds",
+        role="writer",
+    )
+
+    assert threshold == 24.0

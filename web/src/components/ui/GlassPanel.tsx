@@ -5,7 +5,12 @@ type GlassPanelProps = HTMLAttributes<HTMLElement> & {
   children: ReactNode
 }
 
-export function GlassPanel({ as: Element = "section", className = "", children, ...props }: GlassPanelProps) {
+export function GlassPanel({
+  as: Element = "section",
+  className = "",
+  children,
+  ...props
+}: GlassPanelProps) {
   const mergedClassName = ["ops-glass-panel", className].filter(Boolean).join(" ")
   return (
     <Element className={mergedClassName} {...props}>

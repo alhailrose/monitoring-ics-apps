@@ -8,25 +8,26 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const makeExecuteResponse = (checkName: string) => ({
-  ok: true,
-  headers: new Headers({ "content-type": "application/json" }),
-  json: async () => ({
-    check_run_id: `run-${checkName}`,
-    execution_time_seconds: 1.5,
-    consolidated_output: `${checkName} output`,
-    slack_sent: false,
-    results: [
-      {
-        account: { id: "acc-1", profile_name: "aryanoble-prod", display_name: "Prod" },
-        check_name: checkName,
-        status: "OK",
-        summary: `${checkName} healthy`,
-        output: `${checkName} result`,
-      },
-    ],
-  }),
-} as Response)
+const makeExecuteResponse = (checkName: string) =>
+  ({
+    ok: true,
+    headers: new Headers({ "content-type": "application/json" }),
+    json: async () => ({
+      check_run_id: `run-${checkName}`,
+      execution_time_seconds: 1.5,
+      consolidated_output: `${checkName} output`,
+      slack_sent: false,
+      results: [
+        {
+          account: { id: "acc-1", profile_name: "aryanoble-prod", display_name: "Prod" },
+          check_name: checkName,
+          status: "OK",
+          summary: `${checkName} healthy`,
+          output: `${checkName} result`,
+        },
+      ],
+    }),
+  }) as Response
 
 const aryanobleFixture = {
   id: "cust-ary",
@@ -96,16 +97,15 @@ describe("ArbelCheckPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /backup status/i }))
 
     // Account selector should appear with both accounts
-    expect(await screen.findByText(/Prod \(aryanoble-prod\)/)).toBeInTheDocument()
-    expect(screen.getByText(/Dev \(aryanoble-dev\)/)).toBeInTheDocument()
+    expect(await screen.findByText(/aryanoble-prod/)).toBeInTheDocument()
+    expect(screen.getByText(/aryanoble-dev/)).toBeInTheDocument()
 
     // Uncheck "Select All" to enable individual selection, then pick only Prod
     const selectAllCheckbox = screen.getByRole("checkbox", { name: /select all/i })
     fireEvent.click(selectAllCheckbox) // deselect all
-    const prodCheckbox = screen.getAllByRole("checkbox", {
-      name: /prod \(aryanoble-prod\)/i,
-    })[0]
-    fireEvent.click(prodCheckbox)
+    const prodLabel = screen.getByText(/aryanoble-prod/i).closest("label")
+    expect(prodLabel).toBeTruthy()
+    fireEvent.click(prodLabel as HTMLElement)
 
     // Click Run
     fireEvent.click(screen.getByRole("button", { name: /run backup status/i }))
@@ -131,10 +131,10 @@ describe("ArbelCheckPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /alarm verification/i }))
 
     // The accordion card for Prod (has alarms) should appear
-    expect(await screen.findByText(/Prod \(aryanoble-prod\)/)).toBeInTheDocument()
+    expect(await screen.findByText(/aryanoble-prod/)).toBeInTheDocument()
 
     // Dev has null alarm_names — it should NOT appear in the alarm accordion
-    expect(screen.queryByText(/Dev \(aryanoble-dev\)/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/aryanoble-dev/)).not.toBeInTheDocument()
 
     // Prod shows 0/2 selected initially
     expect(screen.getByText(/0\/2 selected/)).toBeInTheDocument()
@@ -151,7 +151,7 @@ describe("ArbelCheckPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /alarm verification/i }))
 
     // Expand the Prod account accordion to see individual alarms
-    const prodCard = await screen.findByText(/Prod \(aryanoble-prod\)/)
+    const prodCard = await screen.findByText(/aryanoble-prod/)
     const accountCard = prodCard.closest(".arbel-alarm-account-card")!
     const expandButton = within(accountCard as HTMLElement).getByRole("button", { name: /▼/ })
     fireEvent.click(expandButton)
@@ -192,7 +192,7 @@ describe("ArbelCheckPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /alarm verification/i }))
 
     // Expand the Prod account accordion
-    const prodCard = await screen.findByText(/Prod \(aryanoble-prod\)/)
+    const prodCard = await screen.findByText(/aryanoble-prod/)
     const accountCard = prodCard.closest(".arbel-alarm-account-card")!
     const expandButton = within(accountCard as HTMLElement).getByRole("button", { name: /▼/ })
     fireEvent.click(expandButton)
@@ -220,7 +220,7 @@ describe("ArbelCheckPage", () => {
     expect(await screen.findByText(/Aryanoble — 2 active accounts/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /alarm verification/i }))
 
-    await screen.findByText(/Prod \(aryanoble-prod\)/)
+    await screen.findByText(/aryanoble-prod/)
 
     // No alarms selected — Run button should be disabled
     const runButton = screen.getByRole("button", { name: /run alarm verification/i })

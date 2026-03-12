@@ -146,7 +146,8 @@ def main():
   ./scripts/huawei/sync_sso_token.sh --source dh_prod_erp-ro
   monitoring-hub --check huawei-ecs-util --profile dh_prod_erp-ro --region ap-southeast-4
 
-  # Note: helper scripts live in repository scripts/huawei/.
+  # Note: helper scripts are not bundled with monitoring-hub package.
+  # They live in repository scripts/huawei/.
 
 {ICONS["check"]} Available checks: health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list, huawei-ecs-util
 
@@ -228,12 +229,13 @@ def main():
 
     # Customer mode
     if args.customer:
-        from src.core.runtime.customer_runner import run_customer_checks, prompt_and_send_slack
+        from src.core.runtime.customer_runner import (
+            run_customer_checks,
+            prompt_and_send_slack,
+        )
 
         region = args.region or "ap-southeast-3"
-        result = run_customer_checks(
-            args.customer, region=region, workers=args.workers
-        )
+        result = run_customer_checks(args.customer, region=region, workers=args.workers)
         if result:
             prompt_and_send_slack(result)
         sys.exit(0)
@@ -282,7 +284,10 @@ def main():
     exclude_backup_rds = not args.include_backup_rds
 
     if args.check:
-        if args.check in ["backup", "daily-arbel", "notifications", "huawei-ecs-util"] and len(profiles) > 1:
+        if (
+            args.check in ["backup", "daily-arbel", "notifications", "huawei-ecs-util"]
+            and len(profiles) > 1
+        ):
             run_group_specific(
                 args.check,
                 profiles,

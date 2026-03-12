@@ -47,6 +47,7 @@ accounts:
       - "CIS Aurora Writer - ACU Alarm"
       - "CIS Aurora Writer - IOs Pricing Alarm"
       - "CIS RabbitMQ - CPU Alarm"
+      - "CIS RabbitMQ - Memory Alarm"
       - "CIS Aurora Reader - Connection Alarm"
       - "CIS Aurora Writer - Connection Alarm"
     daily_arbel:
@@ -67,6 +68,22 @@ accounts:
       role_thresholds:
         reader:
           FreeableMemory: 19327352832
+    daily_arbel_extra:
+      - section_name: "CIS ERHA EC2"
+        service_type: ec2
+        instances:
+          rabbitmq: i-076e1d2c0c3478c21
+        instance_names:
+          i-076e1d2c0c3478c21: aws-prod-rabbitmq
+        metrics:
+          - CPUUtilization
+          - NetworkIn
+          - NetworkOut
+        thresholds:
+          CPUUtilization: 80
+        alarm_thresholds:
+          rabbitmq:
+            - "CIS RabbitMQ - Memory Alarm"
 
   - profile: dermies-max
     account_id: "637423567244"
@@ -166,10 +183,20 @@ accounts:
   - profile: genero-empower
     account_id: "941377160792"
     display_name: "GENERO EMPOWER"
+    alarm_names: []
 
   - profile: genero-manufacture
     account_id: "798344624633"
     display_name: "GENERO MANUFACTURE"
+    alarm_names:
+      - "Free Memory RDS Writer Below 400MB"
+      - "GENERO- MYSQL RDS Connection > 25"
+      - "GENERO-MYSQL RDS CPU Utilization > 75 %"
+      - "GENERO-POSTGRES RDS CPU Utilization > 75 %"
+      - "GENERO-POSTGRES RDS Connection > 25"
+      - "TargetTracking-eks-deployment-develop-3a-ng-new-a4cd52fd-d505-298b-9504-ce1e434e5417-AlarmHigh-ae2a66fc-af84-4d98-85f9-e32dba1e92b5"
+      - "TargetTracking-eks-deployment-develop-3a-ng-new-a4cd52fd-d505-298b-9504-ce1e434e5417-AlarmLow-4a952802-649e-45c4-85d4-83bc9d3bb439"
+      - "awsrds-genero-postgres-production-instance-1-Low-FreeableMemory"
 
   - profile: HRIS
     account_id: "493314732063"
@@ -312,6 +339,7 @@ accounts:
   - profile: centralized-s3
     account_id: "533267291161"
     display_name: "Centralized S3"
+    alarm_names: []
 
   - profile: backup-hris
     account_id: "390403877301"
@@ -326,3 +354,4 @@ accounts:
   - profile: arbel-master
     account_id: "477153214925"
     display_name: "Arbel Master"
+    alarm_names: []

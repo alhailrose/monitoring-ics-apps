@@ -10,7 +10,11 @@ from rich.panel import Panel
 from rich.table import Table
 
 from src.app.tui import common
-from src.configs.loader import list_customers, load_customer_config
+from src.configs.loader import (
+    get_alarm_names_for_profile,
+    list_customers,
+    load_customer_config,
+)
 from src.core.runtime.config import AVAILABLE_CHECKS, CUSTOM_STYLE
 from src.core.runtime.runners import run_all_checks, run_group_specific
 from src.core.runtime.ui import (
@@ -32,15 +36,19 @@ def _render_customer_dashboard(customers):
     table.add_column("Slack", style="white")
 
     for c in customers:
-        slack_status = "[green]ON[/green]" if c.get("slack_enabled") else "[dim]off[/dim]"
+        slack_status = (
+            "[green]ON[/green]" if c.get("slack_enabled") else "[dim]off[/dim]"
+        )
         checks_list = c.get("checks", [])
-        
+
         # Show all checks if <= 4, otherwise show first 3 + count
         if len(checks_list) <= 4:
             checks_str = ", ".join(checks_list) if checks_list else "[dim]none[/dim]"
         else:
-            checks_str = ", ".join(checks_list[:3]) + f" [dim]+{len(checks_list) - 3} more[/dim]"
-        
+            checks_str = (
+                ", ".join(checks_list[:3]) + f" [dim]+{len(checks_list) - 3} more[/dim]"
+            )
+
         table.add_row(
             c["display_name"],
             str(c["account_count"]),
@@ -66,8 +74,7 @@ def _run_aryanoble_subflow(cfg):
     Escape at any step goes back to previous step.
     """
     arbel_profiles = [
-        a["profile"] for a in cfg.get("accounts", [])
-        if a.get("daily_arbel")
+        a["profile"] for a in cfg.get("accounts", []) if a.get("daily_arbel")
     ]
     all_profiles = [a["profile"] for a in cfg.get("accounts", [])]
     default_rds_profiles = ["dermies-max", "cis-erha", "connect-prod"]
@@ -102,13 +109,17 @@ def _run_aryanoble_subflow(cfg):
     while True:
         if step == "mode":
             choice = common._select_prompt(
-                f"{ICONS['arbel']} Aryanoble - Pilih Mode", arbel_choices, allow_back=True
+                f"{ICONS['arbel']} Aryanoble - Pilih Mode",
+                arbel_choices,
+                allow_back=True,
             )
             if choice is None:
                 return None  # Escape at top level = exit flow
 
             if choice == "backup":
-                run_group_specific("backup", all_profiles, region, group_name="Aryanoble")
+                run_group_specific(
+                    "backup", all_profiles, region, group_name="Aryanoble"
+                )
                 return {"mode": "backup"}
 
             step = "accounts"
@@ -122,14 +133,14 @@ def _run_aryanoble_subflow(cfg):
                 ]
             else:
                 profile_choices = [
-                    questionary.Choice(
-                        p, value=p, checked=(p in default_rds_profiles)
-                    )
+                    questionary.Choice(p, value=p, checked=(p in default_rds_profiles))
                     for p in arbel_profiles
                 ]
 
             selected_profiles = common._checkbox_prompt(
-                f"{ICONS['check']} Pilih akun Aryanoble", profile_choices, allow_back=True
+                f"{ICONS['check']} Pilih akun Aryanoble",
+                profile_choices,
+                allow_back=True,
             )
             if selected_profiles is None:
                 # Escape = back to mode picker
@@ -160,8 +171,10 @@ def _run_aryanoble_subflow(cfg):
                 questionary.Choice("12 Jam", value=(12, "12 Hours")),
             ]
             selected_window = common._select_prompt(
-                f"{ICONS['rds']} Pilih Window RDS", window_choices,
-                default=(3, "3 Hours"), allow_back=True
+                f"{ICONS['rds']} Pilih Window RDS",
+                window_choices,
+                default=(3, "3 Hours"),
+                allow_back=True,
             )
             if selected_window is None:
                 # Escape = back to account picker
@@ -211,7 +224,9 @@ def _run_aryanoble_subflow(cfg):
                 except KeyboardInterrupt:
                     step = "accounts"
                     continue
-                selected_alarms = [x.strip() for x in (alarm_input or "").split(",") if x.strip()]
+                selected_alarms = [
+                    x.strip() for x in (alarm_input or "").split(",") if x.strip()
+                ]
                 if not selected_alarms:
                     print_error("Nama alarm wajib diisi.")
                     continue
@@ -248,14 +263,20 @@ def _run_generic_customer(cfg):
         print_error(f"Tidak ada checks dikonfigurasi untuk {display_name}")
         return None
 
-    # Simplified check selection (default: use all configured, can uncheck)
-    selected_checks = common._simple_check_select(display_name, checks, AVAILABLE_CHECKS)
+    # Searchable multi-select keeps flow testable and scalable for larger lists.
+    valid_checks = [check for check in checks if check in AVAILABLE_CHECKS]
+    selected_checks = common._searchable_multi_select_prompt(
+        f"{ICONS['check']} Pilih Checks untuk {display_name}",
+        valid_checks,
+    )
     if not selected_checks:
         print_error("Tidak ada check dipilih.")
         return None
 
-    # Simplified account selection (default: select all, can uncheck)
-    selected_profiles = common._simple_account_select(display_name, accounts)
+    selected_profiles = common._searchable_multi_select_prompt(
+        f"{ICONS['check']} Pilih akun untuk {display_name}",
+        [a["profile"] for a in accounts],
+    )
     if not selected_profiles:
         print_error("Tidak ada akun dipilih.")
         return None
@@ -269,18 +290,47 @@ def _run_generic_customer(cfg):
 
     # Split checks: consolidated (checker has render_section) vs individual
     consolidated = [
-        c for c in selected_checks
-        if c in AVAILABLE_CHECKS and AVAILABLE_CHECKS[c](region="").supports_consolidated
+        c
+        for c in selected_checks
+        if c in AVAILABLE_CHECKS
+        and AVAILABLE_CHECKS[c](region="").supports_consolidated
     ]
     individual = [c for c in selected_checks if c not in consolidated]
 
     # Run individual checks first (health, ec2list, etc.)
     for check_name in individual:
+        check_kwargs = None
+        if check_name == "alarm_verification":
+            alarm_names = []
+            for profile in selected_profiles:
+                alarm_names.extend(get_alarm_names_for_profile(profile))
+
+            deduped_alarm_names = []
+            seen_alarm_names = set()
+            for alarm_name in alarm_names:
+                if alarm_name in seen_alarm_names:
+                    continue
+                seen_alarm_names.add(alarm_name)
+                deduped_alarm_names.append(alarm_name)
+
+            if not deduped_alarm_names:
+                print_error(
+                    "Alarm belum dikonfigurasi untuk akun yang dipilih. "
+                    "Tambahkan alarm_names di configs/customers/<customer>.yaml"
+                )
+                continue
+
+            check_kwargs = {
+                "alarm_names": deduped_alarm_names,
+                "min_duration_minutes": 10,
+            }
+
         run_group_specific(
             check_name,
             selected_profiles,
             region,
             group_name=display_name,
+            check_kwargs=check_kwargs,
         )
 
     # Run consolidated checks via run_all_checks for a unified daily report
@@ -339,15 +389,15 @@ def _prompt_slack(cfg):
 
     from src.integrations.slack.notifier import send_to_webhook
 
-    sent, reason = send_to_webhook(webhook_url, f"Report for {display_name}", channel=channel or None)
+    sent, reason = send_to_webhook(
+        webhook_url, f"Report for {display_name}", channel=channel or None
+    )
     if sent:
         console.print(
             f"[green]{ICONS['check']} Report terkirim ke Slack {display_name} ({channel_display})[/green]"
         )
     else:
-        console.print(
-            f"[red]{ICONS['error']} Gagal kirim ke Slack: {reason}[/red]"
-        )
+        console.print(f"[red]{ICONS['error']} Gagal kirim ke Slack: {reason}[/red]")
 
 
 def _run_customer_auto(cfg):
@@ -378,8 +428,10 @@ def _run_customer_auto(cfg):
             break
 
     consolidated = [
-        c for c in valid_checks
-        if c in AVAILABLE_CHECKS and AVAILABLE_CHECKS[c](region="").supports_consolidated
+        c
+        for c in valid_checks
+        if c in AVAILABLE_CHECKS
+        and AVAILABLE_CHECKS[c](region="").supports_consolidated
     ]
     individual = [c for c in valid_checks if c not in consolidated]
 

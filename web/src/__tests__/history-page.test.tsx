@@ -83,7 +83,10 @@ describe("HistoryPage", () => {
     render(<HistoryPage />)
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/v1/history?customer_id=cust-1"), undefined)
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/history?customer_id=cust-1"),
+        undefined,
+      )
     })
 
     fireEvent.click(screen.getByRole("button", { name: /view details/i }))

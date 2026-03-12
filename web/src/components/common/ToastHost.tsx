@@ -8,7 +8,13 @@ export type ToastItem = {
   message: string
 }
 
-export function ToastHost({ toasts, onDismiss }: { toasts: ToastItem[]; onDismiss: (id: number) => void }) {
+export function ToastHost({
+  toasts,
+  onDismiss,
+}: {
+  toasts: ToastItem[]
+  onDismiss: (id: number) => void
+}) {
   if (toasts.length === 0) {
     return null
   }
@@ -42,8 +48,5 @@ export function useToastQueue() {
     }, 5000)
   }, [])
 
-  return useMemo(
-    () => ({ toasts, pushToast, dismissToast }),
-    [dismissToast, pushToast, toasts],
-  )
+  return useMemo(() => ({ toasts, pushToast, dismissToast }), [dismissToast, pushToast, toasts])
 }

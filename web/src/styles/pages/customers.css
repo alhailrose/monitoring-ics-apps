@@ -1,0 +1,66 @@
+.customer-header {
+  background:
+    radial-gradient(circle at top right, rgba(0, 183, 255, 0.15), transparent 38%),
+    linear-gradient(145deg, rgba(18, 33, 47, 0.7), rgba(8, 16, 23, 0.82));
+}
+
+.customer-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.customer-panel h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+}
+
+.customer-card {
+  border-left: 3px solid rgba(0, 214, 255, 0.52);
+  transition:
+    border-color var(--ops-transition-standard),
+    transform var(--ops-transition-standard);
+}
+
+.customer-card:hover {
+  border-left-color: rgba(0, 214, 255, 0.9);
+  transform: translateX(2px);
+}
+
+.customer-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.35rem 0.8rem;
+}
+
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  border: 1px solid;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  letter-spacing: 0.03em;
+}
+
+.auth-badge[data-auth="sso"] {
+  color: #7af0b0;
+  background: rgba(30, 135, 76, 0.2);
+  border-color: rgba(122, 240, 176, 0.4);
+}
+
+.auth-badge[data-auth="iam"] {
+  color: #a9bcc8;
+  background: rgba(78, 98, 114, 0.25);
+  border-color: rgba(169, 188, 200, 0.3);
+}
+
+.auth-badge[data-auth="key"] {
+  color: #ffd873;
+  background: rgba(191, 140, 8, 0.2);
+  border-color: rgba(255, 216, 115, 0.4);
+}

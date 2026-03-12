@@ -6,7 +6,9 @@ type SessionHealthOptions = {
   notify?: boolean
 }
 
-export function checkSessionHealth(options: SessionHealthOptions = {}): Promise<SessionHealthReport> {
+export function checkSessionHealth(
+  options: SessionHealthOptions = {},
+): Promise<SessionHealthReport> {
   const params = new URLSearchParams()
   if (options.customerId) {
     params.set("customer_id", options.customerId)

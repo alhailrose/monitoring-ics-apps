@@ -1,10 +1,13 @@
 """Tests for CheckExecutor per-account region and alarm_names injection."""
+
+import time
 import pytest
 from unittest.mock import MagicMock, patch
 
 
 def _make_executor(default_region="ap-southeast-3"):
     from src.app.services.check_executor import CheckExecutor
+
     executor = CheckExecutor(
         check_repo=MagicMock(),
         customer_repo=MagicMock(),
@@ -29,7 +32,9 @@ def test_execute_parallel_uses_account_region_when_set():
 
     with patch("src.app.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
-        executor._execute_parallel([acct], {"cloudwatch": MagicMock()}, "ap-southeast-3")
+        executor._execute_parallel(
+            [acct], {"cloudwatch": MagicMock()}, "ap-southeast-3"
+        )
 
     mock_run.assert_called_once()
     args, kwargs = mock_run.call_args
@@ -43,7 +48,9 @@ def test_execute_parallel_falls_back_to_effective_region_when_account_region_non
 
     with patch("src.app.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
-        executor._execute_parallel([acct], {"cloudwatch": MagicMock()}, "ap-southeast-3")
+        executor._execute_parallel(
+            [acct], {"cloudwatch": MagicMock()}, "ap-southeast-3"
+        )
 
     mock_run.assert_called_once()
     args, kwargs = mock_run.call_args
@@ -56,7 +63,9 @@ def test_execute_parallel_injects_alarm_names_for_cloudwatch():
 
     with patch("src.app.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
-        executor._execute_parallel([acct], {"cloudwatch": MagicMock()}, "ap-southeast-3")
+        executor._execute_parallel(
+            [acct], {"cloudwatch": MagicMock()}, "ap-southeast-3"
+        )
 
     mock_run.assert_called_once()
     args, kwargs = mock_run.call_args
@@ -99,7 +108,35 @@ def test_execute_parallel_request_check_params_override_alarm_names():
     assert check_kwargs["alarm_names"] == override_alarms
 
 
-def _make_customer(customer_id, display_name="Test", slack_enabled=False, accounts=None):
+def test_execute_parallel_times_out_stuck_checks():
+    from src.app.services.check_executor import CheckExecutor
+
+    executor = CheckExecutor(
+        check_repo=MagicMock(),
+        customer_repo=MagicMock(),
+        region="ap-southeast-3",
+        timeout=1,
+    )
+    acct = _make_account("connect-prod")
+
+    def _slow_run(*_args, **_kwargs):
+        time.sleep(1.2)
+        return {"status": "ok"}
+
+    with patch(
+        "src.app.services.check_executor._run_single_check", side_effect=_slow_run
+    ):
+        results = executor._execute_parallel(
+            [acct], {"cloudwatch": MagicMock()}, "ap-southeast-3"
+        )
+
+    assert results[acct]["cloudwatch"]["status"] == "error"
+    assert "timed out" in results[acct]["cloudwatch"]["error"]
+
+
+def _make_customer(
+    customer_id, display_name="Test", slack_enabled=False, accounts=None
+):
     customer = MagicMock()
     customer.id = customer_id
     customer.display_name = display_name
@@ -115,22 +152,35 @@ def test_execute_multi_customer_returns_check_runs_list():
     """execute() with two customer_ids returns two entries in check_runs."""
     from src.app.services.check_executor import CheckExecutor
 
-    cust1 = _make_customer("cust-1", accounts=[_make_account("prof-a", region="ap-southeast-1")])
-    cust2 = _make_customer("cust-2", accounts=[_make_account("prof-b", region="ap-southeast-1")])
+    cust1 = _make_customer(
+        "cust-1", accounts=[_make_account("prof-a", region="ap-southeast-1")]
+    )
+    cust2 = _make_customer(
+        "cust-2", accounts=[_make_account("prof-b", region="ap-southeast-1")]
+    )
 
     customer_repo = MagicMock()
-    customer_repo.get_customer.side_effect = lambda cid: {"cust-1": cust1, "cust-2": cust2}[cid]
+    customer_repo.get_customer.side_effect = lambda cid: {
+        "cust-1": cust1,
+        "cust-2": cust2,
+    }[cid]
 
     check_repo = MagicMock()
-    run1 = MagicMock(); run1.id = "run-uuid-1"
-    run2 = MagicMock(); run2.id = "run-uuid-2"
+    run1 = MagicMock()
+    run1.id = "run-uuid-1"
+    run2 = MagicMock()
+    run2.id = "run-uuid-2"
     check_repo.create_check_run.side_effect = [run1, run2]
 
-    executor = CheckExecutor(check_repo=check_repo, customer_repo=customer_repo, region="ap-southeast-3")
+    executor = CheckExecutor(
+        check_repo=check_repo, customer_repo=customer_repo, region="ap-southeast-3"
+    )
 
     with patch("src.app.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok", "_formatted_output": "ok"}
-        result = executor.execute(customer_ids=["cust-1", "cust-2"], mode="all", send_slack=False)
+        result = executor.execute(
+            customer_ids=["cust-1", "cust-2"], mode="all", send_slack=False
+        )
 
     assert "check_runs" in result
     assert len(result["check_runs"]) == 2
@@ -145,10 +195,14 @@ def test_execute_multi_customer_skips_unknown_customer():
     customer_repo = MagicMock()
     customer_repo.get_customer.return_value = None  # all unknown
 
-    executor = CheckExecutor(check_repo=MagicMock(), customer_repo=customer_repo, region="ap-southeast-3")
+    executor = CheckExecutor(
+        check_repo=MagicMock(), customer_repo=customer_repo, region="ap-southeast-3"
+    )
 
     with pytest.raises(ValueError, match="No valid customers"):
-        executor.execute(customer_ids=["ghost-1", "ghost-2"], mode="all", send_slack=False)
+        executor.execute(
+            customer_ids=["ghost-1", "ghost-2"], mode="all", send_slack=False
+        )
 
 
 def test_execute_multi_customer_skips_no_active_accounts():
@@ -159,17 +213,25 @@ def test_execute_multi_customer_skips_no_active_accounts():
     cust2 = _make_customer("cust-2", accounts=[_make_account("prof-b")])
 
     customer_repo = MagicMock()
-    customer_repo.get_customer.side_effect = lambda cid: {"cust-1": cust1, "cust-2": cust2}[cid]
+    customer_repo.get_customer.side_effect = lambda cid: {
+        "cust-1": cust1,
+        "cust-2": cust2,
+    }[cid]
 
     check_repo = MagicMock()
-    run = MagicMock(); run.id = "run-uuid-1"
+    run = MagicMock()
+    run.id = "run-uuid-1"
     check_repo.create_check_run.return_value = run
 
-    executor = CheckExecutor(check_repo=check_repo, customer_repo=customer_repo, region="ap-southeast-3")
+    executor = CheckExecutor(
+        check_repo=check_repo, customer_repo=customer_repo, region="ap-southeast-3"
+    )
 
     with patch("src.app.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok", "_formatted_output": "ok"}
-        result = executor.execute(customer_ids=["cust-1", "cust-2"], mode="all", send_slack=False)
+        result = executor.execute(
+            customer_ids=["cust-1", "cust-2"], mode="all", send_slack=False
+        )
 
     # cust-1 skipped (no accounts), only cust-2 in check_runs
     assert len(result["check_runs"]) == 1

@@ -134,8 +134,14 @@ export default function ProfilesPage() {
       </section>
 
       {isLoading ? <LoadingState title="Scanning profiles..." /> : null}
-      {isQuickAdding ? <LoadingState title="Adding profile..." detail="Updating customer account mapping." /> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {isQuickAdding ? (
+        <LoadingState title="Adding profile..." detail="Updating customer account mapping." />
+      ) : null}
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       {result ? (
         <section className="profiles-grid">
@@ -152,7 +158,10 @@ export default function ProfilesPage() {
             <h2>Mapped Profiles</h2>
             <ul>
               {result.mapped_profiles.map((profile) => (
-                <li key={profile}>{profile} {mappedToCustomer.get(profile) ? `- ${mappedToCustomer.get(profile)}` : ""}</li>
+                <li key={profile}>
+                  {profile}{" "}
+                  {mappedToCustomer.get(profile) ? `- ${mappedToCustomer.get(profile)}` : ""}
+                </li>
               ))}
             </ul>
           </article>

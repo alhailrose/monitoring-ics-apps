@@ -2,18 +2,15 @@ import { forwardRef, type SelectHTMLAttributes } from "react"
 
 export interface OpsSelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   options: { label: string; value: string }[]
+  placeholder?: string
 }
 
 export const OpsSelect = forwardRef<HTMLSelectElement, OpsSelectProps>(
-  ({ className, options, ...props }, ref) => {
+  ({ className, options, placeholder, ...props }, ref) => {
     return (
-      <select
-        ref={ref}
-        className={`ops-select ${className ?? ""}`}
-        {...props}
-      >
+      <select ref={ref} className={`ops-select ${className ?? ""}`} {...props}>
         <option value="" disabled hidden>
-          {props.placeholder || "Select an option..."}
+          {placeholder || "Select an option..."}
         </option>
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -22,6 +19,6 @@ export const OpsSelect = forwardRef<HTMLSelectElement, OpsSelectProps>(
         ))}
       </select>
     )
-  }
+  },
 )
 OpsSelect.displayName = "OpsSelect"

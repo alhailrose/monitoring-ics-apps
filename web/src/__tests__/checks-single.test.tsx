@@ -48,12 +48,12 @@ describe("SingleCheckPage", () => {
         ok: true,
         headers: new Headers({ "content-type": "application/json" }),
         json: async () => ({
-          check_run_id: "run-1",
+          check_runs: [{ customer_id: "cust-1", check_run_id: "run-1", slack_sent: false }],
           execution_time_seconds: 12.4,
           consolidated_output: "=== report ===",
-          slack_sent: false,
           results: [
             {
+              customer_id: "cust-1",
               account: {
                 id: "acc-1",
                 profile_name: "aryanoble-prod",
@@ -74,12 +74,13 @@ describe("SingleCheckPage", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers", undefined)
     })
 
-    fireEvent.change(screen.getByLabelText(/^customer$/i), { target: { value: "cust-1" } })
     fireEvent.change(screen.getByLabelText(/^check type$/i), { target: { value: "guardduty" } })
     const selectAllCheckbox = screen.getByLabelText(/select all accounts/i) as HTMLInputElement
     expect(selectAllCheckbox.checked).toBe(false)
-    fireEvent.click(screen.getByLabelText(/prod \(aryanoble-prod\)/i))
-    fireEvent.click(screen.getByRole("button", { name: /run check/i }))
+    const prodLabel = screen.getByText(/aryanoble-prod/i).closest("label")
+    expect(prodLabel).toBeTruthy()
+    fireEvent.click(prodLabel as HTMLElement)
+    fireEvent.click(screen.getByRole("button", { name: /run single check/i }))
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -95,7 +96,7 @@ describe("SingleCheckPage", () => {
     const init = submitCall[1] as RequestInit
     expect(init.body).toBe(
       JSON.stringify({
-        customer_id: "cust-1",
+        customer_ids: ["cust-1"],
         mode: "single",
         check_name: "guardduty",
         account_ids: ["acc-1"],

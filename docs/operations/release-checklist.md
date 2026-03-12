@@ -16,9 +16,11 @@ Checklist ini dipakai saat rilis bertahap per target (`web`, `api`, `tui`) supay
   - `target=web`
   - `approval_notes` terisi
   - `rollback_notes` terisi
+  - `run_smoke=true`
+  - `web_base_url` terisi
 - Post-release smoke:
-  - `curl -I http://<host>/` mengembalikan `200` atau `304`
-  - buka halaman `http://<host>/` dan verifikasi dashboard render
+  - via workflow `deploy-manual` (target `web`)
+  - atau manual fallback: `WEB_BASE_URL=https://<host> bash scripts/ci/smoke-web.sh`
 
 ## API release evidence
 
@@ -28,10 +30,11 @@ Checklist ini dipakai saat rilis bertahap per target (`web`, `api`, `tui`) supay
   - `target=api`
   - `approval_notes` terisi
   - `rollback_notes` terisi
+  - `run_smoke=true`
+  - `api_base_url` terisi
 - Post-release smoke:
-  - `curl -fsS http://<host>/health`
-  - `curl -fsS http://<host>/health/readiness`
-  - `curl -fsS http://<host>/api/v1/checks/available`
+  - via workflow `deploy-manual` (target `api`)
+  - atau manual fallback: `API_BASE_URL=https://<host> bash scripts/ci/smoke-api.sh`
 
 ## TUI release evidence
 
@@ -41,9 +44,10 @@ Checklist ini dipakai saat rilis bertahap per target (`web`, `api`, `tui`) supay
   - `target=tui`
   - `approval_notes` terisi
   - `rollback_notes` terisi
+  - `run_smoke=true`
 - Post-release smoke (operator machine):
-  - `monitoring-hub --help`
-  - jalankan satu check aman, misalnya `monitoring-hub --check health --profile <profile>`
+  - via workflow `deploy-manual` (target `tui`) atau `bash scripts/ci/smoke-tui.sh`
+  - opsional: jalankan satu check aman `monitoring-hub --check health --profile <profile>`
 
 ## Definition of done per release target
 

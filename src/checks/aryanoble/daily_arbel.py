@@ -1,6 +1,7 @@
 """Daily Arbel checker (ACU/CPU/FreeableMemory/Connections) with thresholds per account."""
 
 import logging
+import re
 import boto3
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
@@ -15,6 +16,19 @@ logger = logging.getLogger(__name__)
 
 JKT = ZoneInfo("Asia/Jakarta")
 PERIOD_SECONDS = 60  # 1 menit untuk detail lebih tinggi
+ALARM_BOLD_MINUTES = 10
+_DURATION_PATTERN = re.compile(r"\((\d+)\s+menit\)")
+ABOVE_THRESHOLD_METRICS = {
+    "ACUUtilization",
+    "CPUUtilization",
+    "DatabaseConnections",
+    "ServerlessDatabaseCapacity",
+}
+BELOW_THRESHOLD_METRICS = {
+    "FreeableMemory",
+    "FreeStorageSpace",
+    "BufferCacheHitRatio",
+}
 
 
 # Thresholds per account key/profile
@@ -278,7 +292,9 @@ def get_writer_instance(rds_client, cluster_id):
                 if member.get("IsClusterWriter"):
                     return member.get("DBInstanceIdentifier")
     except Exception as e:
-        logger.warning("Failed to detect writer instance for cluster %s: %s", cluster_id, e)
+        logger.warning(
+            "Failed to detect writer instance for cluster %s: %s", cluster_id, e
+        )
     return None
 
 
@@ -315,14 +331,20 @@ class DailyArbelChecker(BaseChecker):
         super().__init__(region, **kwargs)
         self.window_hours = window_hours
 
-    def _fetch_metrics(self, cw_client, instance_id, metric_names, profile=None, service_type="rds"):
+    def _fetch_metrics(
+        self, cw_client, instance_id, metric_names, profile=None, service_type="rds"
+    ):
         end = datetime.now(timezone.utc)
         start = end - timedelta(hours=self.window_hours)
 
         queries = []
         id_base = instance_id.replace("-", "_").replace(".", "_")
         for m in metric_names:
-            queries.append(build_metric_query(id_base, m, instance_id, "Average", service_type=service_type))
+            queries.append(
+                build_metric_query(
+                    id_base, m, instance_id, "Average", service_type=service_type
+                )
+            )
 
         resp = cw_client.get_metric_data(
             MetricDataQueries=queries,
@@ -362,11 +384,14 @@ class DailyArbelChecker(BaseChecker):
         except FileNotFoundError:
             customer_account = None
         except Exception as e:
-            logger.warning("Failed to load customer config for %s/%s: %s", profile, account_id, e)
+            logger.warning(
+                "Failed to load customer config for %s/%s: %s", profile, account_id, e
+            )
             customer_account = None
 
         if customer_account:
             daily = customer_account.get("daily_arbel") or {}
+            extra_sections = customer_account.get("daily_arbel_extra") or []
             return {
                 "account_name": customer_account.get("display_name", profile),
                 "cluster_id": daily.get("cluster_id"),
@@ -377,11 +402,19 @@ class DailyArbelChecker(BaseChecker):
                 "thresholds": daily.get("thresholds", {}),
                 "role_thresholds": daily.get("role_thresholds", {}),
                 "alarm_thresholds": daily.get("alarm_thresholds", {}),
+                "extra_sections": extra_sections,
             }
 
-        return ACCOUNT_CONFIG.get(profile)
+        legacy = ACCOUNT_CONFIG.get(profile)
+        if not legacy:
+            return None
+        cfg = dict(legacy)
+        cfg.setdefault("extra_sections", [])
+        return cfg
 
-    def _alarm_threshold_for_role(self, cw_client, profile, role, metric_name, cfg=None):
+    def _alarm_threshold_for_role(
+        self, cw_client, profile, role, metric_name, cfg=None
+    ):
         if cfg is None:
             cfg = ACCOUNT_CONFIG.get(profile, {})
         role_alarm_map = cfg.get("alarm_thresholds", {}).get(role, {})
@@ -402,12 +435,20 @@ class DailyArbelChecker(BaseChecker):
             if isinstance(threshold, (int, float)):
                 return float(threshold)
         except Exception as e:
-            logger.warning("Failed to resolve alarm threshold for %s/%s/%s: %s", profile, role, metric_name, e)
+            logger.warning(
+                "Failed to resolve alarm threshold for %s/%s/%s: %s",
+                profile,
+                role,
+                metric_name,
+                e,
+            )
             return None
 
         return None
 
-    def _resolve_role_thresholds(self, cw_client, profile, role, base_thresholds, role_thresholds=None, cfg=None):
+    def _resolve_role_thresholds(
+        self, cw_client, profile, role, base_thresholds, role_thresholds=None, cfg=None
+    ):
         resolved = dict(base_thresholds)
         # Apply per-role overrides from customer config first
         if role_thresholds and role in role_thresholds:
@@ -495,9 +536,7 @@ class DailyArbelChecker(BaseChecker):
         out = {}
 
         effective_cfg = cfg if cfg is not None else ACCOUNT_CONFIG.get(profile, {})
-        role_metric_map = (
-            effective_cfg.get("alarm_thresholds", {}).get(role, {})
-        )
+        role_metric_map = effective_cfg.get("alarm_thresholds", {}).get(role, {})
         for metric_name, alarm_name in role_metric_map.items():
             if not alarm_name:
                 continue
@@ -522,7 +561,13 @@ class DailyArbelChecker(BaseChecker):
                     current_state=alarm_state,
                 )
             except Exception as e:
-                logger.warning("Failed to get alarm history for %s/%s/%s: %s", profile, role, alarm_name, e)
+                logger.warning(
+                    "Failed to get alarm history for %s/%s/%s: %s",
+                    profile,
+                    role,
+                    alarm_name,
+                    e,
+                )
                 out[metric_name] = []
 
         return out
@@ -589,13 +634,11 @@ class DailyArbelChecker(BaseChecker):
             return "no-data", []
 
         avg = info.get("avg", 0)
-        min_spike_bytes = 1 * 1024 ** 3  # 1 GB minimum per 1-minute bucket
+        min_spike_bytes = 1 * 1024**3  # 1 GB minimum per 1-minute bucket
         spike_threshold = max(avg * 2, min_spike_bytes)
         timestamps = info.get("timestamps", [])
 
-        spikes = [
-            (t, v) for t, v in zip(timestamps, vals) if v > spike_threshold
-        ]
+        spikes = [(t, v) for t, v in zip(timestamps, vals) if v > spike_threshold]
 
         if not spikes:
             return "ok", []
@@ -624,21 +667,25 @@ class DailyArbelChecker(BaseChecker):
                 # Single-point spikes (duration=0) and very short bursts (<5 min)
                 # are treated as noise and filtered out intentionally.
                 continue
-            spike_periods.append({
-                "inst_id": inst_id,
-                "inst_name": inst_name,
-                "start_str": start_t,
-                "end_str": end_t,
-                "duration_min": duration,
-                "peak_bytes": peak[1],
-            })
+            spike_periods.append(
+                {
+                    "inst_id": inst_id,
+                    "inst_name": inst_name,
+                    "start_str": start_t,
+                    "end_str": end_t,
+                    "duration_min": duration,
+                    "peak_bytes": peak[1],
+                }
+            )
 
         if not spike_periods:
             return "ok", []
 
         return "past-warn", spike_periods
 
-    def _check_ec2_alarms(self, cw_client, profile: str, role: str, cfg=None) -> list[dict]:
+    def _check_ec2_alarms(
+        self, cw_client, profile: str, role: str, cfg=None
+    ) -> list[dict]:
         """Check CloudWatch alarm states for disk/memory for a given EC2 role.
 
         Returns a list of dicts, one per alarm that has fired (ALARM or has alarm periods):
@@ -650,10 +697,7 @@ class DailyArbelChecker(BaseChecker):
         """
         if cfg is None:
             cfg = ACCOUNT_CONFIG.get(profile, {})
-        alarm_names: list[str] = (
-            cfg.get("alarm_thresholds", {})
-            .get(role, [])
-        )
+        alarm_names: list[str] = cfg.get("alarm_thresholds", {}).get(role, [])
         if not alarm_names:
             return []
 
@@ -684,15 +728,20 @@ class DailyArbelChecker(BaseChecker):
                     current_state=current_state,
                 )
                 if current_state == "ALARM" or periods:
-                    results.append({
-                        "alarm_name": alarm_name,
-                        "current_state": current_state,
-                        "periods": periods,
-                    })
+                    results.append(
+                        {
+                            "alarm_name": alarm_name,
+                            "current_state": current_state,
+                            "periods": periods,
+                        }
+                    )
             except Exception as e:
                 logger.warning(
                     "Failed to check EC2 alarm %s/%s/%s: %s",
-                    profile, role, alarm_name, e,
+                    profile,
+                    role,
+                    alarm_name,
+                    e,
                 )
 
         return results
@@ -990,6 +1039,186 @@ class DailyArbelChecker(BaseChecker):
 
         return "no-data", f"{metric}: Data tidak tersedia"
 
+    def _collect_section_report(self, session, cw, profile, cfg):
+        service_type = cfg.get("service_type", "rds")
+        instances = dict(cfg.get("instances") or {})
+
+        # Resolve instances (auto-detect writer if None, RDS only)
+        if service_type == "rds":
+            rds = session.client("rds", region_name=self.region)
+            if instances.get("writer") is None and cfg.get("cluster_id"):
+                instances["writer"] = get_writer_instance(rds, cfg["cluster_id"])
+
+        instance_names = cfg.get("instance_names") or {}
+        metric_names = cfg.get("metrics") or []
+        base_thresholds = cfg.get("thresholds") or {}
+
+        instance_reports = {}
+        any_warn = False
+        threshold_cache = {}
+
+        for role, inst_id in instances.items():
+            if not inst_id:
+                instance_reports[role] = {
+                    "status": "no-data",
+                    "message": "Instance not found",
+                }
+                continue
+
+            metrics_info = self._fetch_metrics(
+                cw,
+                inst_id,
+                metric_names,
+                profile,
+                service_type=service_type,
+            )
+
+            # Attach instance_id/name to network metrics for EC2 spike reporting
+            if service_type == "ec2":
+                for metric_name in ("NetworkIn", "NetworkOut"):
+                    if metric_name in metrics_info:
+                        metrics_info[metric_name]["instance_id"] = inst_id
+                        metrics_info[metric_name]["instance_name"] = instance_names.get(
+                            inst_id, role
+                        )
+
+            role_thresholds = self._resolve_role_thresholds(
+                cw,
+                profile,
+                role,
+                base_thresholds,
+                role_thresholds=cfg.get("role_thresholds"),
+                cfg=cfg,
+            )
+
+            # Prefer live threshold from CloudWatch alarms; fallback to configured value
+            for metric_name in metric_names:
+                cache_key = (
+                    service_type,
+                    inst_id,
+                    cfg.get("cluster_id"),
+                    role,
+                    metric_name,
+                )
+                if cache_key not in threshold_cache:
+                    threshold_cache[cache_key] = self._resolve_live_threshold(
+                        cw,
+                        service_type,
+                        inst_id,
+                        metric_name,
+                        cluster_id=cfg.get("cluster_id"),
+                        role=role,
+                    )
+                live_threshold = threshold_cache[cache_key]
+                if live_threshold is not None:
+                    role_thresholds[metric_name] = live_threshold
+
+            if service_type == "rds":
+                role_alarm_periods = self._resolve_role_alarm_periods(
+                    cw, profile, role, cfg=cfg
+                )
+                for metric_name, periods in role_alarm_periods.items():
+                    if metric_name in metrics_info:
+                        metrics_info[metric_name]["alarm_periods"] = periods
+
+            evaluations = {}
+            for metric_name in metric_names:
+                status, msg = self._evaluate_metric(
+                    metric_name,
+                    metrics_info.get(metric_name, {}),
+                    role_thresholds,
+                    profile,
+                )
+                if metric_name in ("NetworkIn", "NetworkOut"):
+                    evaluations[metric_name] = {
+                        "status": status,
+                        "raw_data": msg,
+                        "message": "",
+                    }
+                else:
+                    evaluations[metric_name] = {"status": status, "message": msg}
+
+                if status in ("warn", "past-warn"):
+                    any_warn = True
+
+            instance_reports[role] = {
+                "instance_id": inst_id,
+                "metrics": evaluations,
+            }
+
+            if service_type == "ec2":
+                alarm_results = self._check_ec2_alarms(cw, profile, role, cfg=cfg)
+                instance_reports[role]["disk_memory_alarms"] = alarm_results
+                if alarm_results:
+                    any_warn = True
+
+        return instance_reports, any_warn
+
+    def _should_emphasize_alarm_message(self, metric_info: dict) -> bool:
+        if metric_info.get("status") not in ("warn", "past-warn"):
+            return False
+
+        message = str(metric_info.get("message") or "")
+        durations = [int(x) for x in _DURATION_PATTERN.findall(message)]
+        return any(duration >= ALARM_BOLD_MINUTES for duration in durations)
+
+    def _resolve_live_threshold(
+        self,
+        cw_client,
+        service_type,
+        instance_id,
+        metric_name,
+        cluster_id=None,
+        role=None,
+    ):
+        if metric_name in ("NetworkIn", "NetworkOut"):
+            return None
+
+        namespace = "AWS/EC2" if service_type == "ec2" else "AWS/RDS"
+        dimensions_to_try = []
+        if service_type == "ec2":
+            dimensions_to_try.append([{"Name": "InstanceId", "Value": instance_id}])
+        else:
+            dimensions_to_try.append(
+                [{"Name": "DBInstanceIdentifier", "Value": instance_id}]
+            )
+            if cluster_id:
+                dimensions_to_try.append(
+                    [{"Name": "DBClusterIdentifier", "Value": cluster_id}]
+                )
+                if role:
+                    dimensions_to_try.append(
+                        [
+                            {"Name": "DBClusterIdentifier", "Value": cluster_id},
+                            {"Name": "Role", "Value": str(role).upper()},
+                        ]
+                    )
+
+        thresholds = []
+        for dimensions in dimensions_to_try:
+            try:
+                response = cw_client.describe_alarms_for_metric(
+                    Namespace=namespace,
+                    MetricName=metric_name,
+                    Dimensions=dimensions,
+                )
+            except Exception:
+                continue
+
+            for alarm in response.get("MetricAlarms", []):
+                threshold = alarm.get("Threshold")
+                if isinstance(threshold, (int, float)):
+                    thresholds.append(float(threshold))
+
+        if not thresholds:
+            return None
+
+        if metric_name in ABOVE_THRESHOLD_METRICS:
+            return min(thresholds)
+        if metric_name in BELOW_THRESHOLD_METRICS:
+            return max(thresholds)
+        return thresholds[0]
+
     def check(self, profile, account_id):
         cfg = self._resolve_account_config(profile, account_id)
         if not cfg:
@@ -1005,71 +1234,46 @@ class DailyArbelChecker(BaseChecker):
             cw = session.client("cloudwatch", region_name=self.region)
             service_type = cfg.get("service_type", "rds")
 
-            # Resolve instances (auto-detect writer if None, RDS only)
-            instances = dict(cfg["instances"])
-            if service_type == "rds":
-                rds = session.client("rds", region_name=self.region)
-                if instances.get("writer") is None and cfg.get("cluster_id"):
-                    instances["writer"] = get_writer_instance(rds, cfg["cluster_id"])
+            instance_reports, any_warn = self._collect_section_report(
+                session,
+                cw,
+                profile,
+                cfg,
+            )
 
-            instance_names = cfg.get("instance_names", {})
-            instance_reports = {}
-            any_warn = False
-
-            for role, inst_id in instances.items():
-                if not inst_id:
-                    instance_reports[role] = {
-                        "status": "no-data",
-                        "message": "Instance not found",
-                    }
+            extra_sections_output = []
+            for idx, section in enumerate(cfg.get("extra_sections") or [], start=1):
+                if not isinstance(section, dict):
                     continue
 
-                metrics_info = self._fetch_metrics(cw, inst_id, cfg["metrics"], profile, service_type=service_type)
+                section_cfg = {
+                    "cluster_id": section.get("cluster_id"),
+                    "service_type": section.get("service_type", "rds"),
+                    "instances": section.get("instances", {}),
+                    "instance_names": section.get("instance_names", {}),
+                    "metrics": section.get("metrics", []),
+                    "thresholds": section.get("thresholds", {}),
+                    "role_thresholds": section.get("role_thresholds", {}),
+                    "alarm_thresholds": section.get("alarm_thresholds", {}),
+                }
 
-                # Attach instance_id/name to network metrics for EC2 spike reporting
-                if service_type == "ec2":
-                    for m in ("NetworkIn", "NetworkOut"):
-                        if m in metrics_info:
-                            metrics_info[m]["instance_id"] = inst_id
-                            metrics_info[m]["instance_name"] = instance_names.get(inst_id, role)
-
-                role_thresholds = self._resolve_role_thresholds(
+                section_instances, section_warn = self._collect_section_report(
+                    session,
                     cw,
                     profile,
-                    role,
-                    cfg["thresholds"],
-                    role_thresholds=cfg.get("role_thresholds"),
-                    cfg=cfg,
+                    section_cfg,
                 )
-                if service_type == "rds":
-                    role_alarm_periods = self._resolve_role_alarm_periods(cw, profile, role, cfg=cfg)
-                    for metric_name, periods in role_alarm_periods.items():
-                        if metric_name in metrics_info:
-                            metrics_info[metric_name]["alarm_periods"] = periods
-                evaluations = {}
-                for metric_name in cfg["metrics"]:
-                    status, msg = self._evaluate_metric(
-                        metric_name,
-                        metrics_info.get(metric_name, {}),
-                        role_thresholds,
-                        profile,
-                    )
-                    if metric_name in ("NetworkIn", "NetworkOut"):
-                        evaluations[metric_name] = {"status": status, "raw_data": msg, "message": ""}
-                    else:
-                        evaluations[metric_name] = {"status": status, "message": msg}
-                    if status in ("warn", "past-warn"):
-                        any_warn = True
+                if section_warn:
+                    any_warn = True
 
-                instance_reports[role] = {
-                    "instance_id": inst_id,
-                    "metrics": evaluations,
-                }
-                if service_type == "ec2":
-                    alarm_results = self._check_ec2_alarms(cw, profile, role, cfg=cfg)
-                    instance_reports[role]["disk_memory_alarms"] = alarm_results
-                    if alarm_results:
-                        any_warn = True
+                extra_sections_output.append(
+                    {
+                        "section_name": section.get("section_name")
+                        or f"Extra Section {idx}",
+                        "service_type": section_cfg.get("service_type", "rds"),
+                        "instances": section_instances,
+                    }
+                )
 
             status = "ATTENTION REQUIRED" if any_warn else "OK"
 
@@ -1082,6 +1286,7 @@ class DailyArbelChecker(BaseChecker):
                 "account_name": cfg.get("account_name", profile),
                 "service_type": service_type,
                 "instances": instance_reports,
+                "extra_sections": extra_sections_output,
             }
 
         except Exception as e:  # pragma: no cover
@@ -1137,20 +1342,36 @@ class DailyArbelChecker(BaseChecker):
         if service_type == "ec2":
             self._format_ec2_summary(results, lines)
         else:
-            self._format_rds_detail(results, lines)
+            self._format_rds_detail(results, lines, include_summary=True)
+
+        for section in results.get("extra_sections") or []:
+            if not isinstance(section, dict):
+                continue
+            lines.append("")
+            lines.append(f"{section.get('section_name', 'Extra Section')}:")
+            section_result = {"instances": section.get("instances", {})}
+            if section.get("service_type", "rds") == "ec2":
+                self._format_ec2_summary(section_result, lines)
+            else:
+                self._format_rds_detail(section_result, lines, include_summary=False)
 
         return "\n".join(lines)
 
-    def _format_rds_detail(self, results, lines):
+    def _format_rds_detail(self, results, lines, include_summary=True):
         """Format RDS per-instance detail report (existing format)."""
-        lines.append("Summary:")
+        if include_summary:
+            lines.append("Summary:")
         instances = results.get("instances", {})
         for role, data in instances.items():
             lines.append("")
             lines.append(f"{role.capitalize()} ({data.get('instance_id', 'N/A')}):")
             metrics = data.get("metrics", {})
-            for metric_name, info in metrics.items():
-                lines.append(f"* {info.get('message')}")
+            for info in metrics.values():
+                message = info.get("message") or "Data tidak tersedia"
+                if self._should_emphasize_alarm_message(info):
+                    lines.append(f"* *{message}*")
+                else:
+                    lines.append(f"* {message}")
 
     def _format_ec2_summary(self, results, lines):
         """Format EC2 summary-style report — 1 line per metric across all instances."""
@@ -1168,14 +1389,24 @@ class DailyArbelChecker(BaseChecker):
                     metric_data[metric_name] = []
                     metric_order.append(metric_name)
                 metric_data[metric_name].append(
-                    (inst_id, inst_name, role, info.get("status", "ok"), info.get("raw_data", info.get("message", "")))
+                    (
+                        inst_id,
+                        inst_name,
+                        role,
+                        info.get("status", "ok"),
+                        info.get("raw_data", info.get("message", "")),
+                    )
                 )
 
         for metric_name in metric_order:
             entries = metric_data[metric_name]
 
             if metric_name == "CPUUtilization":
-                spiked = [(iid, iname, role, msg) for iid, iname, role, st, msg in entries if st in ("warn", "past-warn")]
+                spiked = [
+                    (iid, iname, role, msg)
+                    for iid, iname, role, st, msg in entries
+                    if st in ("warn", "past-warn")
+                ]
                 if spiked:
                     parts = []
                     for iid, iname, role, msg in spiked:
@@ -1185,9 +1416,13 @@ class DailyArbelChecker(BaseChecker):
                         if idx >= 0:
                             time_info = " " + msg[idx:]
                         parts.append(f"{iname}{time_info}")
-                    lines.append(f"- CPU utilization = Terdapat spike pada " + ", ".join(parts))
+                    lines.append(
+                        f"- CPU utilization = Terdapat spike pada " + ", ".join(parts)
+                    )
                 else:
-                    lines.append("- CPU utilization = Tidak terdapat spike yang signifikan")
+                    lines.append(
+                        "- CPU utilization = Tidak terdapat spike yang signifikan"
+                    )
 
             elif metric_name in ("NetworkIn", "NetworkOut"):
                 label = metric_name
@@ -1198,7 +1433,9 @@ class DailyArbelChecker(BaseChecker):
                         all_spike_periods.extend(raw_data)
 
                 if not all_spike_periods:
-                    lines.append(f"- {label} spike: Tidak terdapat spike yang signifikan")
+                    lines.append(
+                        f"- {label} spike: Tidak terdapat spike yang signifikan"
+                    )
                 else:
                     lines.append(f"- {label} spike:")
                     # Group by inst_id (stable key); use inst_name only for display
@@ -1244,13 +1481,10 @@ class DailyArbelChecker(BaseChecker):
                         lines.append(f"    {role} | {alarm_name}: ALARM")
                     else:
                         # Pernah ALARM — tampilkan hanya periode >= 15 menit
-                        long_periods = [
-                            (s, e, d) for _, s, e, d in periods if d >= 15
-                        ]
+                        long_periods = [(s, e, d) for _, s, e, d in periods if d >= 15]
                         if long_periods:
                             period_strs = [
-                                f"{s}-{e} WIB ({d} menit)"
-                                for s, e, d in long_periods
+                                f"{s}-{e} WIB ({d} menit)" for s, e, d in long_periods
                             ]
                             lines.append(
                                 f"    {role} | {alarm_name}: pernah ALARM — "
@@ -1262,11 +1496,18 @@ class DailyArbelChecker(BaseChecker):
     def count_issues(self, result: dict) -> int:
         if result.get("status") in ("error", "skipped"):
             return 0
+
         warn_count = 0
-        for data in result.get("instances", {}).values():
-            for m in data.get("metrics", {}).values():
-                if m.get("status") in ("warn", "past-warn"):
-                    warn_count += 1
+        sections = [{"instances": result.get("instances", {})}]
+        for extra in result.get("extra_sections") or []:
+            if isinstance(extra, dict):
+                sections.append(extra)
+
+        for section in sections:
+            for data in (section.get("instances") or {}).values():
+                for metric in data.get("metrics", {}).values():
+                    if metric.get("status") in ("warn", "past-warn"):
+                        warn_count += 1
         return warn_count
 
     def render_section(self, all_results: dict, errors: list) -> list[str]:
@@ -1295,6 +1536,8 @@ class DailyArbelChecker(BaseChecker):
             lines.append(f"Status: {len(rds_warnings)} accounts with metric warnings")
             for profile, warn_count in rds_warnings:
                 account_id = all_results[profile].get("account_id", "Unknown")
-                lines.append(f"  * {profile} ({account_id}): {warn_count} metric warnings")
+                lines.append(
+                    f"  * {profile} ({account_id}): {warn_count} metric warnings"
+                )
 
         return lines

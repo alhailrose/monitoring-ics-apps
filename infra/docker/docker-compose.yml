@@ -27,6 +27,7 @@ services:
     volumes:
       - ../..:/app
       - ${HOME}/.aws:/root/.aws:ro
+      - ${HOME}/.aws/sso/cache:/root/.aws/sso/cache:rw
     command: >
       sh -c "pip install --no-cache-dir . &&
       uvicorn src.app.api.main:app --host 0.0.0.0 --port 8000"
@@ -47,6 +48,7 @@ services:
       - "8080:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../../web/dist:/usr/share/nginx/html:ro
     depends_on:
       api:
         condition: service_healthy

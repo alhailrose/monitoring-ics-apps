@@ -5,8 +5,8 @@ import { defineConfig } from "vite"
 export default defineConfig({
   resolve: {
     alias: {
-      "next/link": fileURLToPath(new URL("./src/next/link.tsx", import.meta.url))
-    }
+      "next/link": fileURLToPath(new URL("./src/next/link.tsx", import.meta.url)),
+    },
   },
   server: {
     host: "0.0.0.0",
@@ -14,12 +14,12 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8080",
-        changeOrigin: true
-      }
-    }
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     host: "0.0.0.0",
-    port: 4173
-  }
+    port: 4173,
+  },
 })

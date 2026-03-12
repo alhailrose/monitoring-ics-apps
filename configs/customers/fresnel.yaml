@@ -22,6 +22,7 @@ accounts:
   - profile: fresnel-pialang
     account_id: "510940807875"
     display_name: "Fresnel Pialang"
+    alarm_names: []
 
   - profile: fresnel-phoenix
     account_id: "197353582440"
@@ -45,6 +46,7 @@ accounts:
     account_id: "466650104955"
     display_name: "Fresnel Master"
     sso: false
+    alarm_names: []
 
 # Untuk menggunakan alarm_verification check, tambahkan:
 # alarm_names:

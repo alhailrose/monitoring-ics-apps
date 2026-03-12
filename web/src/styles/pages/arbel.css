@@ -1,0 +1,183 @@
+.arbel-menu-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.arbel-menu-card {
+  padding: 0;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.arbel-menu-card.arbel-menu-open {
+  border-color: var(--ops-color-text-accent);
+}
+
+.arbel-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  gap: 1rem;
+}
+
+.arbel-menu-header:hover {
+  background: rgba(0, 240, 255, 0.06);
+}
+
+.arbel-menu-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--ops-color-text-accent);
+}
+
+.arbel-menu-header p {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ops-color-text-muted);
+}
+
+.arbel-chevron {
+  font-size: 0.75rem;
+  color: var(--ops-color-text-muted);
+  flex-shrink: 0;
+}
+
+.arbel-submenu {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--ops-color-border);
+}
+
+.arbel-accounts {
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 0.6rem;
+}
+
+.arbel-option-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.arbel-option-row label {
+  font-size: 0.9rem;
+  color: var(--ops-color-text-soft);
+  white-space: nowrap;
+}
+
+.arbel-option-row select {
+  max-width: 180px;
+}
+
+.arbel-run-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--ops-color-border);
+}
+
+.arbel-alarm-count {
+  font-size: 0.78rem;
+  color: var(--ops-color-text-muted);
+  margin-left: 0.3rem;
+}
+
+.arbel-alarm-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.arbel-alarm-account-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.arbel-alarm-account-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  user-select: none;
+}
+
+.arbel-alarm-account-header:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.arbel-alarm-account-label {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.arbel-alarm-count-badge {
+  font-size: 0.72rem;
+  color: var(--ops-muted, #8899aa);
+  white-space: nowrap;
+}
+
+.arbel-alarm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.4rem 0.75rem 0.5rem 2rem;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.arbel-alarm-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  padding: 0.15rem 0;
+  color: var(--ops-text, #cdd5e0);
+}
+
+.arbel-alarm-item input[type="checkbox"] {
+  flex-shrink: 0;
+}
+
+.arbel-alarm-account-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.arbel-alarm-action-btn {
+  background: none;
+  border: none;
+  color: var(--ops-muted, #8899aa);
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+  text-decoration: underline;
+}
+
+.arbel-alarm-action-btn:hover {
+  color: var(--ops-text, #cdd5e0);
+}
+
+.arbel-alarm-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  text-decoration: none;
+}

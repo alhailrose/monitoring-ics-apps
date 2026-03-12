@@ -51,7 +51,7 @@ type HistoryItem = {
 
 const QUEUE_ROWS: QueueRow[] = [
   { id: "job-1028", status: "running", customer: "aryanoble", check: "daily-arbel" },
-  { id: "job-1027", status: "queued", customer: "opal-ics", check: "nightly-audit" }
+  { id: "job-1027", status: "queued", customer: "opal-ics", check: "nightly-audit" },
 ]
 
 const POLL_INTERVAL_MS = 3000
@@ -72,14 +72,20 @@ const parseProfiles = (value: string): string[] => {
 }
 
 const hasActiveJobForCustomer = (rows: QueueRow[], customerId: string): boolean => {
-  return rows.some((row) => row.customer === customerId && (row.status === "queued" || row.status === "running"))
+  return rows.some(
+    (row) => row.customer === customerId && (row.status === "queued" || row.status === "running"),
+  )
 }
 
 const isActiveStatus = (status: string): boolean => {
   return status === "queued" || status === "running"
 }
 
-const mergeCustomerRows = (existingRows: QueueRow[], historyRows: QueueRow[], customerId: string): QueueRow[] => {
+const mergeCustomerRows = (
+  existingRows: QueueRow[],
+  historyRows: QueueRow[],
+  customerId: string,
+): QueueRow[] => {
   const customerLocalRows = existingRows.filter((row) => row.customer === customerId)
   const retainedRows = existingRows.filter((row) => row.customer !== customerId)
   const historyJobIds = new Set(historyRows.map((row) => row.id))
@@ -104,7 +110,7 @@ const normalizeHistoryItem = (value: unknown): HistoryItem | null => {
     job_id: readString(value.job_id, "unknown-job"),
     customer_id: readString(value.customer_id, "unknown-customer"),
     check_name: readString(value.check_name, "unknown-check"),
-    status: readString(value.status, "unknown")
+    status: readString(value.status, "unknown"),
   }
 }
 
@@ -159,7 +165,7 @@ export default function JobsPage() {
                 id: item.job_id,
                 status: item.status,
                 customer: item.customer_id,
-                check: item.check_name
+                check: item.check_name,
               }))
           : []
 
@@ -192,7 +198,7 @@ export default function JobsPage() {
     if (!customer || !check) {
       setSubmitFeedback({
         tone: "error",
-        message: "Customer and check are required to queue a run."
+        message: "Customer and check are required to queue a run.",
       })
       return
     }
@@ -204,13 +210,13 @@ export default function JobsPage() {
       const response = await fetch("/api/v1/jobs", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           customer_id: customer,
           check_name: check,
-          profiles
-        })
+          profiles,
+        }),
       })
 
       if (!response.ok) {
@@ -224,13 +230,13 @@ export default function JobsPage() {
       setPollCustomerId(customer)
       setSubmitFeedback({
         tone: "success",
-        message: `Queued job ${jobId} for ${customer} / ${check}.`
+        message: `Queued job ${jobId} for ${customer} / ${check}.`,
       })
       formElement.reset()
     } catch {
       setSubmitFeedback({
         tone: "error",
-        message: "Failed to queue job. Please try again."
+        message: "Failed to queue job. Please try again.",
       })
     } finally {
       setIsSubmitting(false)
@@ -244,7 +250,9 @@ export default function JobsPage() {
         <h1 id="jobs-page-title" className="jobs-title">
           Jobs
         </h1>
-        <p className="jobs-description">Launch targeted customer checks and monitor queue health in one control surface.</p>
+        <p className="jobs-description">
+          Launch targeted customer checks and monitor queue health in one control surface.
+        </p>
       </GlassPanel>
 
       <section className="jobs-grid" aria-label="Manual run controls and queue snapshot">
@@ -255,10 +263,10 @@ export default function JobsPage() {
           <form className="jobs-form" onSubmit={handleSubmit}>
             <div className="jobs-field">
               <label htmlFor="job-customer">Customer</label>
-              <OpsSelect 
-                id="job-customer" 
-                name="customer_id" 
-                required 
+              <OpsSelect
+                id="job-customer"
+                name="customer_id"
+                required
                 options={CUSTOMER_OPTIONS}
                 defaultValue="aryanoble"
               />

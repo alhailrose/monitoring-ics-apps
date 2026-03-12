@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional
 
@@ -25,13 +25,23 @@ from src.core.runtime.config import (
 )
 from src.core.runtime.utils import get_account_id as get_account_id_from_profile
 from src.core.runtime.reports import build_whatsapp_backup, build_whatsapp_rds
-from src.checks.common.aws_errors import is_credential_error, friendly_credential_message
+from src.checks.common.aws_errors import (
+    is_credential_error,
+    friendly_credential_message,
+)
 from src.integrations.slack.notifier import send_to_webhook
 
 logger = logging.getLogger(__name__)
 
 # Arbel-specific checks (fixed preset for Aryanoble)
-ARBEL_CHECKS = ["cost", "guardduty", "cloudwatch", "notifications", "backup", "daily-arbel"]
+ARBEL_CHECKS = [
+    "cost",
+    "guardduty",
+    "cloudwatch",
+    "notifications",
+    "backup",
+    "daily-arbel",
+]
 
 
 def _json_safe(obj):
@@ -214,7 +224,9 @@ def _build_consolidated_report(
         summary_text += f" {len(check_errors)} check error(s) encountered; see CHECK ERRORS section."
 
     if not totals and not check_errors:
-        summary_text += " No new security incidents detected. All systems operating normally."
+        summary_text += (
+            " No new security incidents detected. All systems operating normally."
+        )
     elif totals:
         issue_parts = []
         if check_errors:
@@ -224,7 +236,9 @@ def _build_consolidated_report(
             if checker.issue_label:
                 issue_parts.append(f"{total} {checker.issue_label}")
         if issue_parts:
-            summary_text += f" {' and '.join(issue_parts)} detected requiring attention."
+            summary_text += (
+                f" {' and '.join(issue_parts)} detected requiring attention."
+            )
 
     lines.append(summary_text)
     lines.append("")
@@ -293,8 +307,10 @@ def _build_consolidated_report(
             if checker.recommendation_text:
                 lines.append(f"{rec_count}. {checker.recommendation_text}")
                 affected = [
-                    p for p in profiles
-                    if checker.count_issues(all_results.get(p, {}).get(chk_name, {})) > 0
+                    p
+                    for p in profiles
+                    if checker.count_issues(all_results.get(p, {}).get(chk_name, {}))
+                    > 0
                 ]
                 if affected:
                     lines.append(f"   Affected accounts: {', '.join(affected)}")
@@ -331,7 +347,14 @@ class CheckExecutor:
     and optionally sends to Slack.
     """
 
-    def __init__(self, check_repo, customer_repo, region: str, max_workers: int = DEFAULT_WORKERS, timeout: int = 300):
+    def __init__(
+        self,
+        check_repo,
+        customer_repo,
+        region: str,
+        max_workers: int = DEFAULT_WORKERS,
+        timeout: int = 300,
+    ):
         self.check_repo = check_repo
         self.customer_repo = customer_repo
         self.region = region
@@ -382,14 +405,17 @@ class CheckExecutor:
             # Resolve accounts
             if account_ids:
                 accounts = [
-                    acc for acc in customer.accounts
+                    acc
+                    for acc in customer.accounts
                     if acc.id in account_ids and acc.is_active
                 ]
             else:
                 accounts = [acc for acc in customer.accounts if acc.is_active]
 
             if not accounts:
-                logger.warning(f"No active accounts for customer {customer_id}, skipping")
+                logger.warning(
+                    f"No active accounts for customer {customer_id}, skipping"
+                )
                 warnings.append(f"No active accounts: {customer_id}")
                 continue
 
@@ -404,7 +430,9 @@ class CheckExecutor:
             )
 
             # Execute checks in parallel
-            raw_results = self._execute_parallel(accounts, checks_to_run, effective_region, check_params)
+            raw_results = self._execute_parallel(
+                accounts, checks_to_run, effective_region, check_params
+            )
 
             # Build per-profile results structure for consolidated report
             profile_results = {}
@@ -423,7 +451,9 @@ class CheckExecutor:
                     if raw_result.get("status") == "error":
                         err_msg = raw_result.get("error", "Unknown error")
                         check_errors.append((profile, chk_name, err_msg))
-                        errors_by_check.setdefault(chk_name, []).append((profile, err_msg))
+                        errors_by_check.setdefault(chk_name, []).append(
+                            (profile, err_msg)
+                        )
 
             # Ensure all checks have a checker instance (even if all errored)
             for chk_name in checks_to_run:
@@ -439,7 +469,10 @@ class CheckExecutor:
                 has_issues = False
                 for chk_name, checker in checkers_map.items():
                     result = profile_results.get(profile, {}).get(chk_name, {})
-                    if result.get("status") == "error" or checker.count_issues(result) > 0:
+                    if (
+                        result.get("status") == "error"
+                        or checker.count_issues(result) > 0
+                    ):
                         has_issues = True
                         break
                 if not has_issues:
@@ -453,10 +486,9 @@ class CheckExecutor:
                     summary = _build_summary(raw_result, chk_name)
                     output = raw_result.get("_formatted_output", "")
 
-                    details = _json_safe({
-                        k: v for k, v in raw_result.items()
-                        if not k.startswith("_")
-                    })
+                    details = _json_safe(
+                        {k: v for k, v in raw_result.items() if not k.startswith("_")}
+                    )
 
                     self.check_repo.add_result(
                         check_run_id=check_run.id,
@@ -468,18 +500,20 @@ class CheckExecutor:
                         details=details,
                     )
 
-                    result_items.append({
-                        "customer_id": customer_id,
-                        "account": {
-                            "id": account.id,
-                            "profile_name": account.profile_name,
-                            "display_name": account.display_name,
-                        },
-                        "check_name": chk_name,
-                        "status": status,
-                        "summary": summary,
-                        "output": output,
-                    })
+                    result_items.append(
+                        {
+                            "customer_id": customer_id,
+                            "account": {
+                                "id": account.id,
+                                "profile_name": account.profile_name,
+                                "display_name": account.display_name,
+                            },
+                            "check_name": chk_name,
+                            "status": status,
+                            "summary": summary,
+                            "output": output,
+                        }
+                    )
 
             all_result_items.extend(result_items)
 
@@ -521,11 +555,13 @@ class CheckExecutor:
                 slack_sent=slack_sent,
             )
 
-            check_runs_list.append({
-                "customer_id": customer_id,
-                "check_run_id": check_run.id,
-                "slack_sent": slack_sent,
-            })
+            check_runs_list.append(
+                {
+                    "customer_id": customer_id,
+                    "check_run_id": check_run.id,
+                    "slack_sent": slack_sent,
+                }
+            )
 
         if not check_runs_list:
             raise ValueError(
@@ -564,7 +600,9 @@ class CheckExecutor:
                     if chk in AVAILABLE_CHECKS:
                         resolved[chk] = AVAILABLE_CHECKS[chk]
                     else:
-                        logger.warning(f"Unknown check '{chk}' in customer config, skipping")
+                        logger.warning(
+                            f"Unknown check '{chk}' in customer config, skipping"
+                        )
                 if resolved:
                     return resolved
             # Fallback to default all-mode checks
@@ -580,7 +618,13 @@ class CheckExecutor:
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
-    def _execute_parallel(self, accounts: list, checks: dict, region: str, check_params: dict | None = None) -> dict:
+    def _execute_parallel(
+        self,
+        accounts: list,
+        checks: dict,
+        region: str,
+        check_params: dict | None = None,
+    ) -> dict:
         """Run checks across accounts in parallel."""
         results = {}
 
@@ -604,7 +648,10 @@ class CheckExecutor:
                         check_kwargs = dict(account.config_extra[chk_name])
 
                     # Inject alarm_names from DB for cloudwatch and alarm_verification checks
-                    if chk_name in ("cloudwatch", "alarm_verification") and account.alarm_names:
+                    if (
+                        chk_name in ("cloudwatch", "alarm_verification")
+                        and account.alarm_names
+                    ):
                         if check_kwargs is None:
                             check_kwargs = {}
                         check_kwargs.setdefault("alarm_names", account.alarm_names)
@@ -635,18 +682,32 @@ class CheckExecutor:
                     )
                     futures[future] = (account, chk_name)
 
-            for future in as_completed(futures):
+            done, pending = wait(
+                futures.keys(),
+                timeout=self.timeout,
+                return_when=ALL_COMPLETED,
+            )
+
+            for future in done:
                 account, chk_name = futures[future]
                 try:
-                    raw_result = future.result(timeout=self.timeout)
-                except TimeoutError:
-                    raw_result = {"status": "error", "error": f"Check timed out after {self.timeout}s"}
+                    raw_result = future.result()
                 except Exception as exc:
                     raw_result = {"status": "error", "error": str(exc)}
 
                 if account not in results:
                     results[account] = {}
                 results[account][chk_name] = raw_result
+
+            for future in pending:
+                account, chk_name = futures[future]
+                future.cancel()
+                if account not in results:
+                    results[account] = {}
+                results[account][chk_name] = {
+                    "status": "error",
+                    "error": f"Check timed out after {self.timeout}s",
+                }
 
         return results
 
@@ -673,5 +734,7 @@ class CheckExecutor:
             customer.slack_webhook_url, text, channel=customer.slack_channel
         )
         if not sent:
-            logger.warning(f"Slack delivery failed for {customer.display_name}: {reason}")
+            logger.warning(
+                f"Slack delivery failed for {customer.display_name}: {reason}"
+            )
         return sent

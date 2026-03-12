@@ -9,6 +9,14 @@ Monitoring Hub adalah platform monitoring AWS terpusat untuk multiple customer. 
 
 Keduanya menjalankan check yang sama dari modul `src/checks/`, hanya berbeda di layer presentasi dan cara eksekusi.
 
+## Status Operasional Phase 2 (sumber kebenaran harian)
+
+- Runtime API kanonis tetap di `src/app/api/`; `apps/api/main.py` hanya compatibility wrapper.
+- Runtime TUI kanonis tetap di `src/app/cli/` + `src/app/tui/`; `apps/tui/main.py` hanya wrapper.
+- Runtime web aktif tetap di `web/`; `apps/web/` masih scaffold migrasi bertahap.
+- Deploy single server saat ini menggunakan `postgres + api + nginx` (tanpa worker/redis terpisah).
+- Rilis dipisah per target dengan workflow gate `deploy-manual` + checklist bukti di `docs/operations/release-checklist.md`.
+
 ---
 
 ## Struktur Folder
@@ -244,7 +252,7 @@ Base URL: `http://localhost:8000/api/v1`
 Request body `POST /checks/execute`:
 ```json
 {
-  "customer_id": "uuid",
+  "customer_ids": ["uuid"],
   "mode": "single|all|arbel",
   "check_name": "cost",
   "account_ids": ["uuid"],
@@ -252,6 +260,14 @@ Request body `POST /checks/execute`:
   "check_params": {"window_hours": 12}
 }
 ```
+
+Compatibility: payload lama dengan field `customer_id` (single string) masih diterima dan dinormalisasi otomatis ke `customer_ids`.
+
+Contract validation untuk endpoint ini:
+- `customer_ids` tidak boleh kosong/duplikat
+- `mode=single` wajib menyertakan `check_name`
+- `account_ids` (jika ada) tidak boleh duplikat
+- response tervalidasi konsisten (`check_runs`, `execution_time_seconds`, `results`, `consolidated_outputs`)
 
 Field `check_params` (opsional): parameter tambahan yang dikirim ke checker constructor. Merge dengan `config_extra` dari DB (API override DB). Contoh:
 - `{"window_hours": 6}` → `DailyArbelChecker(window_hours=6)`
@@ -271,6 +287,13 @@ Alarm names tidak perlu dikirim via `check_params` — sudah tersimpan di `confi
 |---|---|---|
 | GET | `/profiles` | Deteksi AWS profile dari `~/.aws/config` |
 | GET | `/sessions/health` | Cek status SSO session |
+
+### Platform Health
+| Method | Path | Keterangan |
+|---|---|---|
+| GET | `/health` | Legacy health endpoint (kompatibilitas) |
+| GET | `/health/liveness` | Liveness probe untuk container/orchestrator |
+| GET | `/health/readiness` | Readiness probe (validasi koneksi DB `SELECT 1`) |
 
 ---
 
@@ -383,7 +406,7 @@ DATABASE_URL=postgresql+psycopg://monitor:monitor@localhost:5432/monitoring \
 ```bash
 cd web
 npm install
-npm run dev   # http://localhost:5173
+ npm run dev   # http://localhost:4173
 ```
 
 ### Production (Docker Compose)
@@ -444,6 +467,14 @@ pytest tests/test_e2e_api.py
 
 # Endpoint tests (25 tests)
 pytest tests/test_new_endpoints.py
+
+# Frontend tests
+cd web && npm test
+
+# Frontend quality gates
+cd web && npm run typecheck
+cd web && npm run lint
+cd web && npm run format:check
 ```
 
 ---

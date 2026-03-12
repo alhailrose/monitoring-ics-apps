@@ -15,26 +15,12 @@ import type { ProfileStatus } from "../../types/api"
 import { LoadingState } from "../../components/common/LoadingState"
 import { StatusBadge } from "../../components/common/StatusBadge"
 import type { Customer } from "../../types/api"
-
-const pickExistingOrFirst = (rows: Customer[], currentId: string): string => {
-  if (rows.some((customer) => customer.id === currentId)) {
-    return currentId
-  }
-  return rows[0]?.id ?? ""
-}
-
-type AuthType = "sso" | "iam" | "key" | null
-
-function getAuthType(profile: ProfileStatus | undefined): AuthType {
-  if (!profile) return null
-  // Truthy check handles both empty string and potential null from API
-  if (profile.sso_session) return "sso"
-  if (profile.status === "ok") return "iam"
-  // "no_config" means unconfigured in ~/.aws/config — not a key-based credential
-  if (profile.status === "error") return "key"
-  // "expired"/"unknown"/"no_config" intentionally return null — no badge shown
-  return null
-}
+import {
+  getAuthType,
+  mapProfilesByName,
+  pickExistingOrFirst,
+  type AuthType,
+} from "../../features/customers/profile-status"
 
 function AuthBadge({ authType }: { authType: AuthType }) {
   if (!authType) return null
@@ -88,10 +74,7 @@ export default function CustomersPage() {
     setProfileStatusMap({})
 
     try {
-      const [rows, healthReport] = await Promise.allSettled([
-        listCustomers(),
-        checkSessionHealth(),
-      ])
+      const [rows, healthReport] = await Promise.allSettled([listCustomers(), checkSessionHealth()])
 
       if (rows.status === "fulfilled") {
         setCustomers(rows.value)
@@ -102,13 +85,11 @@ export default function CustomersPage() {
       }
 
       if (healthReport.status === "fulfilled") {
-        const map: Record<string, ProfileStatus> = {}
-        for (const profile of healthReport.value.profiles) {
-          map[profile.profile_name] = profile
-        }
-        setProfileStatusMap(map)
+        setProfileStatusMap(mapProfilesByName(healthReport.value.profiles))
       }
       // Session health failure is non-fatal — badges just won't show
+    } catch (unexpectedError) {
+      setError(toUserMessage(unexpectedError, "Failed to load customers."))
     } finally {
       setIsLoading(false)
     }
@@ -330,7 +311,9 @@ export default function CustomersPage() {
               disabled={isWorking}
             />
 
-            <button type="submit" className="ops-button" disabled={isWorking}>Add Customer</button>
+            <button type="submit" className="ops-button" disabled={isWorking}>
+              Add Customer
+            </button>
           </form>
         </section>
 
@@ -378,7 +361,9 @@ export default function CustomersPage() {
               disabled={isWorking}
             />
 
-            <button type="submit" className="ops-button" disabled={isWorking || !targetCustomerId}>Add Account</button>
+            <button type="submit" className="ops-button" disabled={isWorking || !targetCustomerId}>
+              Add Account
+            </button>
           </form>
         </section>
 
@@ -435,15 +420,35 @@ export default function CustomersPage() {
               Bot Enabled
             </label>
 
-            <button type="submit" className="ops-button" disabled={isWorking || !botCustomerId}>Save Bot Mapping</button>
+            <button type="submit" className="ops-button" disabled={isWorking || !botCustomerId}>
+              Save Bot Mapping
+            </button>
           </form>
         </section>
       </section>
 
       {isLoading ? <LoadingState title="Loading customers..." /> : null}
       {isWorking ? <LoadingState title="Saving..." detail="Applying changes to backend." /> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
-      {notice ? <p className="form-notice" role="status">{notice}</p> : null}
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {error && !isLoading ? (
+        <button
+          type="button"
+          className="ops-button"
+          onClick={() => void loadCustomers()}
+          disabled={isWorking}
+        >
+          Retry Load
+        </button>
+      ) : null}
+      {notice ? (
+        <p className="form-notice" role="status">
+          {notice}
+        </p>
+      ) : null}
 
       {!isLoading ? (
         <section className="ops-glass-panel checks-result" aria-label="Customer list">
@@ -452,7 +457,9 @@ export default function CustomersPage() {
           {customers.map((customer) => (
             <article key={customer.id} className="checks-result-row customer-card">
               <header>
-                <h2>{customer.display_name} ({customer.name})</h2>
+                <h2>
+                  {customer.display_name} ({customer.name})
+                </h2>
                 <StatusBadge status={customer.slack_enabled ? "OK" : "NO_DATA"} />
               </header>
 
@@ -462,10 +469,20 @@ export default function CustomersPage() {
               </div>
 
               <div className="checks-actions">
-                <button type="button" className="ops-button" onClick={() => onEditCustomer(customer)} disabled={isWorking}>
+                <button
+                  type="button"
+                  className="ops-button"
+                  onClick={() => onEditCustomer(customer)}
+                  disabled={isWorking}
+                >
                   Edit Customer
                 </button>
-                <button type="button" className="ops-button" onClick={() => onDeleteCustomer(customer)} disabled={isWorking}>
+                <button
+                  type="button"
+                  className="ops-button"
+                  onClick={() => onDeleteCustomer(customer)}
+                  disabled={isWorking}
+                >
                   Delete Customer
                 </button>
               </div>

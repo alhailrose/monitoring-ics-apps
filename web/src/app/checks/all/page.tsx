@@ -97,43 +97,58 @@ export default function AllCheckPage() {
             <fieldset className="checks-fieldset" disabled={isExecuting}>
               <legend>Customers</legend>
               {customers.length === 0 ? (
-                <p className="checks-help">No customers available. Add one in Customer Management.</p>
+                <p className="checks-help">
+                  No customers available. Add one in Customer Management.
+                </p>
               ) : null}
-              {customers.map((customer) => (
-                <label key={customer.id} className="checks-inline-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedCustomerIds.includes(customer.id)}
-                    onChange={() => toggleCustomer(customer.id)}
-                  />
-                  {customer.display_name} ({customer.name})
-                </label>
-              ))}
+              <div className="ops-checkbox-grid">
+                {customers.map((customer) => (
+                  <label key={customer.id} className="ops-checkbox-card">
+                    <input
+                      type="checkbox"
+                      checked={selectedCustomerIds.includes(customer.id)}
+                      onChange={() => toggleCustomer(customer.id)}
+                    />
+                    <div className="ops-checkbox-label">
+                      {customer.display_name}
+                      <span className="ops-checkbox-meta">{customer.name}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </fieldset>
 
-            <label className="checks-inline-checkbox">
-              <input
-                type="checkbox"
-                checked={sendSlack}
-                onChange={(event) => setSendSlack(event.target.checked)}
-                disabled={isExecuting}
-              />
-              Send to Slack
-            </label>
+            <div style={{ marginTop: "1rem" }}>
+              <label className="ops-toggle-card">
+                <input
+                  type="checkbox"
+                  checked={sendSlack}
+                  onChange={(event) => setSendSlack(event.target.checked)}
+                  disabled={isExecuting}
+                />
+                Send Alert to Slack
+              </label>
+            </div>
 
-            <button
-              className="ops-button"
-              type="button"
-              onClick={onRun}
-              disabled={isExecuting || selectedCustomerIds.length === 0}
-            >
-              {isExecuting ? "Executing..." : "Run All Checks"}
-            </button>
+            <div style={{ marginTop: "1.5rem" }}>
+              <button
+                className="ops-button"
+                type="button"
+                onClick={onRun}
+                disabled={isExecuting || selectedCustomerIds.length === 0}
+              >
+                {isExecuting ? "EXECUTING BATCH..." : "RUN ALL CHECKS"}
+              </button>
+            </div>
           </div>
         )}
 
         {isExecuting ? <LoadingState /> : null}
-        {error ? <p className="form-error" role="alert">{error}</p> : null}
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
       </section>
 
       {result ? (
@@ -142,7 +157,8 @@ export default function AllCheckPage() {
             <p className="checks-meta">Execution time: {result.execution_time_seconds}s</p>
           </section>
           {result.check_runs.map((run) => {
-            const custName = customers.find((c) => c.id === run.customer_id)?.display_name ?? run.customer_id
+            const custName =
+              customers.find((c) => c.id === run.customer_id)?.display_name ?? run.customer_id
             const output = result.consolidated_outputs[run.customer_id] ?? ""
             const custResults = result.results.filter((r) => r.customer_id === run.customer_id)
             const grouped = Array.from(
@@ -155,7 +171,11 @@ export default function AllCheckPage() {
             )
 
             return (
-              <section key={run.customer_id} className="ops-glass-panel checks-result" aria-label={`${custName} output`}>
+              <section
+                key={run.customer_id}
+                className="ops-glass-panel checks-result"
+                aria-label={`${custName} output`}
+              >
                 <h2>{custName}</h2>
                 <CopyableOutput title="Consolidated Output" text={output} />
                 {grouped.map(([checkName, items]) => (
@@ -163,7 +183,9 @@ export default function AllCheckPage() {
                     <h3>{checkName}</h3>
                     {items.map((item, index) => (
                       <div key={`${item.account.id}-${index}`} className="checks-result-line">
-                        <span>{item.account.display_name} ({item.account.profile_name})</span>
+                        <span>
+                          {item.account.display_name} ({item.account.profile_name})
+                        </span>
                         <StatusBadge status={item.status} />
                       </div>
                     ))}

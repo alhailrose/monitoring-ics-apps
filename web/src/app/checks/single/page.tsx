@@ -29,7 +29,10 @@ export default function SingleCheckPage() {
       setError("")
 
       try {
-        const [customerRows, checkRows] = await Promise.all([listCustomers(), listAvailableChecks()])
+        const [customerRows, checkRows] = await Promise.all([
+          listCustomers(),
+          listAvailableChecks(),
+        ])
 
         if (!isMounted) {
           return
@@ -147,86 +150,118 @@ export default function SingleCheckPage() {
           <form className="checks-form" onSubmit={onSubmit}>
             <fieldset className="checks-fieldset" disabled={isExecuting}>
               <legend>Customers</legend>
-              {customers.map((customer) => (
-                <label key={customer.id} className="checks-inline-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedCustomerIds.includes(customer.id)}
-                    onChange={() => toggleCustomer(customer.id)}
-                  />
-                  {customer.display_name} ({customer.name})
-                </label>
-              ))}
+              <div className="ops-checkbox-grid">
+                {customers.map((customer) => (
+                  <label key={customer.id} className="ops-checkbox-card">
+                    <input
+                      type="checkbox"
+                      checked={selectedCustomerIds.includes(customer.id)}
+                      onChange={() => toggleCustomer(customer.id)}
+                    />
+                    <div className="ops-checkbox-label">
+                      {customer.display_name}
+                      <span className="ops-checkbox-meta">{customer.name}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </fieldset>
 
-            <label htmlFor="single-check">Check Type</label>
-            <select
-              id="single-check"
-              className="ops-select"
-              value={selectedCheckName}
-              onChange={(event) => setSelectedCheckName(event.target.value)}
-              required
-              disabled={isExecuting}
-            >
-              <option value="" disabled>
-                Select check type
-              </option>
-              {checks.map((check) => (
-                <option key={check.name} value={check.name}>
-                  {check.name}
+            <div style={{ marginTop: "0.5rem" }}>
+              <label htmlFor="single-check" className="form-label">
+                Check Type
+              </label>
+              <select
+                id="single-check"
+                className="ops-select"
+                value={selectedCheckName}
+                onChange={(event) => setSelectedCheckName(event.target.value)}
+                required
+                disabled={isExecuting}
+              >
+                <option value="" disabled>
+                  Select check type
                 </option>
-              ))}
-            </select>
+                {checks.map((check) => (
+                  <option key={check.name} value={check.name}>
+                    {check.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <fieldset className="checks-fieldset" disabled={isExecuting}>
               <legend>Accounts</legend>
-              <label className="checks-inline-checkbox">
-                <input
-                  type="checkbox"
-                  checked={selectAllAccounts}
-                  onChange={(event) => onToggleSelectAll(event.target.checked)}
-                />
-                Select All Accounts
-              </label>
+              <div style={{ marginBottom: "1rem" }}>
+                <label className="ops-toggle-card">
+                  <input
+                    type="checkbox"
+                    checked={selectAllAccounts}
+                    onChange={(event) => onToggleSelectAll(event.target.checked)}
+                  />
+                  Select All Accounts
+                </label>
+              </div>
 
-              <div className="checks-account-list">
-                {accounts.length === 0 ? <p className="checks-help">No active accounts available.</p> : null}
+              {accounts.length === 0 ? (
+                <p className="checks-help">No active accounts available.</p>
+              ) : null}
+              <div className="ops-checkbox-grid">
                 {accounts.map((account) => (
-                  <label key={account.id} className="checks-inline-checkbox">
+                  <label
+                    key={account.id}
+                    className="ops-checkbox-card"
+                    style={selectAllAccounts ? { opacity: 0.5, pointerEvents: "none" } : {}}
+                  >
                     <input
                       type="checkbox"
                       checked={selectedAccountIds.includes(account.id)}
                       onChange={() => toggleAccount(account.id)}
                       disabled={selectAllAccounts}
                     />
-                    {account.display_name} ({account.profile_name})
+                    <div className="ops-checkbox-label">
+                      {account.display_name}
+                      <span className="ops-checkbox-meta">{account.profile_name}</span>
+                    </div>
                   </label>
                 ))}
               </div>
             </fieldset>
 
-            <label className="checks-inline-checkbox">
-              <input
-                type="checkbox"
-                checked={sendSlack}
-                onChange={(event) => setSendSlack(event.target.checked)}
-                disabled={isExecuting}
-              />
-              Send to Slack
-            </label>
-
-            <button
-              className="ops-button"
-              type="submit"
-              disabled={isExecuting || accounts.length === 0 || (!selectAllAccounts && selectedAccountIds.length === 0)}
+            <div
+              style={{ marginTop: "0.5rem", display: "flex", gap: "1rem", alignItems: "center" }}
             >
-              {isExecuting ? "Executing..." : "Run Check"}
-            </button>
+              <label className="ops-toggle-card">
+                <input
+                  type="checkbox"
+                  checked={sendSlack}
+                  onChange={(event) => setSendSlack(event.target.checked)}
+                  disabled={isExecuting}
+                />
+                Send Alert to Slack
+              </label>
+
+              <button
+                className="ops-button"
+                type="submit"
+                disabled={
+                  isExecuting ||
+                  accounts.length === 0 ||
+                  (!selectAllAccounts && selectedAccountIds.length === 0)
+                }
+              >
+                {isExecuting ? "EXECUTING..." : "RUN SINGLE CHECK"}
+              </button>
+            </div>
           </form>
         )}
 
         {isExecuting ? <LoadingState /> : null}
-        {error ? <p className="form-error" role="alert">{error}</p> : null}
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
       </section>
 
       {result ? (
@@ -237,13 +272,21 @@ export default function SingleCheckPage() {
             return <CopyableOutput key={custId} title={`${custName} — Output`} text={output} />
           })}
           {result.results.map((item, index) => (
-            <article key={`${item.account.id}-${item.check_name}-${index}`} className="checks-result-row">
+            <article
+              key={`${item.account.id}-${item.check_name}-${index}`}
+              className="checks-result-row"
+            >
               <header>
-                <h2>{item.account.display_name} ({item.account.profile_name})</h2>
+                <h2>
+                  {item.account.display_name} ({item.account.profile_name})
+                </h2>
                 <StatusBadge status={item.status} />
               </header>
               <p>{item.summary}</p>
-              <CopyableOutput title={`${item.check_name} Output`} text={item.output || item.summary} />
+              <CopyableOutput
+                title={`${item.check_name} Output`}
+                text={item.output || item.summary}
+              />
             </article>
           ))}
         </section>

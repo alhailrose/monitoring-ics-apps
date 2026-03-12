@@ -62,6 +62,7 @@ docker compose -f infra/docker/docker-compose.yml config
 - Endpoint checks kritikal (`POST /api/v1/checks/execute`) memiliki validasi kontrak request/response yang konsisten, dengan compatibility layer untuk payload lama `customer_id`.
 - Health probes diperjelas: `GET /health`, `GET /health/liveness`, `GET /health/readiness` (DB readiness).
 - API menambahkan baseline observability: request ID (`x-request-id`) dan request duration logging.
+- API sekarang mendukung guard API key opsional (`API_AUTH_ENABLED`, `API_KEYS`, `API_KEY_HEADER`) untuk seluruh route `/api/v1/*`.
 
 ## Quick Start (3 langkah)
 1) Install aplikasi via pipx:

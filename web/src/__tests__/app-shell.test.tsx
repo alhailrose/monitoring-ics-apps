@@ -31,7 +31,7 @@ describe("resolvePagePath", () => {
     fireEvent.click(screen.getByRole("button", { name: /open navigation/i }))
     expect(nav).toHaveAttribute("data-open", "true")
 
-    fireEvent.click(screen.getByRole("button", { name: /\[2\]\s*single check/i }))
+    fireEvent.click(screen.getByRole("button", { name: /^single check$/i }))
     expect(nav).toHaveAttribute("data-open", "false")
   })
 })

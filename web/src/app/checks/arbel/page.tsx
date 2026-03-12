@@ -7,64 +7,16 @@ import { CopyableOutput } from "../../../components/common/CopyableOutput"
 import { LoadingState } from "../../../components/common/LoadingState"
 import { StatusBadge } from "../../../components/common/StatusBadge"
 import type { Account, Customer, ExecuteCheckResponse } from "../../../types/api"
-
-type ArbelMenu = "backup" | "rds" | "alarm" | "budget"
-
-type MenuConfig = {
-  key: ArbelMenu
-  label: string
-  description: string
-  checkName: string
-}
-
-const MENUS: MenuConfig[] = [
-  {
-    key: "backup",
-    label: "Backup Status",
-    description: "Check AWS Backup job status across accounts",
-    checkName: "backup",
-  },
-  {
-    key: "rds",
-    label: "RDS / EC2 Metrics",
-    description: "Daily RDS & EC2 metric monitoring with threshold alerts",
-    checkName: "daily-arbel",
-  },
-  {
-    key: "alarm",
-    label: "Alarm Verification",
-    description: "Verify CloudWatch alarm states and breach history",
-    checkName: "alarm_verification",
-  },
-  {
-    key: "budget",
-    label: "Daily Budget",
-    description: "Check AWS Budgets threshold and over-budget alerts",
-    checkName: "daily-budget",
-  },
-]
-
-const WINDOW_OPTIONS = [
-  { value: 1, label: "1 jam" },
-  { value: 3, label: "3 jam" },
-  { value: 12, label: "12 jam" },
-]
-
-const getAlarmNames = (account: Account): string[] => {
-  // Prefer top-level typed field (populated by reimport_yaml_configs)
-  if (account.alarm_names && account.alarm_names.length > 0) {
-    return account.alarm_names
-  }
-  // Fallback: legacy config_extra path (for accounts not yet re-imported)
-  const extra = account.config_extra as Record<string, unknown> | null
-  if (!extra) return []
-  const av = extra.alarm_verification as Record<string, unknown> | undefined
-  if (!av) return []
-  const names = av.alarm_names
-  return Array.isArray(names) ? (names as string[]) : []
-}
-
-const hasAlarms = (account: Account): boolean => getAlarmNames(account).length > 0
+import {
+  MENUS,
+  WINDOW_OPTIONS,
+  getAlarmNames,
+  getDefaultConsolidatedOutput,
+  hasAlarms,
+  pickArbelCustomer,
+  type ArbelMenu,
+  type MenuConfig,
+} from "../../../features/arbel/menu"
 
 export default function ArbelCheckPage() {
   const [customer, setCustomer] = useState<Customer | null>(null)
@@ -72,6 +24,7 @@ export default function ArbelCheckPage() {
   const [error, setError] = useState("")
 
   const [activeMenu, setActiveMenu] = useState<ArbelMenu | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   // Per-menu state
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([])
@@ -101,10 +54,7 @@ export default function ArbelCheckPage() {
       try {
         const rows = await listCustomers()
         if (!mounted) return
-        const arbel =
-          rows.find((c) => c.name.toLowerCase() === "aryanoble") ||
-          rows.find((c) => c.display_name.toLowerCase().includes("aryanoble")) ||
-          null
+        const arbel = pickArbelCustomer(rows)
         if (!arbel) {
           setError("Aryanoble customer not found.")
           return
@@ -117,8 +67,10 @@ export default function ArbelCheckPage() {
       }
     }
     void load()
-    return () => { mounted = false }
-  }, [])
+    return () => {
+      mounted = false
+    }
+  }, [reloadKey])
 
   const onToggleMenu = (key: ArbelMenu) => {
     if (activeMenu === key) {
@@ -154,9 +106,7 @@ export default function ArbelCheckPage() {
   }
 
   const toggleAccount = (id: string) => {
-    setSelectedAccountIds((cur) =>
-      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
-    )
+    setSelectedAccountIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
   }
 
   const onRun = async (menu: MenuConfig) => {
@@ -348,28 +298,35 @@ export default function ArbelCheckPage() {
 
   const renderAccountSelector = (pool: Account[]) => (
     <div className="arbel-accounts">
-      <label className="checks-inline-checkbox">
-        <input
-          type="checkbox"
-          checked={selectAll}
-          onChange={(e) => onToggleSelectAll(e.target.checked)}
-          disabled={isExecuting}
-        />
-        Select All ({pool.length})
-      </label>
-      <div className="checks-account-list">
-        {pool.length === 0 ? (
-          <p className="checks-help">No accounts available.</p>
-        ) : null}
+      <div style={{ marginBottom: "1rem" }}>
+        <label className="ops-toggle-card">
+          <input
+            type="checkbox"
+            checked={selectAll}
+            onChange={(e) => onToggleSelectAll(e.target.checked)}
+            disabled={isExecuting}
+          />
+          Select All ({pool.length})
+        </label>
+      </div>
+      <div className="ops-checkbox-grid">
+        {pool.length === 0 ? <p className="checks-help">No accounts available.</p> : null}
         {pool.map((account) => (
-          <label key={account.id} className="checks-inline-checkbox">
+          <label
+            key={account.id}
+            className="ops-checkbox-card"
+            style={selectAll ? { opacity: 0.5, pointerEvents: "none" } : {}}
+          >
             <input
               type="checkbox"
               checked={selectedAccountIds.includes(account.id)}
               onChange={() => toggleAccount(account.id)}
               disabled={selectAll || isExecuting}
             />
-            {account.display_name} ({account.profile_name})
+            <div className="ops-checkbox-label">
+              {account.display_name}
+              <span className="ops-checkbox-meta">{account.profile_name}</span>
+            </div>
           </label>
         ))}
       </div>
@@ -382,11 +339,13 @@ export default function ArbelCheckPage() {
         {menu.key === "alarm" ? renderAlarmSelector() : renderAccountSelector(accounts)}
 
         {menu.key === "rds" ? (
-          <div className="arbel-option-row">
-            <label htmlFor="arbel-window">Monitoring Window</label>
+          <div className="arbel-option-row" style={{ marginTop: "1rem" }}>
+            <label htmlFor="arbel-window" className="form-label">
+              Monitoring Window
+            </label>
             <select
               id="arbel-window"
-              className="ops-input"
+              className="ops-select"
               value={windowHours}
               onChange={(e) => setWindowHours(Number(e.target.value))}
               disabled={isExecuting}
@@ -400,27 +359,28 @@ export default function ArbelCheckPage() {
           </div>
         ) : null}
 
-        <div className="arbel-run-row">
-          <label className="checks-inline-checkbox">
+        <div className="arbel-run-row" style={{ marginTop: "1rem" }}>
+          <label className="ops-toggle-card">
             <input
               type="checkbox"
               checked={sendSlack}
               onChange={(e) => setSendSlack(e.target.checked)}
               disabled={isExecuting}
             />
-            Send to Slack
+            Send Alert to Slack
           </label>
           <button
             className="ops-button"
             type="button"
             onClick={() => onRun(menu)}
-            disabled={isExecuting || (
-              menu.key === "alarm"
+            disabled={
+              isExecuting ||
+              (menu.key === "alarm"
                 ? Object.values(selectedAlarms).every((s) => s.size === 0)
-                : selectedAccountIds.length === 0
-            )}
+                : selectedAccountIds.length === 0)
+            }
           >
-            {isExecuting ? "Running..." : `Run ${menu.label}`}
+            {isExecuting ? "EXECUTING..." : `RUN ${menu.label.toUpperCase()}`}
           </button>
         </div>
       </div>
@@ -436,6 +396,31 @@ export default function ArbelCheckPage() {
         </section>
         <section className="ops-glass-panel checks-form-panel">
           <LoadingState title="Loading Aryanoble configuration..." />
+        </section>
+      </main>
+    )
+  }
+
+  if (!customer) {
+    return (
+      <main className="ops-page checks-page" aria-labelledby="arbel-title">
+        <section className="ops-glass-panel checks-header">
+          <h1 id="arbel-title">Arbel Check</h1>
+          <p>Aryanoble monitoring suite</p>
+        </section>
+
+        <section className="ops-glass-panel checks-form-panel" aria-live="polite">
+          <p className="form-error" role="alert">
+            {error || "Aryanoble customer not found."}
+          </p>
+          <button
+            type="button"
+            className="ops-button"
+            onClick={() => setReloadKey((current) => current + 1)}
+            disabled={isExecuting}
+          >
+            Retry Load
+          </button>
         </section>
       </main>
     )
@@ -481,7 +466,9 @@ export default function ArbelCheckPage() {
 
       {error ? (
         <section className="ops-glass-panel">
-          <p className="form-error" role="alert">{error}</p>
+          <p className="form-error" role="alert">
+            {error}
+          </p>
         </section>
       ) : null}
 
@@ -493,10 +480,11 @@ export default function ArbelCheckPage() {
 
       {result ? (
         <section className="ops-glass-panel checks-result" aria-label="Check output">
-          <p className="checks-meta">
-            Execution time: {result.execution_time_seconds}s
-          </p>
-          <CopyableOutput title="Output" text={result.consolidated_outputs[Object.keys(result.consolidated_outputs)[0]] ?? ""} />
+          <p className="checks-meta">Execution time: {result.execution_time_seconds}s</p>
+          <CopyableOutput
+            title="Output"
+            text={getDefaultConsolidatedOutput(result.consolidated_outputs)}
+          />
 
           {result.results.map((item, index) => (
             <article
