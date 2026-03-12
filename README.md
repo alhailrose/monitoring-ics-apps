@@ -6,22 +6,36 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
 - Folder structure roadmap: `docs/architecture/folder-structure.md`
 - Migration status: `docs/architecture/migration-status.md`
 - Target structure contract: `docs/architecture/target-structure-contract.md`
+- Deployment flow (approval + rollback notes): `docs/operations/deployment-flow.md`
+- Single server runbook (web + api): `docs/operations/single-server-deploy.md`
+- Release evidence checklist per target: `docs/operations/release-checklist.md`
+
+## Phase 2 scaffold + CI/CD split
+
+- Incremental app scaffold tersedia di `apps/web`, `apps/api`, `apps/tui` (kompatibilitas, non-breaking).
+- Frontend tetap Vite di folder `web/` selama masa transisi.
+- CI dipisah per target deployment:
+  - Web: `.github/workflows/ci-web.yml`
+  - API: `.github/workflows/ci-api.yml`
+  - TUI: `.github/workflows/ci-tui.yml`
+- Kebijakan artifact frontend: `web/node_modules` dan `web/dist` tidak lagi disimpan di git; artifact build web dipublish oleh CI Web.
 
 ## Dual Interface Platform (TUI + API/Web)
 
 Platform sekarang mendukung fondasi dual-interface:
 - TUI existing tetap dipakai untuk operasional harian.
 - API FastAPI tersedia di `src/app/api/main.py`.
-- Worker pipeline untuk eksekusi job ada di `src/app/worker/`.
-- Scaffold web dashboard manual run + history ada di folder `web/`.
-- Stack single server tersedia di `infra/docker/docker-compose.yml`.
+- Tidak ada worker terpisah pada runtime compose saat ini (eksekusi lewat API service layer).
+- Web runtime tetap di folder `web/` (Vite), scaffold migrasi ada di `apps/web/`.
+- Stack single server aktif: `postgres + api + nginx` di `infra/docker/docker-compose.yml`.
 
 Quick check dual-interface:
 
 ```bash
 # from repository root
-python -m pytest tests/unit/test_api_jobs.py tests/unit/test_run_service.py tests/unit/test_worker_executor.py -v
-(cd web && npm test)
+bash scripts/ci/api-quality.sh
+bash scripts/ci/tui-quality.sh
+bash scripts/ci/web-quality.sh
 docker compose -f infra/docker/docker-compose.yml config
 ```
 
@@ -37,10 +51,17 @@ Verifikasi fondasi web + backend lokal:
 
 ```bash
 # from repository root
-(cd web && npm test)
-python -m pytest tests/unit/test_api_jobs.py tests/unit/test_run_service.py tests/unit/test_worker_executor.py -v
+bash scripts/ci/web-quality.sh
+bash scripts/ci/api-quality.sh
 docker compose -f infra/docker/docker-compose.yml config
 ```
+
+### Backend hardening (Phase 2)
+
+- CORS sekarang lebih aman: wildcard origin (`*`) otomatis mematikan credentials.
+- Endpoint checks kritikal (`POST /api/v1/checks/execute`) memiliki validasi kontrak request/response yang konsisten, dengan compatibility layer untuk payload lama `customer_id`.
+- Health probes diperjelas: `GET /health`, `GET /health/liveness`, `GET /health/readiness` (DB readiness).
+- API menambahkan baseline observability: request ID (`x-request-id`) dan request duration logging.
 
 ## Quick Start (3 langkah)
 1) Install aplikasi via pipx:
