@@ -90,134 +90,143 @@ SUMMARY_MAP = {
 }
 
 
-def build_whatsapp_backup(date_str, all_results):
-    """Build WhatsApp-ready backup report message."""
-    completed_lines = []
-    failed_accounts = {}
-    expired_accounts = {}
-    vault_gap_lines = []
-    nobackup_lines = []
+def _backup_problem_reason(res: dict) -> str:
+    reasons = []
+    if res.get("status") == "error":
+        return f"check error: {res.get('error', 'unknown error')}"
+
+    failed = int(res.get("failed_jobs", 0) or 0)
+    expired = int(res.get("expired_jobs", 0) or 0)
+    if failed > 0:
+        reasons.append(f"{failed} job FAILED")
+    if expired > 0:
+        reasons.append(f"{expired} job EXPIRED")
+
+    other_issues = [
+        issue
+        for issue in (res.get("issues") or [])
+        if "failed" not in issue.lower() and "expired" not in issue.lower()
+    ]
+    if other_issues:
+        reasons.append(other_issues[0])
+
+    has_activity = (
+        int(res.get("total_jobs", 0) or 0) > 0
+        or any(v.get("recovery_points_24h", 0) > 0 for v in (res.get("vaults") or []))
+        or int(res.get("rds_snapshots_24h", 0) or 0) > 0
+    )
+    if not has_activity:
+        reasons.append("tidak ada aktivitas backup pada periode laporan")
+
+    return "; ".join(reasons) if reasons else "perlu investigasi"
+
+
+def summarize_backup_whatsapp(all_results):
+    """Summarize backup status across accounts for WhatsApp/API consumers."""
+    account_rows = []
 
     for profile, checks in all_results.items():
         res = checks.get("backup")
-        if not res or res.get("status") == "error":
+        if not res:
             continue
 
         display = BACKUP_DISPLAY_NAMES.get(profile, profile)
-        acct = get_account_id(profile)
+        account_id = get_account_id(profile)
+        failed_jobs = int(res.get("failed_jobs", 0) or 0)
+        expired_jobs = int(res.get("expired_jobs", 0) or 0)
+        total_jobs = int(res.get("total_jobs", 0) or 0)
+        issues = list(res.get("issues") or [])
+
         has_activity = (
-            res.get("total_jobs", 0) > 0
-            or any(v.get("recovery_points_24h", 0) > 0 for v in res.get("vaults", []))
-            or res.get("rds_snapshots_24h", 0) > 0
+            total_jobs > 0
+            or any(
+                v.get("recovery_points_24h", 0) > 0 for v in (res.get("vaults") or [])
+            )
+            or int(res.get("rds_snapshots_24h", 0) or 0) > 0
+        )
+        has_problem = (
+            res.get("status") == "error"
+            or failed_jobs > 0
+            or expired_jobs > 0
+            or len(issues) > 0
+            or not has_activity
         )
 
-        if not has_activity:
-            nobackup_lines.append(
-                f"- {display} - {acct} (tidak ada backup pada periode)"
-            )
-            continue
+        account_rows.append(
+            {
+                "profile": profile,
+                "display_name": display,
+                "account_id": account_id,
+                "failed_jobs": failed_jobs,
+                "expired_jobs": expired_jobs,
+                "total_jobs": total_jobs,
+                "problem": has_problem,
+                "reason": _backup_problem_reason(res) if has_problem else "OK",
+            }
+        )
 
-        missing_vaults = [
-            v
-            for v in res.get("vaults", [])
-            if v.get("recovery_points_24h", 0) == 0 and not v.get("error")
-        ]
-        if missing_vaults:
-            vault_gap_lines.append(
-                f"- {display} - {acct} vault gap: {len(missing_vaults)} vault tanpa RP 24h"
-            )
+    total_accounts = len(account_rows)
+    problem_accounts = [row for row in account_rows if row["problem"]]
+    ok_accounts = [row for row in account_rows if not row["problem"]]
+    all_success = total_accounts > 0 and len(problem_accounts) == 0
 
-        issues = res.get("issues", [])
-        failed = res.get("failed_jobs", 0)
-        expired = res.get("expired_jobs", 0)
+    return {
+        "all_success": all_success,
+        "total_accounts": total_accounts,
+        "ok_accounts_count": len(ok_accounts),
+        "problem_accounts_count": len(problem_accounts),
+        "problem_accounts": problem_accounts,
+        "accounts": account_rows,
+    }
 
-        if not issues:
-            completed_lines.append(f"- {display} - {acct}")
-        else:
-            # Get failed/expired job details
-            job_details = res.get("job_details", [])
-            failed_jobs = [j for j in job_details if j.get("state") == "FAILED"]
-            expired_jobs = [j for j in job_details if j.get("state") == "EXPIRED"]
 
-            if failed_jobs:
-                for job in failed_jobs:
-                    ts_wib = job.get("created_wib")
-                    ts_str = (
-                        ts_wib.strftime("%d-%m-%Y %H:%M WIB")
-                        if hasattr(ts_wib, "strftime")
-                        else str(ts_wib)
-                    )
-                    reason = job.get("reason", "No reason")
-                    resource = job.get("resource_label", "N/A")
-                    failed_accounts.setdefault((display, acct), []).append(
-                        {
-                            "resource": resource,
-                            "time": ts_str,
-                            "reason": reason,
-                        }
-                    )
+def build_whatsapp_backup(date_str, all_results):
+    """Build single consolidated WhatsApp-ready backup report message."""
+    summary = summarize_backup_whatsapp(all_results)
+    if summary["total_accounts"] == 0:
+        return "Tidak ada data backup yang relevan untuk dilaporkan."
 
-            if expired_jobs:
-                for job in expired_jobs:
-                    ts_wib = job.get("created_wib")
-                    ts_str = (
-                        ts_wib.strftime("%d-%m-%Y %H:%M WIB")
-                        if hasattr(ts_wib, "strftime")
-                        else str(ts_wib)
-                    )
-                    reason = job.get("reason", "No reason")
-                    resource = job.get("resource_label", "N/A")
-                    expired_accounts.setdefault((display, acct), []).append(
-                        {
-                            "resource": resource,
-                            "time": ts_str,
-                            "reason": reason,
-                        }
-                    )
-
-            # Other issues (vault gaps, etc)
-            for i in issues:
-                if "failed" in i or "expired" in i:
-                    continue
-                failed_accounts.setdefault((display, acct), []).append(
-                    {
-                        "resource": "N/A",
-                        "time": "N/A",
-                        "reason": i,
-                    }
-                )
-
-    def _build_issue_block(accounts):
-        if not accounts:
-            return "- (tidak ada)"
-
-        lines = []
-        for (display, acct), entries in accounts.items():
-            lines.append(f"- {display} - {acct}")
-            for idx, entry in enumerate(entries, start=1):
-                lines.append(f"  Detail {idx}:")
-                lines.append(f"    Resource: {entry['resource']}")
-                lines.append(f"    Time: {entry['time']}")
-                lines.append(f"    Reason: {entry['reason']}")
-        return "\r\n".join(lines)
-
-    completed_block = (
-        "\r\n".join(completed_lines) if completed_lines else "- (tidak ada)"
+    headline = (
+        "Status Utama: ✅ Semua akun backup sukses"
+        if summary["all_success"]
+        else "Status Utama: ⚠️ Ada akun backup gagal/perlu perhatian"
     )
-    failed_block = _build_issue_block(failed_accounts)
-    expired_block = _build_issue_block(expired_accounts)
 
-    return (
-        "Selamat Pagi Team,\r\n"
-        "Berikut report untuk AryaNoble Backup pada hari ini\r\n"
-        f"{date_str}\r\n\r\n"
-        "Completed:\r\n"
-        f"{completed_block}\r\n\r\n"
-        "Failed:\r\n"
-        f"{failed_block}\r\n\r\n"
-        "Expired:\r\n"
-        f"{expired_block}\r\n"
-    ).strip()
+    lines = [
+        "Selamat Pagi Team,",
+        "Berikut laporan ringkas backup hari ini.",
+        date_str,
+        "",
+        headline,
+        (
+            f"Ringkasan: total {summary['total_accounts']} akun | "
+            f"sukses {summary['ok_accounts_count']} | "
+            f"bermasalah {summary['problem_accounts_count']}"
+        ),
+    ]
+
+    if summary["problem_accounts"]:
+        lines.extend(["", "Akun Bermasalah:"])
+        for row in summary["problem_accounts"]:
+            lines.append(
+                f"- ❌ {row['display_name']} - {row['account_id']} ({row['reason']})"
+            )
+
+    lines.extend(["", "Detail per akun:"])
+    for row in summary["accounts"]:
+        icon = "✅" if not row["problem"] else "❌"
+        lines.append(
+            f"- {icon} {row['display_name']} - {row['account_id']} | "
+            f"jobs {row['total_jobs']} | failed {row['failed_jobs']} | expired {row['expired_jobs']}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "Catatan: Detail teknis per akun tetap tersedia di output detail checker.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def build_whatsapp_rds_compact(all_results):
@@ -341,6 +350,7 @@ def build_whatsapp_rds_client(all_results):
 
         # Delegate all rendering to checker's format_report for consistent output
         from src.checks.aryanoble.daily_arbel import DailyArbelChecker
+
         checker = DailyArbelChecker()
         body = checker.format_report(res)
         if body:
@@ -366,174 +376,37 @@ def build_whatsapp_alarm(all_results):
     else:
         greeting = "Selamat Malam"
 
-    time_str = now_jkt.strftime("%H:%M WIB")
-
-    report_now = []
-    monitor = []
-    recovered = []
-    ok_now = []
-    not_found = []
-
-    def _account_label(profile: str) -> str:
-        return profile.replace("-", " ").upper()
-
-    def _metric_label(alarm_name: str) -> str:
-        lname = (alarm_name or "").lower()
-        role = (
-            "Reader"
-            if "reader" in lname
-            else "Writer"
-            if "writer" in lname
-            else "General"
-        )
-        if "freeable-memory" in lname or "memory" in lname:
-            metric = "Freeable Memory"
-        elif "cpu" in lname:
-            metric = "CPU Utilization"
-        elif "acu" in lname:
-            metric = "ACU Utilization"
-        elif "connection" in lname:
-            metric = "Database Connections"
-        else:
-            metric = "Metric"
-        if role == "General":
-            return metric
-        return f"{metric} ({role})"
-
-    def _metric_phrase(metrics):
-        uniq = []
-        seen = set()
-        for m in metrics:
-            if m in seen:
-                continue
-            seen.add(m)
-            uniq.append(m)
-        if not uniq:
-            return "-"
-        if len(uniq) == 1:
-            return uniq[0]
-        if len(uniq) == 2:
-            return f"{uniq[0]} dan {uniq[1]}"
-        return f"{', '.join(uniq[:-1])}, serta {uniq[-1]}"
-
-    def _one_line_reason(value: str) -> str:
-        if not value:
-            return "-"
-        line = value.replace("\n", " ").strip()
-        return (line[:137] + "...") if len(line) > 140 else line
+    report_messages = []
+    has_alarm_data = False
 
     for profile, checks in all_results.items():
         res = checks.get("alarm_verification")
         if not res or res.get("status") in ["skipped", "error"]:
             continue
 
-        acct = res.get("account_id", get_account_id(profile))
         for alarm in res.get("alarms", []):
+            has_alarm_data = True
             name = alarm.get("alarm_name", "N/A")
             action = alarm.get("recommended_action", "MONITOR")
-            if alarm.get("status") == "not-found":
-                not_found.append(f"- {name} ({profile}/{acct})")
-                continue
 
             if action == "REPORT_NOW":
-                report_now.append(
-                    {
-                        "profile": profile,
-                        "alarm_name": name,
-                        "metric": _metric_label(name),
-                        "threshold": alarm.get("threshold_text", "N/A"),
-                        "range": f"{alarm.get('breach_start_time', 'unknown')} - now",
-                        "reason": _one_line_reason(alarm.get("reason", "")),
-                        "ongoing": alarm.get("ongoing_minutes", 0),
-                    }
-                )
-            elif action == "MONITOR":
-                monitor.append(
-                    {
-                        "profile": profile,
-                        "alarm_name": name,
-                        "metric": _metric_label(name),
-                        "threshold": alarm.get("threshold_text", "N/A"),
-                        "range": f"{alarm.get('breach_start_time', 'unknown')} - now",
-                        "reason": _one_line_reason(alarm.get("reason", "")),
-                        "ongoing": alarm.get("ongoing_minutes", 0),
-                    }
-                )
-            elif action == "NO_REPORT_RECOVERED":
-                recovered.append(
-                    {
-                        "profile": profile,
-                        "alarm_name": name,
-                        "metric": _metric_label(name),
-                        "threshold": alarm.get("threshold_text", "N/A"),
-                        "range": f"{alarm.get('breach_start_time', 'unknown')} - {alarm.get('breach_end_time', 'unknown')}",
-                        "duration": alarm.get("breach_duration_minutes", 0),
-                        "reason": _one_line_reason(alarm.get("reason", "")),
-                    }
-                )
-                ok_now.append(recovered[-1])
-            elif action == "NO_REPORT_TRANSIENT":
-                ok_now.append(
-                    {
-                        "profile": profile,
-                        "alarm_name": name,
-                        "metric": _metric_label(name),
-                        "threshold": alarm.get("threshold_text", "N/A"),
-                        "range": f"{alarm.get('breach_start_time', 'unknown')} - {alarm.get('breach_end_time', 'unknown')}",
-                        "duration": alarm.get("breach_duration_minutes", 0),
-                        "reason": _one_line_reason(alarm.get("reason", "")),
-                    }
-                )
+                msg = (alarm.get("message") or "").strip()
+                if not msg:
+                    threshold = alarm.get("threshold_text", "N/A")
+                    msg = (
+                        f"{greeting}, kami informasikan pada *{name}* sedang melewati "
+                        f"threshold {threshold} sejak {alarm.get('breach_start_time', 'unknown')} "
+                        f"(status: ongoing {alarm.get('ongoing_minutes', 0)} menit)."
+                    )
+                report_messages.append(msg)
 
-    lines = [
-        f"{greeting} Team 👋",
-        f"*Arbel Alarm Verification* | {time_str}",
-        "",
-        f"📊 Summary: REPORT_NOW={len(report_now)} | MONITOR={len(monitor)} | OK_NOW={len(ok_now)}",
-    ]
-
-    if report_now:
-        lines.extend(["", "🚨 REPORT NOW:"])
-        for item in report_now[:8]:
-            lines.append(
-                f"- {_account_label(item['profile'])}: *{item['metric']}* melebihi *{item['threshold']}* (range {item['range']}, {item['ongoing']}m ongoing)"
-            )
-            lines.append(f"  reason: {item['reason']}")
-    if monitor:
-        lines.extend(["", "⏳ MONITOR:"])
-        for item in monitor[:8]:
-            lines.append(
-                f"- {_account_label(item['profile'])}: *{item['metric']}* sedang dipantau, sudah {item['ongoing']}m"
-            )
-            lines.append(f"  reason: {item['reason']}")
-    if ok_now:
-        lines.extend(["", "✅ SAAT INI OK (history):"])
-        grouped = {}
-        for item in ok_now:
-            key = (item["profile"], item["threshold"], item["range"], item["duration"])
-            grouped.setdefault(key, {"metrics": [], "reason": item["reason"]})
-            grouped[key]["metrics"].append(item["metric"])
-
-        for (profile, threshold, rng, duration), payload in list(grouped.items())[:8]:
-            metrics_text = _metric_phrase(payload["metrics"])
-            lines.append(
-                f"- Kami informasikan bahwa pada akun *{_account_label(profile)}*, metrik *{metrics_text}* terdeteksi *alert melebihi {threshold}* pada rentang waktu *{rng}* ({duration}m). Saat ini status alarm sudah *OK*."
-            )
-            lines.append(f"  reason: {payload['reason']}")
-    elif recovered:
-        lines.extend(["", "✅ RECOVERED (no report):"])
-        for item in recovered[:8]:
-            lines.append(
-                f"- {_account_label(item['profile'])}: recovered {item['duration']}m ({item['range']})"
-            )
-    if not_found:
-        lines.extend(["", "❓ NOT FOUND:"])
-        lines.extend(not_found[:5])
-
-    if not report_now and not monitor and not recovered and not not_found:
+    if not has_alarm_data:
         return "Tidak ada data alarm verification yang relevan."
 
-    return "\n".join(lines)
+    if report_messages:
+        return "\n".join(report_messages)
+
+    return "Tidak ada alarm yang perlu dilaporkan saat ini."
 
 
 def build_whatsapp_budget(all_results):

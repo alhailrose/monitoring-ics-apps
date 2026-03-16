@@ -87,11 +87,16 @@ class AlarmVerificationChecker(BaseChecker):
         return "Selamat Malam"
 
     def _ongoing_message(
-        self, alarm_name: str, threshold_text: str, start_time: datetime
+        self,
+        alarm_name: str,
+        threshold_text: str,
+        start_time: datetime,
+        ongoing_minutes: int,
     ) -> str:
         return (
-            f"{self._greeting()}, izin menginformasikan pada *{alarm_name}* sedang melewati "
-            f"threshold {threshold_text} sejak {_format_wib(start_time)} (status: ongoing)."
+            f"{self._greeting()}, kami informasikan pada *{alarm_name}* sedang melewati "
+            f"threshold {threshold_text} sejak {_format_wib(start_time)} "
+            f"(status: ongoing {ongoing_minutes} menit)."
         )
 
     def _build_alarm_result(
@@ -126,7 +131,9 @@ class AlarmVerificationChecker(BaseChecker):
             should_report = ongoing_minutes >= self.min_duration_minutes
             action = "REPORT_NOW" if should_report else "MONITOR"
             if should_report and start_time is not None:
-                message = self._ongoing_message(alarm_name, threshold_text, start_time)
+                message = self._ongoing_message(
+                    alarm_name, threshold_text, start_time, ongoing_minutes
+                )
         else:
             end_time = self._find_transition(history, "from ALARM to OK")
             if end_time is not None:
@@ -245,31 +252,99 @@ class AlarmVerificationChecker(BaseChecker):
         if not alarms:
             return "No alarm data."
 
-        lines = [
-            f"ALARM VERIFICATION (threshold {results.get('min_alarm_minutes', 10)} menit, history 24 jam)"
-        ]
-        for item in alarms:
-            lines.append("")
-            lines.append(f"- {item.get('alarm_name', 'N/A')}")
-            lines.append(
-                f"  state={item.get('alarm_state')} action={item.get('recommended_action')}"
-            )
+        min_minutes = results.get("min_alarm_minutes", 10)
+        account = str(results.get("profile", "-")).replace("-", " ").upper()
+
+        def _clip(value: str, width: int) -> str:
+            text = str(value or "-")
+            return text if len(text) <= width else text[: width - 3] + "..."
+
+        def _row_status(item: Dict) -> tuple[int, str]:
             if item.get("status") == "not-found":
-                lines.append("  alarm tidak ditemukan di akun/region ini")
+                return 3, "⚪ Tidak Ditemukan"
+            action = item.get("recommended_action")
+            if action == "REPORT_NOW":
+                return 0, "🔴 Report Now"
+            if action == "MONITOR":
+                return 1, "🟡 Monitor"
+            return 2, "🟢 OK"
+
+        table_rows = []
+        report_lines = []
+        for item in alarms:
+            priority, label = _row_status(item)
+            alarm_name = item.get("alarm_name", "N/A")
+            threshold = item.get("threshold_text", "N/A")
+
+            if item.get("status") == "not-found":
+                table_rows.append(
+                    {
+                        "priority": priority,
+                        "status": label,
+                        "account": account,
+                        "alarm_name": alarm_name,
+                        "state": "UNKNOWN",
+                        "threshold": "N/A",
+                        "time_range": "unknown",
+                        "duration": "-",
+                    }
+                )
                 continue
-            if item.get("alarm_state") == "ALARM":
-                lines.append(
-                    f"  ongoing={item.get('ongoing_minutes', 0)} menit | range={item.get('breach_start_time', 'unknown')} - now"
-                )
+
+            state = item.get("alarm_state", "UNKNOWN")
+            if state == "ALARM":
+                time_range = f"{item.get('breach_start_time', 'unknown')} - now"
+                duration = f"ongoing {item.get('ongoing_minutes', 0)} menit"
             else:
-                lines.append("  saat_ini=OK")
-                lines.append(
-                    f"  last_breach_range={item.get('breach_start_time', 'unknown')} - {item.get('breach_end_time', 'unknown')}"
+                time_range = (
+                    f"{item.get('breach_start_time', 'unknown')} - "
+                    f"{item.get('breach_end_time', 'unknown')}"
                 )
-                lines.append(
-                    f"  last_breach_duration={item.get('breach_duration_minutes', 0)} menit"
-                )
-            if item.get("message"):
-                lines.append(f"  message: {item.get('message')}")
+                duration = f"durasi {item.get('breach_duration_minutes', 0)} menit"
+
+            table_rows.append(
+                {
+                    "priority": priority,
+                    "status": label,
+                    "account": account,
+                    "alarm_name": alarm_name,
+                    "state": state,
+                    "threshold": threshold,
+                    "time_range": time_range,
+                    "duration": duration,
+                }
+            )
+
+            if item.get("recommended_action") == "REPORT_NOW" and item.get("message"):
+                report_lines.append(item.get("message"))
+
+        table_rows.sort(
+            key=lambda r: (
+                int(r["priority"]),
+                str(r["alarm_name"]),
+            )
+        )
+
+        lines = [
+            "Alarm Verification Data",
+            "Data source: CloudWatch alarm history 24 jam ke belakang (rolling).",
+            f"Rule: Pelaporan hanya untuk alarm ALARM ongoing >= {min_minutes} menit.",
+            "",
+            f"{'Status':<15}{'Account':<12}{'Alarm Name':<36}{'State':<7}{'Threshold':<11}{'Time Range':<27}Duration",
+        ]
+
+        for row in table_rows:
+            lines.append(
+                f"{_clip(row['status'], 15):<15}{_clip(row['account'], 12):<12}{_clip(row['alarm_name'], 36):<36}{_clip(row['state'], 7):<7}{_clip(row['threshold'], 11):<11}{_clip(row['time_range'], 27):<27}{row['duration']}"
+            )
+
+        if report_lines:
+            lines.extend(["", "Pelaporan:"])
+            for msg in report_lines:
+                lines.append(f"- {msg}")
+        else:
+            lines.extend(
+                ["", "Pelaporan:", "- Tidak ada alarm yang perlu dilaporkan saat ini."]
+            )
 
         return "\n".join(lines)
