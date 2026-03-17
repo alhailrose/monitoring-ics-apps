@@ -753,7 +753,7 @@ def _print_consolidated_report(
                         lines.append(f"    - {instance_name} | {metric_text}")
 
                 if any(alert_notes.values()):
-                    lines.append("  **Catatan Alert:**")
+                    lines.append("  *Catatan Alert:*")
                     for key in [
                         f"CPU sangat tinggi (>= {cpu_crit:.0f}%)",
                         f"CPU tinggi (>= {cpu_warn:.0f}%)",
@@ -765,7 +765,7 @@ def _print_consolidated_report(
                         items = alert_notes.get(key) or []
                         if not items:
                             continue
-                        lines.append(f"    - **{key}: {', '.join(items)}**")
+                        lines.append(f"    - *{key}: {', '.join(items)}*")
             lines.append("")
 
         lines.append("Ringkasan Check Lain")
@@ -842,14 +842,14 @@ def _print_consolidated_report(
         lines.extend(check_status_lines)
 
         if anomaly_lines:
-            lines.append("**Temuan Penting**")
+            lines.append("*Temuan Penting*")
             for item in anomaly_lines:
-                lines.append(f"**{item}**")
+                lines.append(f"*{item}*")
         elif util_issue_total == 0 and not check_errors:
-            lines.append("**All Is Ok**")
+            lines.append("*All Is Ok*")
         else:
             lines.append(
-                "**Check lain tidak ada temuan, perhatian ada pada utilisasi di atas.**"
+                "*Check lain tidak ada temuan, perhatian ada pada utilisasi di atas.*"
             )
 
         print("\n" + "\n".join(lines))
