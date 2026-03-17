@@ -8,12 +8,43 @@ slack:
   enabled: false
 
 checks:
-  - health
+  - aws-utilization-3core
+  - notifications
   - cost
   - guardduty
   - cloudwatch
+
+check_mode: summary
 
 accounts:
   - profile: KKI
     account_id: "471112835466"
     display_name: "KKI"
+    alarm_names:
+      - "KKI-0-cpu-above-70"
+      - "KKI-0-mem-above-70"
+      - "KKI-3 ProdMobile-cpu-above-70"
+      - "KKI-3 ProdMobile-mem-above-70"
+      - "KKI-3-ProdMobile-C:-diskfreespace-below-30"
+      - "KKI-3-ProdMobile-D:-diskfreespace-below-30"
+      - "KKI0-C:-diskfreespace-below-30"
+      - "KKI0-D:-diskfreespace-below-30"
+      - "KKI1-C:-diskfreespace-below-30"
+      - "KKI1-D:-diskfreespace-below-30"
+      - "KKI1-cpu-above-70"
+      - "KKI1-mem-above-70"
+      - "KKI1DB-C:-diskfreespace-below-30"
+      - "KKI1DB-D:-diskfreespace-below-30"
+      - "KKI1DB-cpu-above-70"
+      - "KKI1DB-mem-above-70"
+      - "KKI2DB-C:-diskfreespace-below-30"
+      - "KKI2DB-D:-diskfreespace-below-30"
+      - "KKI2DB-cpu-above-70"
+      - "KKI2DB-mem-above-70"
+      - "Second-ovpn-mikrotik-cpu-above-70"
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

@@ -6,15 +6,36 @@ slack:
   webhook_url: ""
   channel: ""
   enabled: false
-
 checks:
-  - health
+  - aws-utilization-3core
+  - notifications
   - cost
   - guardduty
   - cloudwatch
 
+check_mode: summary
 accounts:
   - profile: bbi
     account_id: "940404076348"
     display_name: "BBI"
     region: ap-southeast-1
+    alarm_names:
+      - "BBI-NetworkOur-Apps>"
+      - "bintangbaliindah-Production-OpenVPN-cpu-above-80"
+      - "bintangbaliindah-Production-OpenVPN-disk-above-80"
+      - "bintangbaliindah-Production-OpenVPN-mem-above-80"
+      - "bintangbaliindah-Production-application-server-cpu-above-80"
+      - "bintangbaliindah-Production-application-server-disk-above-80"
+      - "bintangbaliindah-Production-application-server-mem-above-80"
+      - "bintangbaliindah-Production-database-backup-server-cpu-above-80"
+      - "bintangbaliindah-Production-database-backup-server-disk-above-80"
+      - "bintangbaliindah-Production-database-backup-server-mem-above-80"
+      - "bintangbaliindah-Production-database-server-cpu-above-80"
+      - "bintangbaliindah-Production-database-server-disk-above-80"
+      - "bintangbaliindah-Production-database-server-mem-above-80"
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

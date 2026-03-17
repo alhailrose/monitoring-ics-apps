@@ -8,12 +8,41 @@ slack:
   enabled: false
 
 checks:
-  - health
+  - aws-utilization-3core
+  - notifications
   - cost
   - guardduty
   - cloudwatch
+
+# Opsi mode output customer report:
+# - detail  : output lengkap per section
+# - summary : output ringkas "alert pagi"
+check_mode: summary
 
 accounts:
   - profile: Techmeister
     account_id: "763944546283"
     display_name: "Techmeister"
+    # region tunggal lama masih didukung via key `region`
+    # untuk multi-region gunakan `regions`
+    regions:
+      - ap-southeast-1
+      - eu-central-1
+      - ap-southeast-3
+    alarm_names:
+      - "prod-tb-rf-database-FreeStorageSpace-under-20"
+      - "prod-tb-rf-database-cpu-above-80"
+      - "prod-tb-rf-database-memory-under-20"
+      - "techbros-production-Tb-Tableau-2024-cpu-above-80"
+      - "techbros-production-Tb-Tableau-2024-disk-C-above-80"
+      - "techbros-production-Tb-Tableau-2024-disk-D-above-80"
+      - "techbros-production-Tb-Tableau-2024-memory-above-80"
+      - "techbros-production-openvpn-cpu-above-80"
+      - "techbros-production-openvpn-disk-above-80"
+      - "techbros-production-openvpn-mem-above-80"
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

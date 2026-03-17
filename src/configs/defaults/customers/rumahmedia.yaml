@@ -8,13 +8,22 @@ slack:
   enabled: false
 
 checks:
-  - health
+  - aws-utilization-3core
+  - notifications
   - cost
   - guardduty
   - cloudwatch
 
+check_mode: summary
+
 accounts:
   - profile: rumahmedia
-    account_id: ""
+    account_id: "975050309328"
     display_name: "RumahMedia"
     region: ap-southeast-2
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

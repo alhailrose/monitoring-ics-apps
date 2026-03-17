@@ -8,13 +8,22 @@ slack:
   enabled: false
 
 checks:
-  - health
+  - aws-utilization-3core
+  - notifications
   - cost
   - guardduty
   - cloudwatch
 
+check_mode: summary
+
 accounts:
   - profile: asg
-    account_id: ""
+    account_id: "264887202956"
     display_name: "ASG"
     region: ap-southeast-3
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2
