@@ -250,3 +250,44 @@ def test_discover_regions_prefers_profile_regions_configured():
     regions = checker._discover_regions(session=object(), profile="Techmeister")
 
     assert regions == ["ap-southeast-1", "eu-central-1"]
+
+
+def test_list_instances_only_includes_running_instances():
+    checker = AWSUtilization3CoreChecker()
+
+    class _Paginator:
+        def paginate(self):
+            return [
+                {
+                    "Reservations": [
+                        {
+                            "Instances": [
+                                {
+                                    "InstanceId": "i-running",
+                                    "State": {"Name": "running"},
+                                    "Tags": [{"Key": "Name", "Value": "app-live"}],
+                                },
+                                {
+                                    "InstanceId": "i-stopped",
+                                    "State": {"Name": "stopped"},
+                                    "Tags": [{"Key": "Name", "Value": "app-old"}],
+                                },
+                            ]
+                        }
+                    ]
+                }
+            ]
+
+    class _EC2:
+        def get_paginator(self, _name):
+            return _Paginator()
+
+    class _Session:
+        def client(self, _service, region_name=None):
+            return _EC2()
+
+    rows = checker._list_instances(_Session(), ["ap-southeast-3"])
+
+    assert len(rows) == 1
+    assert rows[0]["instance_id"] == "i-running"
+    assert rows[0]["name"] == "app-live"

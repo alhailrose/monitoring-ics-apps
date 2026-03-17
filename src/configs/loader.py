@@ -1,7 +1,10 @@
-"""Load customer/account configuration from canonical src config defaults.
+"""Load customer/account configuration from a single canonical source.
 
-During migration this loader falls back to repository `configs/customers/` when
-the src defaults are placeholders.
+Canonical source:
+- packaged defaults (`src/configs/defaults/customers`)
+
+Optional override (explicit only):
+- `MONITORING_HUB_CONFIG_DIR` -> `<dir>/configs/customers`
 """
 
 from pathlib import Path
@@ -21,13 +24,17 @@ def _module_defaults_dir():
 
 
 def _user_config_dir():
-    """Return user-specific config directory (~/.monitoring-hub/configs/customers/)."""
+    """Return explicit override config directory, if configured.
+
+    We intentionally do not auto-read `~/.monitoring-hub/...` to avoid hidden
+    drift between machines. Override is opt-in via env var only.
+    """
     import os
 
     config_home = os.getenv("MONITORING_HUB_CONFIG_DIR")
-    if config_home:
-        return Path(config_home) / "configs" / "customers"
-    return Path.home() / ".monitoring-hub" / "configs" / "customers"
+    if not config_home:
+        return None
+    return Path(config_home) / "configs" / "customers"
 
 
 def _dedupe_paths(paths):
@@ -43,29 +50,12 @@ def _dedupe_paths(paths):
 
 
 def _candidate_paths(customer_id):
-    root = _repo_root()
-    return _dedupe_paths(
-        [
-            Path.cwd()
-            / "configs"
-            / "customers"
-            / f"{customer_id}.yaml",  # Priority 1: Current directory (git repo)
-            root
-            / "configs"
-            / "customers"
-            / f"{customer_id}.yaml",  # Priority 2: Repo root (development)
-            _user_config_dir()
-            / f"{customer_id}.yaml",  # Priority 3: User home directory (fallback)
-            _module_defaults_dir()
-            / f"{customer_id}.yaml",  # Priority 4: Module defaults
-            root
-            / "src"
-            / "configs"
-            / "defaults"
-            / "customers"
-            / f"{customer_id}.yaml",  # Priority 5: Src defaults
-        ]
-    )
+    override_dir = _user_config_dir()
+    candidates = []
+    if override_dir is not None:
+        candidates.append(override_dir / f"{customer_id}.yaml")
+    candidates.append(_module_defaults_dir() / f"{customer_id}.yaml")
+    return _dedupe_paths(candidates)
 
 
 def _find_existing_path(customer_id):
@@ -137,22 +127,12 @@ def list_customers() -> List[dict]:
 
     Each entry has keys: customer_id, display_name, path, account_count.
     """
-    root = _repo_root()
-    customers_dirs = _dedupe_paths(
-        [
-            Path.cwd()
-            / "configs"
-            / "customers",  # Priority 1: Current directory (git repo)
-            root / "configs" / "customers",  # Priority 2: Repo root (development)
-            _user_config_dir(),  # Priority 3: User home directory (fallback)
-            _module_defaults_dir(),  # Priority 4: Module defaults
-            root
-            / "src"
-            / "configs"
-            / "defaults"
-            / "customers",  # Priority 5: Src defaults
-        ]
-    )
+    customers_dirs = []
+    override_dir = _user_config_dir()
+    if override_dir is not None:
+        customers_dirs.append(override_dir)
+    customers_dirs.append(_module_defaults_dir())
+    customers_dirs = _dedupe_paths(customers_dirs)
     results = []
 
     seen_ids = set()

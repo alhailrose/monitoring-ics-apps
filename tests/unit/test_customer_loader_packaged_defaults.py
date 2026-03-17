@@ -24,9 +24,9 @@ def test_load_other_customers_from_packaged_defaults(monkeypatch, tmp_path):
     assert "asg" in customer_ids
 
 
-def test_local_configs_override_packaged_defaults(monkeypatch, tmp_path):
+def test_env_override_configs_override_packaged_defaults(monkeypatch, tmp_path):
     monkeypatch.setattr(loader, "_repo_root", lambda: tmp_path / "repo-missing")
-    monkeypatch.setattr(loader.Path, "cwd", lambda: tmp_path)
+    monkeypatch.setenv("MONITORING_HUB_CONFIG_DIR", str(tmp_path))
 
     local_dir = tmp_path / "configs" / "customers"
     local_dir.mkdir(parents=True)

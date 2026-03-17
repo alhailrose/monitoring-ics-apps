@@ -663,7 +663,6 @@ def _print_consolidated_report(
                     if status_key in grouped:
                         grouped[status_key].append(row)
 
-                missing_data_notes = []
                 alert_notes = {
                     f"CPU sangat tinggi (>= {cpu_crit:.0f}%)": [],
                     f"CPU tinggi (>= {cpu_warn:.0f}%)": [],
@@ -680,7 +679,10 @@ def _print_consolidated_report(
                 for status_name in ["CRITICAL", "WARNING", "PARTIAL_DATA"]:
                     status_rows = grouped.get(status_name) or []
                     for row in status_rows:
-                        instance_label = f"{row.get('instance_id', 'unknown')} ({row.get('name', '-')})"
+                        instance_name = str(row.get("name") or "").strip()
+                        if not instance_name or instance_name == "-":
+                            instance_name = "instance-tanpa-nama"
+                        instance_label = instance_name
 
                         cpu_peak = row.get("cpu_peak_12h")
                         mem_peak = row.get("memory_peak_12h")
@@ -738,31 +740,15 @@ def _print_consolidated_report(
                         if disk_free is not None:
                             metric_parts.append(f"DISK={_fmt_pct(disk_free)}")
 
-                        missing_labels = []
-                        if row.get("memory_peak_12h") is None:
-                            missing_labels.append("MEM")
-                        if row.get("disk_free_min_percent") is None:
-                            missing_labels.append("DISK")
-
-                        if missing_labels:
-                            missing_data_notes.append(
-                                f"{instance_label}: {', '.join(missing_labels)}"
-                            )
-
                         metric_text = (
                             " | ".join(metric_parts)
                             if metric_parts
                             else "metric tidak tersedia"
                         )
-                        lines.append(
-                            (
-                                f"    - {row.get('instance_id', 'unknown')} ({row.get('name', '-')}) "
-                                f"| {metric_text}"
-                            )
-                        )
+                        lines.append(f"    - {instance_name} | {metric_text}")
 
                 if any(alert_notes.values()):
-                    lines.append("  Catatan Alert:")
+                    lines.append("  **Catatan Alert:**")
                     for key in [
                         f"CPU sangat tinggi (>= {cpu_crit:.0f}%)",
                         f"CPU tinggi (>= {cpu_warn:.0f}%)",
@@ -774,12 +760,7 @@ def _print_consolidated_report(
                         items = alert_notes.get(key) or []
                         if not items:
                             continue
-                        lines.append(f"    - {key}: {', '.join(items)}")
-
-                if missing_data_notes:
-                    lines.append("  Data Tidak Tersedia:")
-                    for note in missing_data_notes:
-                        lines.append(f"    - {note}")
+                        lines.append(f"    - **{key}: {', '.join(items)}**")
             lines.append("")
 
         lines.append("Ringkasan Check Lain")
@@ -856,13 +837,14 @@ def _print_consolidated_report(
         lines.extend(check_status_lines)
 
         if anomaly_lines:
-            lines.append("Temuan Penting")
-            lines.extend(anomaly_lines)
+            lines.append("**Temuan Penting**")
+            for item in anomaly_lines:
+                lines.append(f"**{item}**")
         elif util_issue_total == 0 and not check_errors:
-            lines.append("All Is Ok")
+            lines.append("**All Is Ok**")
         else:
             lines.append(
-                "Check lain tidak ada temuan, perhatian ada pada utilisasi di atas."
+                "**Check lain tidak ada temuan, perhatian ada pada utilisasi di atas.**"
             )
 
         print("\n" + "\n".join(lines))

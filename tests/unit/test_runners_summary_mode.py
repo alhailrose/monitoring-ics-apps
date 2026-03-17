@@ -70,6 +70,7 @@ def test_summary_mode_prints_all_is_ok_when_no_findings(capsys):
     assert "Berikut Alert Monitoring" in out
     assert "Utilisasi 12 Jam (CPU/MEM/DISK)" in out
     assert "N=" not in out
+    assert "i-1" not in out
     assert "All Is Ok" in out
 
 
@@ -124,9 +125,9 @@ def test_summary_mode_shows_findings_and_missing_metric_notes(capsys):
     assert "- Alarm CloudWatch -" in out
     assert "2 alarm aktif" in out
     assert "Catatan Alert:" in out
-    assert "CPU tinggi (>= 70%): i-1 (node-a)" in out
-    assert "Data Tidak Tersedia" in out
-    assert "i-1 (node-a): MEM, DISK" in out
+    assert "CPU tinggi (>= 70%): node-a" in out
+    assert "Data Tidak Tersedia" not in out
+    assert "i-1 (node-a)" not in out
     assert "WARNING:" not in out
     assert "MEM=N/A" not in out
     assert "DISK=N/A" not in out

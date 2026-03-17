@@ -91,15 +91,17 @@ class AWSUtilization3CoreChecker(BaseChecker):
                             instance_id = inst.get("InstanceId")
                             if not instance_id or instance_id in seen:
                                 continue
+                            state = str(
+                                ((inst.get("State") or {}).get("Name")) or "unknown"
+                            )
+                            if state.lower() != "running":
+                                continue
                             seen.add(instance_id)
                             rows.append(
                                 {
                                     "instance_id": str(instance_id),
                                     "name": self._instance_name(inst),
-                                    "state": str(
-                                        ((inst.get("State") or {}).get("Name"))
-                                        or "unknown"
-                                    ),
+                                    "state": state,
                                     "os_type": self._instance_os_type(inst),
                                     "region": region,
                                 }
