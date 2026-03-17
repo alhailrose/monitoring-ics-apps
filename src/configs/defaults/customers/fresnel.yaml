@@ -46,12 +46,6 @@ accounts:
       - "fresnel-phoenix-revamp-openvpn-disk-above-80"
       - "fresnel-phoenix-revamp-openvpn-mem-above-80"
 
-  - profile: fresnel-master
-    account_id: "466650104955"
-    display_name: "Fresnel Master"
-    sso: false
-    alarm_names: []
-
 # Untuk menggunakan alarm_verification check, tambahkan:
 # alarm_names:
 #   <profile>:

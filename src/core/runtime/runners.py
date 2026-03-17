@@ -657,7 +657,12 @@ def _print_consolidated_report(
                 disk_warn = float(thresholds.get("disk_free_warning", 20.0))
                 disk_crit = float(thresholds.get("disk_free_critical", 10.0))
 
-                grouped = {"CRITICAL": [], "WARNING": [], "PARTIAL_DATA": []}
+                grouped = {
+                    "CRITICAL": [],
+                    "WARNING": [],
+                    "PARTIAL_DATA": [],
+                    "NORMAL": [],
+                }
                 for row in rows:
                     status_key = str(row.get("status") or "NORMAL")
                     if status_key in grouped:
@@ -676,7 +681,7 @@ def _print_consolidated_report(
                     if item not in container:
                         container.append(item)
 
-                for status_name in ["CRITICAL", "WARNING", "PARTIAL_DATA"]:
+                for status_name in ["CRITICAL", "WARNING", "PARTIAL_DATA", "NORMAL"]:
                     status_rows = grouped.get(status_name) or []
                     for row in status_rows:
                         instance_name = str(row.get("name") or "").strip()

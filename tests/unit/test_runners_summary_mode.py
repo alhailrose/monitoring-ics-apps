@@ -70,6 +70,7 @@ def test_summary_mode_prints_all_is_ok_when_no_findings(capsys):
     assert "Berikut Alert Monitoring" in out
     assert "Utilisasi 12 Jam (CPU/MEM/DISK)" in out
     assert "N=" not in out
+    assert "app | CPU=22.00% | MEM=33.00% | DISK=44.00%" in out
     assert "i-1" not in out
     assert "All Is Ok" in out
 
