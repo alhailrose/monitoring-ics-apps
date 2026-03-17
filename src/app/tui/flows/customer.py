@@ -403,7 +403,7 @@ def _run_generic_customer(cfg):
     step = "checks"
     while True:
         if step == "checks":
-            _render_breadcrumb(f"Customer Report > {display_name} > Checks")
+            _render_breadcrumb(f"Daily Check > {display_name} > Checks")
             check_choices = [
                 questionary.Choice(check_name, value=check_name, checked=True)
                 for check_name in valid_checks
@@ -417,11 +417,11 @@ def _run_generic_customer(cfg):
                 return {"back": True}
             if not selected_checks:
                 print_error("Tidak ada check dipilih.")
-                return None
+                continue
             step = "accounts"
 
         elif step == "accounts":
-            _render_breadcrumb(f"Customer Report > {display_name} > Accounts")
+            _render_breadcrumb(f"Daily Check > {display_name} > Accounts")
             account_choices = [
                 questionary.Choice(
                     (a.get("display_name") or a.get("profile") or "Unknown"),
@@ -660,7 +660,7 @@ def run_customer_report():
     did_run = False
 
     while True:
-        _render_breadcrumb("Customer Report > Pilih Customer")
+        _render_breadcrumb("Daily Check > Pilih Customer")
         customer_choices = [
             questionary.Choice(
                 f"{c['display_name']} ({c['account_count']} akun)",
@@ -702,6 +702,10 @@ def run_customer_report():
                 result = _run_generic_customer(cfg)
 
             if result == {"back": True}:
+                continue
+
+            if result is None:
+                # e.g., operator submit empty selection in subflow; keep them in Daily Check.
                 continue
 
             if result:

@@ -107,31 +107,23 @@ def test_run_interactive_dispatches_settings_flow_module(monkeypatch):
     assert calls["pause"] == 1
 
 
-def test_run_interactive_dispatches_cw_cost_flow_module(monkeypatch):
+def test_main_menu_hides_cw_cost(monkeypatch):
     from src.app.tui import common
-    from src.app.tui.flows import cloudwatch_cost
 
-    selections = iter(["cw_cost", "exit"])
-    calls = {"cost": 0, "pause": 0}
-    monkeypatch.setattr(
-        common, "_select_prompt", lambda *args, **kwargs: next(selections)
-    )
-    monkeypatch.setattr(
-        common, "_pause", lambda: calls.__setitem__("pause", calls["pause"] + 1)
-    )
+    captured = {"values": []}
+
+    def _fake_select_prompt(_message, choices, **_kwargs):
+        captured["values"] = [choice.value for choice in choices]
+        return "exit"
+
+    monkeypatch.setattr(common, "_select_prompt", _fake_select_prompt)
     monkeypatch.setattr(interactive.console, "clear", lambda: None)
     monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
     monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
-    monkeypatch.setattr(
-        cloudwatch_cost,
-        "run_cloudwatch_cost_report",
-        lambda: calls.__setitem__("cost", calls["cost"] + 1),
-    )
 
     interactive.run_interactive()
 
-    assert calls["cost"] == 1
-    assert calls["pause"] == 0
+    assert "cw_cost" not in captured["values"]
 
 
 def test_quick_check_runs_individual_check(monkeypatch):

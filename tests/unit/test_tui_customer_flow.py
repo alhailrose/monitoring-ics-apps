@@ -58,7 +58,7 @@ def test_run_generic_customer_uses_checkbox_selectors(monkeypatch):
     assert group_calls[0][0][1] == ["prod-a"]
 
 
-def test_run_generic_customer_returns_none_on_empty_check_selection(monkeypatch):
+def test_run_generic_customer_prompts_again_on_empty_check_selection(monkeypatch):
     cfg = {
         "customer_id": "acme",
         "display_name": "Acme",
@@ -68,13 +68,31 @@ def test_run_generic_customer_returns_none_on_empty_check_selection(monkeypatch)
     errors = []
 
     monkeypatch.setattr(customer, "AVAILABLE_CHECKS", {"health": _checker_factory()})
-    monkeypatch.setattr(customer.common, "_checkbox_prompt", lambda *args, **kwargs: [])
+
+    call_index = {"value": 0}
+
+    def fake_checkbox(*args, **kwargs):
+        call_index["value"] += 1
+        if call_index["value"] == 1:
+            return []
+        if call_index["value"] == 2:
+            return ["health"]
+        return ["prod-a"]
+
+    monkeypatch.setattr(customer.common, "_checkbox_prompt", fake_checkbox)
     monkeypatch.setattr(customer, "print_error", lambda message: errors.append(message))
+    group_calls = []
+    monkeypatch.setattr(
+        customer,
+        "run_group_specific",
+        lambda *args, **kwargs: group_calls.append((args, kwargs)),
+    )
 
     result = customer._run_generic_customer(cfg)
 
-    assert result is None
+    assert result == {"customer_id": "acme", "checks": ["health"]}
     assert errors[-1] == "Tidak ada check dipilih."
+    assert len(group_calls) == 1
 
 
 def test_run_generic_customer_prompts_again_on_empty_account_selection(monkeypatch):
@@ -457,6 +475,54 @@ def test_run_customer_report_single_selection_runs_detail_flow(monkeypatch):
     assert flow_calls["detail"] == 1
     assert flow_calls["auto"] == 0
     assert flow_calls["slack"] == 1
+
+
+def test_run_customer_report_retries_when_detail_flow_returns_none(monkeypatch):
+    customers = [
+        {
+            "customer_id": "alpha",
+            "display_name": "Alpha",
+            "account_count": 1,
+            "checks": ["health"],
+            "slack_enabled": False,
+        },
+    ]
+
+    monkeypatch.setattr(customer, "print_mini_banner", lambda: None)
+    monkeypatch.setattr(customer, "print_section_header", lambda *a, **kw: None)
+    monkeypatch.setattr(customer, "_render_customer_dashboard", lambda *a: None)
+    monkeypatch.setattr(customer, "list_customers", lambda: customers)
+
+    selected_seq = iter([["alpha"], None])
+    monkeypatch.setattr(
+        customer.common,
+        "_checkbox_prompt",
+        lambda _msg, _choices, **_kw: next(selected_seq),
+    )
+
+    monkeypatch.setattr(
+        customer,
+        "load_customer_config",
+        lambda customer_id: {
+            "customer_id": customer_id,
+            "display_name": "Alpha",
+            "accounts": [{"profile": "prod-a", "region": "ap-southeast-3"}],
+            "checks": ["health"],
+        },
+    )
+
+    detail_calls = {"count": 0}
+
+    def fake_detail(_cfg):
+        detail_calls["count"] += 1
+        return None
+
+    monkeypatch.setattr(customer, "_run_generic_customer", fake_detail)
+
+    result = customer.run_customer_report()
+
+    assert detail_calls["count"] == 1
+    assert result is False
 
 
 def test_run_customer_report_multi_selection_runs_auto(monkeypatch):

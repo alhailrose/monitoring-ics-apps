@@ -431,10 +431,6 @@ def run_interactive():
             value="customer",
         ),
         questionary.Choice(
-            f"{ICONS['cost']} Cost Report      CloudWatch cost & usage",
-            value="cw_cost",
-        ),
-        questionary.Choice(
             f"{ICONS['settings']} Settings         Konfigurasi & info",
             value="settings",
         ),
@@ -475,11 +471,6 @@ def run_interactive():
 
         if main_choice == "huawei_check":
             _run_huawei_menu()
-            clear_before_menu = False
-            continue
-
-        if main_choice == "cw_cost":
-            run_cloudwatch_cost_report()
             clear_before_menu = False
             continue
 
