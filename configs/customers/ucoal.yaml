@@ -5,10 +5,13 @@ slack:
   channel: ''
   enabled: false
 checks:
+  - aws-utilization-3core
+  - notifications
   - cost
   - guardduty
   - cloudwatch
-  - notifications
+
+check_mode: summary
 accounts:
   - profile: ucoal-prod
     account_id: "637423564327"

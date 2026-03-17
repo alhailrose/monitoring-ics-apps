@@ -19,6 +19,7 @@ from src.checks.generic.guardduty import GuardDutyChecker
 from src.checks.generic.cloudwatch_alarms import CloudWatchAlarmChecker
 from src.checks.generic.notifications import NotificationChecker
 from src.checks.generic.backup_status import BackupStatusChecker
+from src.checks.generic.aws_utilization_3core import AWSUtilization3CoreChecker
 from src.checks.aryanoble.daily_arbel import DailyArbelChecker
 from src.checks.generic.ec2_list import EC2ListChecker
 from src.checks.aryanoble.alarm_verification import AlarmVerificationChecker
@@ -114,6 +115,7 @@ AVAILABLE_CHECKS = {
     "ec2list": EC2ListChecker,
     "alarm_verification": AlarmVerificationChecker,
     "huawei-ecs-util": HuaweiECSUtilizationChecker,
+    "aws-utilization-3core": AWSUtilization3CoreChecker,
 }
 
 # Checks to run in --all mode (default for all customers)

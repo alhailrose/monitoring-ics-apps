@@ -131,7 +131,7 @@ def test_run_interactive_dispatches_cw_cost_flow_module(monkeypatch):
     interactive.run_interactive()
 
     assert calls["cost"] == 1
-    assert calls["pause"] == 1
+    assert calls["pause"] == 0
 
 
 def test_quick_check_runs_individual_check(monkeypatch):
@@ -175,16 +175,46 @@ def test_customer_report_dispatches_flow(monkeypatch):
     monkeypatch.setattr(interactive.console, "clear", lambda: None)
     monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
     monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
-    monkeypatch.setattr(
-        interactive,
-        "run_customer_report",
-        lambda: calls.__setitem__("customer", calls["customer"] + 1),
-    )
+
+    def _fake_customer_report():
+        calls["customer"] += 1
+        return True
+
+    monkeypatch.setattr(interactive, "run_customer_report", _fake_customer_report)
 
     interactive.run_interactive()
 
     assert calls["customer"] == 1
-    assert calls["pause"] == 1
+    assert calls["pause"] == 0
+
+
+def test_customer_report_cancelled_does_not_pause(monkeypatch):
+    """Jika user cancel/back dari Customer Report, jangan tampilkan pause."""
+    from src.app.tui import common
+
+    selections = iter(["customer", "exit"])
+    calls = {"customer": 0, "pause": 0}
+
+    monkeypatch.setattr(
+        common, "_select_prompt", lambda *args, **kwargs: next(selections)
+    )
+    monkeypatch.setattr(
+        common, "_pause", lambda: calls.__setitem__("pause", calls["pause"] + 1)
+    )
+    monkeypatch.setattr(interactive.console, "clear", lambda: None)
+    monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
+    monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
+
+    def _fake_customer_report():
+        calls["customer"] += 1
+        return False
+
+    monkeypatch.setattr(interactive, "run_customer_report", _fake_customer_report)
+
+    interactive.run_interactive()
+
+    assert calls["customer"] == 1
+    assert calls["pause"] == 0
 
 
 def test_main_menu_shows_huawei_check_label(monkeypatch):
@@ -213,7 +243,7 @@ def test_selecting_huawei_menu_opens_utilization_submenu(monkeypatch):
     prompt_values = []
     selections = iter(["huawei_check", "utilization", "exit"])
 
-    def _fake_select_prompt(_message, choices):
+    def _fake_select_prompt(_message, choices, **_kwargs):
         available_values = [choice.value for choice in choices]
         prompt_values.append(available_values)
         selected = next(selections)
@@ -238,7 +268,9 @@ def test_huawei_utilization_runs_consolidated_over_fixed_profiles(monkeypatch):
     selections = iter(["huawei_check", "utilization", "exit"])
     calls = []
 
-    monkeypatch.setattr(common, "_select_prompt", lambda *_args, **_kwargs: next(selections))
+    monkeypatch.setattr(
+        common, "_select_prompt", lambda *_args, **_kwargs: next(selections)
+    )
     monkeypatch.setattr(common, "_pause", lambda: None)
     monkeypatch.setattr(interactive.console, "clear", lambda: None)
     monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
@@ -281,7 +313,7 @@ def test_selecting_huawei_submenu_back_does_not_run_checks(monkeypatch):
     selections = iter(["huawei_check", "back", "exit"])
     prompt_values = []
 
-    def _fake_select_prompt(_message, choices):
+    def _fake_select_prompt(_message, choices, **_kwargs):
         available_values = [choice.value for choice in choices]
         prompt_values.append(available_values)
         return next(selections)
@@ -316,8 +348,12 @@ def test_huawei_utilization_shows_error_when_check_not_registered(monkeypatch):
         ),
     )
     monkeypatch.setattr(interactive, "print_mini_banner", lambda: None)
-    monkeypatch.setattr(interactive, "print_section_header", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(interactive, "print_error", lambda message: errors.append(message))
+    monkeypatch.setattr(
+        interactive, "print_section_header", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        interactive, "print_error", lambda message: errors.append(message)
+    )
 
     interactive.run_huawei_utilization()
 
@@ -353,7 +389,9 @@ def test_pick_profiles_all_accounts_returns_all_profiles(monkeypatch):
     monkeypatch.setattr(loader, "load_customer_config", _fake_load)
 
     # User picks "all_accounts" mode
-    monkeypatch.setattr(common, "_select_prompt", lambda _msg, _choices, **_kw: "all_accounts")
+    monkeypatch.setattr(
+        common, "_select_prompt", lambda _msg, _choices, **_kw: "all_accounts"
+    )
 
     profiles, group_name, back = interactive._pick_profiles_from_customers()
 
@@ -370,7 +408,9 @@ def test_pick_profiles_per_customer_all_accounts(monkeypatch):
     monkeypatch.setattr(
         loader,
         "list_customers",
-        lambda: [{"customer_id": "nabati", "display_name": "Nabati", "account_count": 2}],
+        lambda: [
+            {"customer_id": "nabati", "display_name": "Nabati", "account_count": 2}
+        ],
     )
     monkeypatch.setattr(
         loader,
@@ -379,11 +419,16 @@ def test_pick_profiles_per_customer_all_accounts(monkeypatch):
     )
 
     select_calls = iter(["per_customer", "nabati"])
-    monkeypatch.setattr(common, "_select_prompt", lambda _msg, _choices, **_kw: next(select_calls))
+    monkeypatch.setattr(
+        common, "_select_prompt", lambda _msg, _choices, **_kw: next(select_calls)
+    )
 
     # confirm "pilih semua" → True
     import questionary as q
-    monkeypatch.setattr(q, "confirm", lambda *_a, **_kw: type("C", (), {"ask": lambda self: True})())
+
+    monkeypatch.setattr(
+        q, "confirm", lambda *_a, **_kw: type("C", (), {"ask": lambda self: True})()
+    )
 
     profiles, group_name, back = interactive._pick_profiles_from_customers()
 
@@ -400,7 +445,9 @@ def test_pick_profiles_per_customer_partial_selection(monkeypatch):
     monkeypatch.setattr(
         loader,
         "list_customers",
-        lambda: [{"customer_id": "nabati", "display_name": "Nabati", "account_count": 2}],
+        lambda: [
+            {"customer_id": "nabati", "display_name": "Nabati", "account_count": 2}
+        ],
     )
     monkeypatch.setattr(
         loader,
@@ -409,11 +456,18 @@ def test_pick_profiles_per_customer_partial_selection(monkeypatch):
     )
 
     select_calls = iter(["per_customer", "nabati"])
-    monkeypatch.setattr(common, "_select_prompt", lambda _msg, _choices, **_kw: next(select_calls))
+    monkeypatch.setattr(
+        common, "_select_prompt", lambda _msg, _choices, **_kw: next(select_calls)
+    )
 
     import questionary as q
-    monkeypatch.setattr(q, "confirm", lambda *_a, **_kw: type("C", (), {"ask": lambda self: False})())
-    monkeypatch.setattr(common, "_checkbox_prompt", lambda _msg, _choices, **_kw: ["ksni-master"])
+
+    monkeypatch.setattr(
+        q, "confirm", lambda *_a, **_kw: type("C", (), {"ask": lambda self: False})()
+    )
+    monkeypatch.setattr(
+        common, "_checkbox_prompt", lambda _msg, _choices, **_kw: ["ksni-master"]
+    )
 
     profiles, group_name, back = interactive._pick_profiles_from_customers()
 
@@ -430,7 +484,9 @@ def test_pick_profiles_per_customer_back_from_customer_to_mode(monkeypatch):
     monkeypatch.setattr(
         loader,
         "list_customers",
-        lambda: [{"customer_id": "nabati", "display_name": "Nabati", "account_count": 2}],
+        lambda: [
+            {"customer_id": "nabati", "display_name": "Nabati", "account_count": 2}
+        ],
     )
     monkeypatch.setattr(
         loader,
@@ -453,7 +509,7 @@ def test_pick_profiles_per_customer_back_from_customer_to_mode(monkeypatch):
 
 
 def test_quick_check_back_from_profile_to_check_picker(monkeypatch):
-    """Escape di profile picker harus kembali ke check picker, bukan keluar."""
+    """Saat akun kosong, Quick Check harus tetap di picker akun dengan peringatan."""
     monkeypatch.setattr(interactive, "print_mini_banner", lambda: None)
     monkeypatch.setattr(interactive, "print_section_header", lambda *a, **kw: None)
 
@@ -461,21 +517,25 @@ def test_quick_check_back_from_profile_to_check_picker(monkeypatch):
 
     pick_calls = {"count": 0}
     check_calls = []
+    errors = []
 
-    # _pick_profiles_from_customers: first call returns empty (back), second returns profile
+    # _pick_profiles_from_customers: first call returns empty, second returns profile
     def fake_pick():
         pick_calls["count"] += 1
         if pick_calls["count"] == 1:
-            return [], None, False  # empty = back signal
+            return [], None, False
         return ["prod-a"], "Nabati", False
 
     monkeypatch.setattr(interactive, "_pick_profiles_from_customers", fake_pick)
 
-    select_calls = iter(["health", "health"])  # check picker called twice
+    select_calls = iter(["health"])
     monkeypatch.setattr(
         common, "_select_prompt", lambda _msg, _choices, **_kw: next(select_calls)
     )
     monkeypatch.setattr(common, "_choose_region", lambda profiles: "ap-southeast-3")
+    monkeypatch.setattr(
+        interactive, "print_error", lambda message: errors.append(message)
+    )
     monkeypatch.setattr(
         interactive,
         "run_individual_check",
@@ -484,5 +544,84 @@ def test_quick_check_back_from_profile_to_check_picker(monkeypatch):
 
     interactive._run_quick_check()
 
-    assert pick_calls["count"] == 2, "profile picker harus dipanggil 2x"
+    assert pick_calls["count"] == 2, "profile picker harus dipanggil ulang"
     assert check_calls == [("health", "prod-a")]
+    assert errors and "Pilih minimal satu akun" in errors[-1]
+
+
+def test_check_choices_include_aws_utilization_3core():
+    values = [c.value for c in interactive.CHECK_CHOICES]
+    assert "aws-utilization-3core" in values
+
+
+def test_main_menu_hides_aws_utilization_label(monkeypatch):
+    from src.app.tui import common
+
+    captured = {"values": []}
+
+    def _fake_select_prompt(_message, choices):
+        captured["values"] = [choice.value for choice in choices]
+        return "exit"
+
+    monkeypatch.setattr(common, "_select_prompt", _fake_select_prompt)
+    monkeypatch.setattr(interactive.console, "clear", lambda: None)
+    monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
+    monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
+
+    interactive.run_interactive()
+
+    assert "aws_utilization" not in captured["values"]
+
+
+def test_run_aws_utilization_trial_runs_with_sadewa_profiles(monkeypatch):
+    calls = []
+    sso_args = []
+
+    monkeypatch.setattr(interactive, "print_mini_banner", lambda: None)
+    monkeypatch.setattr(
+        interactive, "print_section_header", lambda *_args, **_kwargs: None
+    )
+
+    def _fake_collect(sso_session=None):
+        sso_args.append(sso_session)
+        return ["Diamond", "KKI"]
+
+    monkeypatch.setattr(interactive, "collect_customer_profiles", _fake_collect)
+    monkeypatch.setitem(interactive.AVAILABLE_CHECKS, "aws-utilization-3core", object())
+    monkeypatch.setattr(
+        interactive, "run_all_checks", lambda **kwargs: calls.append(kwargs)
+    )
+
+    interactive.run_aws_utilization(trial_mode=True)
+
+    assert sso_args == ["sadewa-sso"]
+    assert len(calls) == 1
+    assert calls[0]["profiles"] == ["Diamond", "KKI"]
+    assert set(calls[0]["checks_override"]) == {"aws-utilization-3core"}
+
+
+def test_run_aws_utilization_all_customers_runs_without_sso_filter(monkeypatch):
+    calls = []
+    sso_args = []
+
+    monkeypatch.setattr(interactive, "print_mini_banner", lambda: None)
+    monkeypatch.setattr(
+        interactive, "print_section_header", lambda *_args, **_kwargs: None
+    )
+
+    def _fake_collect(sso_session=None):
+        sso_args.append(sso_session)
+        return ["programa", "ucoal-prod"]
+
+    monkeypatch.setattr(interactive, "collect_customer_profiles", _fake_collect)
+    monkeypatch.setitem(interactive.AVAILABLE_CHECKS, "aws-utilization-3core", object())
+    monkeypatch.setattr(
+        interactive, "run_all_checks", lambda **kwargs: calls.append(kwargs)
+    )
+
+    interactive.run_aws_utilization(trial_mode=False)
+
+    assert sso_args == [None]
+    assert len(calls) == 1
+    assert calls[0]["profiles"] == ["programa", "ucoal-prod"]
+    assert set(calls[0]["checks_override"]) == {"aws-utilization-3core"}

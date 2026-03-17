@@ -15,7 +15,7 @@ from src.configs.loader import (
     list_customers,
     load_customer_config,
 )
-from src.core.runtime.config import AVAILABLE_CHECKS, CUSTOM_STYLE
+from src.core.runtime.config import AVAILABLE_CHECKS
 from src.core.runtime.runners import run_all_checks, run_group_specific
 from src.core.runtime.ui import (
     console,
@@ -68,6 +68,40 @@ def _render_customer_dashboard(customers):
     console.print()
 
 
+def _render_breadcrumb(path: str):
+    """Render lightweight location hint for current menu step."""
+    console.print(f"[dim]Path: {path}[/dim]")
+
+
+def _build_profile_regions(accounts, selected_profiles):
+    """Build {profile: [regions...]} from customer accounts.
+
+    Supports:
+    - account.region: "ap-southeast-3"
+    - account.regions: ["ap-southeast-1", "eu-central-1", ...]
+    """
+    selected = set(selected_profiles or [])
+    mapping = {}
+    for account in accounts or []:
+        profile = account.get("profile")
+        if not profile or profile not in selected:
+            continue
+
+        regions = []
+        raw_regions = account.get("regions")
+        if isinstance(raw_regions, list):
+            regions = [str(r).strip() for r in raw_regions if str(r).strip()]
+        elif isinstance(raw_regions, str) and raw_regions.strip():
+            regions = [raw_regions.strip()]
+        elif account.get("region"):
+            regions = [str(account.get("region")).strip()]
+
+        if regions:
+            mapping[profile] = regions
+
+    return mapping
+
+
 def _run_aryanoble_subflow(cfg):
     """Aryanoble-specific sub-flow: RDS Monitoring / Alarm Verification / Budget / Backup.
 
@@ -76,6 +110,14 @@ def _run_aryanoble_subflow(cfg):
     arbel_profiles = [
         a["profile"] for a in cfg.get("accounts", []) if a.get("daily_arbel")
     ]
+    ec2_profiles = []
+    for account in cfg.get("accounts", []):
+        profile = account.get("profile")
+        daily = account.get("daily_arbel") or {}
+        has_primary_ec2 = isinstance(daily, dict) and daily.get("service_type") == "ec2"
+        has_extra_ec2 = bool(account.get("daily_arbel_extra"))
+        if profile and (has_primary_ec2 or has_extra_ec2):
+            ec2_profiles.append(profile)
     all_profiles = [a["profile"] for a in cfg.get("accounts", [])]
     default_rds_profiles = ["dermies-max", "cis-erha", "connect-prod"]
 
@@ -94,8 +136,29 @@ def _run_aryanoble_subflow(cfg):
 
     arbel_alarm_catalog = _load_alarm_catalog()
 
+    def _parse_alarm_input(raw: str) -> list[str]:
+        tokens = str(raw or "").replace("\n", ",").split(",")
+        alarms = []
+        seen = set()
+        for token in tokens:
+            name = token.strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            alarms.append(name)
+        return alarms
+
+    def _match_profiles_for_alarm_names(alarm_names: list[str]) -> list[str]:
+        alarm_set = set(alarm_names)
+        matched_profiles = []
+        for profile, names in arbel_alarm_catalog.items():
+            if any(name in alarm_set for name in names):
+                matched_profiles.append(profile)
+        return matched_profiles
+
     arbel_choices = [
         questionary.Choice(f"{ICONS['rds']} RDS Monitoring", value="rds"),
+        questionary.Choice("🖥️ EC2 Monitoring", value="ec2"),
         questionary.Choice(f"{ICONS['alarm']} Alarm Verification", value="alarm-name"),
         questionary.Choice(f"{ICONS['cost']} Daily Budget", value="budget"),
         questionary.Choice(f"{ICONS['backup']} Backup", value="backup"),
@@ -105,6 +168,7 @@ def _run_aryanoble_subflow(cfg):
     step = "mode"
     choice = None
     selected_profiles = None
+    alarm_source = "from-account"
 
     while True:
         if step == "mode":
@@ -122,7 +186,10 @@ def _run_aryanoble_subflow(cfg):
                 )
                 return {"mode": "backup"}
 
-            step = "accounts"
+            if choice == "alarm-name":
+                step = "alarm_source"
+            else:
+                step = "accounts"
 
         elif step == "accounts":
             if choice == "alarm-name":
@@ -130,6 +197,10 @@ def _run_aryanoble_subflow(cfg):
                 profile_choices = [
                     questionary.Choice(p, value=p, checked=False)
                     for p in alarm_profiles
+                ]
+            elif choice == "ec2":
+                profile_choices = [
+                    questionary.Choice(p, value=p, checked=True) for p in ec2_profiles
                 ]
             else:
                 profile_choices = [
@@ -151,27 +222,51 @@ def _run_aryanoble_subflow(cfg):
                 continue  # Stay on accounts step
 
             if choice == "budget":
+                profiles_for_budget = list(selected_profiles or [])
                 run_group_specific(
                     "daily-budget",
-                    selected_profiles,
+                    profiles_for_budget,
                     region,
                     group_name="Aryanoble Budget",
                 )
                 return {"mode": "budget"}
 
             if choice == "alarm-name":
-                step = "alarm_select"
+                step = (
+                    "alarm_input" if alarm_source == "paste-input" else "alarm_select"
+                )
             else:
                 step = "window"
 
+        elif step == "alarm_source":
+            alarm_source = common._select_prompt(
+                f"{ICONS['alarm']} Alarm Verification - Pilih Metode",
+                [
+                    questionary.Choice("By Account", value="from-account"),
+                    questionary.Choice("By Alarm Names", value="paste-input"),
+                ],
+                default="from-account",
+                allow_back=True,
+            )
+            if alarm_source is None:
+                step = "mode"
+                continue
+            if alarm_source == "paste-input":
+                step = "alarm_input"
+            else:
+                step = "accounts"
+
         elif step == "window":
+            profiles_for_window = list(selected_profiles or [])
             window_choices = [
                 questionary.Choice("1 Jam", value=(1, "1 Hour")),
                 questionary.Choice("3 Jam", value=(3, "3 Hours")),
                 questionary.Choice("12 Jam", value=(12, "12 Hours")),
             ]
+            window_icon = "🖥️" if choice == "ec2" else ICONS["rds"]
+            window_label = "EC2" if choice == "ec2" else "RDS"
             selected_window = common._select_prompt(
-                f"{ICONS['rds']} Pilih Window RDS",
+                f"{window_icon} Pilih Window {window_label}",
                 window_choices,
                 default=(3, "3 Hours"),
                 allow_back=True,
@@ -184,17 +279,21 @@ def _run_aryanoble_subflow(cfg):
             window_hours, suffix = selected_window
             run_group_specific(
                 "daily-arbel",
-                selected_profiles,
+                profiles_for_window,
                 region,
-                group_name=f"Aryanoble ({suffix})",
-                check_kwargs={"window_hours": window_hours},
+                group_name=f"Aryanoble {window_label} ({suffix})",
+                check_kwargs={
+                    "window_hours": window_hours,
+                    "section_scope": "ec2" if choice == "ec2" else "rds",
+                },
             )
-            return {"mode": "rds"}
+            return {"mode": choice}
 
         elif step == "alarm_select":
+            profiles_for_alarm = list(selected_profiles or [])
             candidate_alarms = []
             seen = set()
-            for profile in selected_profiles:
+            for profile in profiles_for_alarm:
                 for alarm_name in arbel_alarm_catalog.get(profile, []):
                     if alarm_name not in seen:
                         seen.add(alarm_name)
@@ -216,24 +315,54 @@ def _run_aryanoble_subflow(cfg):
                     print_error("Nama alarm wajib diisi.")
                     continue  # Stay on alarm_select
             else:
-                try:
-                    alarm_input = questionary.text(
-                        "Masukkan nama alarm (pisahkan dengan koma):",
-                        style=CUSTOM_STYLE,
-                    ).ask()
-                except KeyboardInterrupt:
+                alarm_input = common._text_prompt(
+                    "Masukkan nama alarm (pisahkan dengan koma):",
+                    allow_back=True,
+                )
+                if alarm_input is None:
                     step = "accounts"
                     continue
-                selected_alarms = [
-                    x.strip() for x in (alarm_input or "").split(",") if x.strip()
-                ]
+                selected_alarms = _parse_alarm_input(alarm_input or "")
                 if not selected_alarms:
                     print_error("Nama alarm wajib diisi.")
                     continue
 
             run_group_specific(
                 "alarm_verification",
-                selected_profiles,
+                profiles_for_alarm,
+                region,
+                group_name="Aryanoble Alarm",
+                check_kwargs={
+                    "alarm_names": selected_alarms,
+                    "min_duration_minutes": 10,
+                },
+            )
+            return {"mode": "alarm"}
+
+        elif step == "alarm_input":
+            alarm_input = common._text_prompt(
+                "Paste nama alarm (koma atau baris baru):",
+                allow_back=True,
+            )
+            if alarm_input is None:
+                step = "alarm_source"
+                continue
+
+            selected_alarms = _parse_alarm_input(alarm_input or "")
+            if not selected_alarms:
+                print_error("Nama alarm wajib diisi.")
+                continue
+
+            profiles_for_alarm = _match_profiles_for_alarm_names(selected_alarms)
+            if not profiles_for_alarm:
+                print_error(
+                    "Alarm tidak ditemukan pada katalog account. Gunakan By Account atau update alarm_names di config."
+                )
+                continue
+
+            run_group_specific(
+                "alarm_verification",
+                profiles_for_alarm,
                 region,
                 group_name="Aryanoble Alarm",
                 check_kwargs={
@@ -256,30 +385,64 @@ def _run_generic_customer(cfg):
     """
     customer_id = cfg["customer_id"]
     display_name = cfg.get("display_name", customer_id)
-    checks = cfg.get("checks", [])
-    accounts = cfg.get("accounts", [])
+    output_mode = "summary"
+    checks = cfg.get("checks") or []
+    accounts = cfg.get("accounts") or []
 
     if not checks:
         print_error(f"Tidak ada checks dikonfigurasi untuk {display_name}")
         return None
 
-    # Searchable multi-select keeps flow testable and scalable for larger lists.
     valid_checks = [check for check in checks if check in AVAILABLE_CHECKS]
-    selected_checks = common._searchable_multi_select_prompt(
-        f"{ICONS['check']} Pilih Checks untuk {display_name}",
-        valid_checks,
-    )
-    if not selected_checks:
-        print_error("Tidak ada check dipilih.")
+    if not valid_checks:
+        print_error(f"Checks untuk {display_name} tidak valid atau belum terdaftar.")
         return None
 
-    selected_profiles = common._searchable_multi_select_prompt(
-        f"{ICONS['check']} Pilih akun untuk {display_name}",
-        [a["profile"] for a in accounts],
-    )
-    if not selected_profiles:
-        print_error("Tidak ada akun dipilih.")
-        return None
+    selected_checks = None
+    selected_profiles = None
+    step = "checks"
+    while True:
+        if step == "checks":
+            _render_breadcrumb(f"Customer Report > {display_name} > Checks")
+            check_choices = [
+                questionary.Choice(check_name, value=check_name, checked=True)
+                for check_name in valid_checks
+            ]
+            selected_checks = common._checkbox_prompt(
+                f"{ICONS['check']} Pilih Checks untuk {display_name}",
+                check_choices,
+                allow_back=True,
+            )
+            if selected_checks is None:
+                return {"back": True}
+            if not selected_checks:
+                print_error("Tidak ada check dipilih.")
+                return None
+            step = "accounts"
+
+        elif step == "accounts":
+            _render_breadcrumb(f"Customer Report > {display_name} > Accounts")
+            account_choices = [
+                questionary.Choice(
+                    (a.get("display_name") or a.get("profile") or "Unknown"),
+                    value=a["profile"],
+                    checked=True,
+                )
+                for a in accounts
+                if a.get("profile")
+            ]
+            selected_profiles = common._checkbox_prompt(
+                f"{ICONS['check']} Pilih akun untuk {display_name}",
+                account_choices,
+                allow_back=True,
+            )
+            if selected_profiles is None:
+                step = "checks"
+                continue
+            if not selected_profiles:
+                print_error("Tidak ada akun dipilih.")
+                continue
+            break
 
     # Determine region from first selected account or default
     region = "ap-southeast-3"
@@ -287,6 +450,9 @@ def _run_generic_customer(cfg):
         if a["profile"] in selected_profiles and a.get("region"):
             region = a["region"]
             break
+
+    selected_checks = list(selected_checks or [])
+    selected_profiles = list(selected_profiles or [])
 
     # Split checks: consolidated (checker has render_section) vs individual
     consolidated = [
@@ -341,12 +507,20 @@ def _run_generic_customer(cfg):
             if name in AVAILABLE_CHECKS
         }
         has_backup_rds = "backup" in checks_override or "daily-arbel" in checks_override
+        profile_regions = _build_profile_regions(accounts, selected_profiles)
+        check_kwargs_by_name = None
+        if "aws-utilization-3core" in checks_override and profile_regions:
+            check_kwargs_by_name = {
+                "aws-utilization-3core": {"profile_regions": profile_regions}
+            }
         run_all_checks(
             profiles=selected_profiles,
             region=region,
             group_name=display_name,
             checks_override=checks_override,
+            check_kwargs_by_name=check_kwargs_by_name,
             exclude_backup_rds=not has_backup_rds,
+            output_mode=output_mode,
         )
 
     return {"customer_id": customer_id, "checks": selected_checks}
@@ -374,13 +548,12 @@ def _prompt_slack(cfg):
     channel = slack_cfg.get("channel", "")
     channel_display = channel or "(default channel)"
 
-    try:
-        send = questionary.confirm(
-            f"Kirim report ke Slack {display_name} ({channel_display})?",
-            default=False,
-            style=CUSTOM_STYLE,
-        ).ask()
-    except KeyboardInterrupt:
+    send = common._confirm_prompt(
+        f"Kirim report ke Slack {display_name} ({channel_display})?",
+        default=False,
+        allow_back=True,
+    )
+    if send is None:
         return
 
     if not send:
@@ -407,8 +580,9 @@ def _run_customer_auto(cfg):
     """
     customer_id = cfg["customer_id"]
     display_name = cfg.get("display_name", customer_id)
-    checks = cfg.get("checks", [])
-    accounts = cfg.get("accounts", [])
+    output_mode = "summary"
+    checks = cfg.get("checks") or []
+    accounts = cfg.get("accounts") or []
 
     if not checks or not accounts:
         return
@@ -450,12 +624,20 @@ def _run_customer_auto(cfg):
             if name in AVAILABLE_CHECKS
         }
         has_backup_rds = "backup" in checks_override or "daily-arbel" in checks_override
+        profile_regions = _build_profile_regions(accounts, selected_profiles)
+        check_kwargs_by_name = None
+        if "aws-utilization-3core" in checks_override and profile_regions:
+            check_kwargs_by_name = {
+                "aws-utilization-3core": {"profile_regions": profile_regions}
+            }
         run_all_checks(
             profiles=selected_profiles,
             region=region,
             group_name=display_name,
             checks_override=checks_override,
+            check_kwargs_by_name=check_kwargs_by_name,
             exclude_backup_rds=not has_backup_rds,
+            output_mode=output_mode,
         )
 
 
@@ -465,111 +647,42 @@ def run_customer_report():
     Escape at customer picker returns to mode selector.
     """
     print_mini_banner()
-    print_section_header("Customer Report", ICONS["star"])
+    print_section_header("Daily Check", ICONS["star"])
 
     customers = list_customers()
     if not customers:
         print_error("Tidak ada customer config ditemukan di configs/customers/")
         print_info("Jalankan: monitoring-hub customer init <customer_id>")
-        return
+        return False
 
     _render_customer_dashboard(customers)
 
-    mode_choices = [
-        questionary.Choice(
-            f"{ICONS['star']} Satu Customer  — pilih 1 customer, tanya checks & akun",
-            value="single",
-        ),
-        questionary.Choice(
-            f"{ICONS['all']} Multi Customer — pilih beberapa customer, jalankan otomatis",
-            value="multi",
-        ),
-    ]
-
-    step = "mode"
+    did_run = False
 
     while True:
-        if step == "mode":
-            mode = common._select_prompt(
-                f"{ICONS['check']} Mode Eksekusi", mode_choices, allow_back=True
+        _render_breadcrumb("Customer Report > Pilih Customer")
+        customer_choices = [
+            questionary.Choice(
+                f"{c['display_name']} ({c['account_count']} akun)",
+                value=c["customer_id"],
+                checked=False,
             )
-            if not mode:
-                return  # Escape at top-level = exit flow
+            for c in customers
+        ]
 
-            if mode == "multi":
-                customer_choices = [
-                    questionary.Choice(
-                        f"{c['display_name']} ({c['account_count']} akun)",
-                        value=c["customer_id"],
-                        checked=False,
-                    )
-                    for c in customers
-                ]
-                selected_ids = common._checkbox_prompt(
-                    f"{ICONS['all']} Pilih Customer", customer_choices, allow_back=True
-                )
-                if selected_ids is None:
-                    # Escape from multi customer picker = back to mode
-                    continue  # step is still "mode"
-                if not selected_ids:
-                    print_error("Tidak ada customer dipilih.")
-                    continue
+        selected_ids = common._checkbox_prompt(
+            f"{ICONS['all']} Pilih Customer (bisa 1 atau lebih)",
+            customer_choices,
+            allow_back=True,
+        )
+        if selected_ids is None:
+            return did_run
+        if not selected_ids:
+            print_error("Tidak ada customer dipilih.")
+            continue
 
-                for cid in selected_ids:
-                    try:
-                        cfg = load_customer_config(cid)
-                    except Exception as exc:
-                        print_error(f"Gagal load config {cid}: {exc}")
-                        continue
-                    display = cfg.get("display_name", cid)
-                    console.print(f"\n[bold cyan]{ICONS['star']} {display}[/bold cyan]")
-                    _run_customer_auto(cfg)
-                return
-
-            # single mode
-            step = "single_customer"
-
-        elif step == "single_customer":
-            try:
-                search_query = questionary.text(
-                    "Kata kunci customer (opsional):",
-                    default="",
-                ).ask()
-            except KeyboardInterrupt:
-                # Escape at keyword search = back to mode picker
-                step = "mode"
-                continue
-
-            normalized_search = (search_query or "").strip().lower()
-            filtered_customers = customers
-            if normalized_search:
-                filtered_customers = [
-                    c
-                    for c in customers
-                    if normalized_search
-                    in f"{c.get('display_name', c.get('customer_id', ''))} {c.get('customer_id', '')}".lower()
-                ]
-
-            if not filtered_customers:
-                print_error("Tidak ada customer yang cocok dengan kata kunci.")
-                continue  # Stay on single_customer step, re-prompt keyword
-
-            customer_choices = [
-                questionary.Choice(
-                    f"{c['display_name']} ({c['account_count']} akun)",
-                    value=c["customer_id"],
-                )
-                for c in filtered_customers
-            ]
-
-            selected_id = common._select_prompt(
-                f"{ICONS['star']} Pilih Customer", customer_choices, allow_back=True
-            )
-            if not selected_id:
-                # Escape = back to mode picker
-                step = "mode"
-                continue
-
+        if len(selected_ids) == 1:
+            selected_id = selected_ids[0]
             try:
                 cfg = load_customer_config(selected_id)
             except Exception as exc:
@@ -588,6 +701,22 @@ def run_customer_report():
             else:
                 result = _run_generic_customer(cfg)
 
+            if result == {"back": True}:
+                continue
+
             if result:
                 _prompt_slack(cfg)
-            return
+                did_run = True
+            return did_run
+
+        for cid in selected_ids:
+            try:
+                cfg = load_customer_config(cid)
+            except Exception as exc:
+                print_error(f"Gagal load config {cid}: {exc}")
+                continue
+            display = cfg.get("display_name", cid)
+            console.print(f"\n[bold cyan]{ICONS['star']} {display}[/bold cyan]")
+            _run_customer_auto(cfg)
+            did_run = True
+        return did_run

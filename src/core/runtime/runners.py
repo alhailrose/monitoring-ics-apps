@@ -39,7 +39,10 @@ from .ui import (
     ICONS,
 )
 from src.integrations.slack.notifier import send_report_to_slack
-from src.checks.common.aws_errors import is_credential_error, friendly_credential_message
+from src.checks.common.aws_errors import (
+    is_credential_error,
+    friendly_credential_message,
+)
 
 
 def run_individual_check(
@@ -150,12 +153,20 @@ def run_check_headless(
     )
 
 
-def _check_all_for_profile(profile: str, region: str, checks: dict) -> dict:
+def _check_all_for_profile(
+    profile: str,
+    region: str,
+    checks: dict,
+    check_kwargs_by_name: Optional[dict] = None,
+) -> dict:
     """Run all checks for a single profile. Used for parallel execution."""
     profile_results = {}
 
     for check_name, checker_class in checks.items():
-        checker = checker_class(region=region)
+        check_kwargs = {}
+        if check_kwargs_by_name:
+            check_kwargs = dict(check_kwargs_by_name.get(check_name, {}) or {})
+        checker = checker_class(region=region, **check_kwargs)
         account_id = get_account_id(profile)
         try:
             results = checker.check(profile, account_id)
@@ -228,7 +239,11 @@ def run_group_specific(
                     results = future.result()
                 except Exception as exc:
                     if is_credential_error(exc):
-                        results = {"status": "error", "error": friendly_credential_message(exc, profile), "is_credential_error": True}
+                        results = {
+                            "status": "error",
+                            "error": friendly_credential_message(exc, profile),
+                            "is_credential_error": True,
+                        }
                     else:
                         results = {"status": "error", "error": str(exc)}
 
@@ -396,6 +411,7 @@ def run_all_checks(
     workers: int = DEFAULT_WORKERS,
     exclude_backup_rds: bool = True,
     checks_override: Optional[dict] = None,
+    check_kwargs_by_name: Optional[dict] = None,
     output_mode: str = "default",
 ):
     """Run all checks with parallel execution and detailed text output.
@@ -409,7 +425,9 @@ def run_all_checks(
     if checks_override is not None:
         checks = checks_override
     else:
-        checks = ALL_MODE_CHECKS_NO_BACKUP_RDS if exclude_backup_rds else ALL_MODE_CHECKS
+        checks = (
+            ALL_MODE_CHECKS_NO_BACKUP_RDS if exclude_backup_rds else ALL_MODE_CHECKS
+        )
 
     # Header
     console.print(
@@ -431,7 +449,12 @@ def run_all_checks(
     errors_by_check = {name: [] for name in checks.keys()}
 
     # Instantiate checkers once for reuse
-    checkers = {name: cls(region=region) for name, cls in checks.items()}
+    checkers = {}
+    for name, cls in checks.items():
+        check_kwargs = {}
+        if check_kwargs_by_name:
+            check_kwargs = dict(check_kwargs_by_name.get(name, {}) or {})
+        checkers[name] = cls(region=region, **check_kwargs)
 
     # Parallel execution with progress
     with Progress(
@@ -451,7 +474,11 @@ def run_all_checks(
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
                 executor.submit(
-                    _check_all_for_profile, profile, region, checks
+                    _check_all_for_profile,
+                    profile,
+                    region,
+                    checks,
+                    check_kwargs_by_name,
                 ): profile
                 for profile in profiles
             }
@@ -464,11 +491,17 @@ def run_all_checks(
                     if is_credential_error(exc):
                         err_msg = friendly_credential_message(exc, profile)
                         profile_results = {
-                            name: {"status": "error", "error": err_msg, "is_credential_error": True} for name in checks
+                            name: {
+                                "status": "error",
+                                "error": err_msg,
+                                "is_credential_error": True,
+                            }
+                            for name in checks
                         }
                     else:
                         profile_results = {
-                            name: {"status": "error", "error": str(exc)} for name in checks
+                            name: {"status": "error", "error": str(exc)}
+                            for name in checks
                         }
 
                 all_results[profile] = profile_results
@@ -552,6 +585,289 @@ def _print_consolidated_report(
         print("\n" + text)
         return
 
+    if output_mode == "summary":
+        lines = []
+
+        from src.configs.loader import get_profile_metadata
+
+        profile_meta_cache = {}
+
+        def _meta(profile_name: str) -> dict:
+            if profile_name not in profile_meta_cache:
+                profile_meta_cache[profile_name] = get_profile_metadata(profile_name)
+            return profile_meta_cache[profile_name]
+
+        def _profile_label(profile_name: str) -> str:
+            meta = _meta(profile_name)
+            return f"{meta.get('display_name', profile_name)} ({meta.get('account_id', 'Unknown')})"
+
+        def _fmt_pct(value):
+            if isinstance(value, (int, float)):
+                return f"{float(value):.2f}%"
+            return "N/A"
+
+        hour = now.hour
+        if hour < 11:
+            greeting = "Selamat Pagi Team"
+        elif hour < 15:
+            greeting = "Selamat Siang Team"
+        elif hour < 18:
+            greeting = "Selamat Sore Team"
+        else:
+            greeting = "Selamat Malam Team"
+
+        lines.append(greeting)
+        lines.append("Berikut Alert Monitoring")
+        lines.append(now.strftime("%Y.%m.%d"))
+        lines.append("")
+
+        util_key = "aws-utilization-3core"
+        util_checker = checkers.get(util_key)
+        util_issue_total = 0
+
+        if util_checker is not None:
+            lines.append("Utilisasi 12 Jam (CPU/MEM/DISK)")
+            status_order = {"CRITICAL": 0, "WARNING": 1, "PARTIAL_DATA": 2, "NORMAL": 3}
+
+            for profile in profiles:
+                util_result = all_results.get(profile, {}).get(util_key, {})
+                profile_label = _profile_label(profile)
+                if util_result.get("status") == "error":
+                    lines.append(
+                        f"- {profile_label}: ERROR - {util_result.get('error', 'unknown error')}"
+                    )
+                    continue
+
+                util_issue_total += util_checker.count_issues(util_result)
+                lines.append(f"- {profile_label}")
+
+                rows = sorted(
+                    util_result.get("instances", []) or [],
+                    key=lambda row: (
+                        status_order.get(str((row or {}).get("status") or "NORMAL"), 9),
+                        str((row or {}).get("instance_id") or ""),
+                    ),
+                )
+
+                thresholds = getattr(util_checker, "thresholds", {}) or {}
+                cpu_warn = float(thresholds.get("cpu_warning", 70.0))
+                cpu_crit = float(thresholds.get("cpu_critical", 85.0))
+                mem_warn = float(thresholds.get("memory_warning", 75.0))
+                mem_crit = float(thresholds.get("memory_critical", 90.0))
+                disk_warn = float(thresholds.get("disk_free_warning", 20.0))
+                disk_crit = float(thresholds.get("disk_free_critical", 10.0))
+
+                grouped = {"CRITICAL": [], "WARNING": [], "PARTIAL_DATA": []}
+                for row in rows:
+                    status_key = str(row.get("status") or "NORMAL")
+                    if status_key in grouped:
+                        grouped[status_key].append(row)
+
+                missing_data_notes = []
+                alert_notes = {
+                    f"CPU sangat tinggi (>= {cpu_crit:.0f}%)": [],
+                    f"CPU tinggi (>= {cpu_warn:.0f}%)": [],
+                    f"Memory sangat tinggi (>= {mem_crit:.0f}%)": [],
+                    f"Memory tinggi (>= {mem_warn:.0f}%)": [],
+                    f"Disk sisa sangat rendah (<= {disk_crit:.0f}%)": [],
+                    f"Disk sisa rendah (<= {disk_warn:.0f}%)": [],
+                }
+
+                def _add_unique(container, item):
+                    if item not in container:
+                        container.append(item)
+
+                for status_name in ["CRITICAL", "WARNING", "PARTIAL_DATA"]:
+                    status_rows = grouped.get(status_name) or []
+                    for row in status_rows:
+                        instance_label = f"{row.get('instance_id', 'unknown')} ({row.get('name', '-')})"
+
+                        cpu_peak = row.get("cpu_peak_12h")
+                        mem_peak = row.get("memory_peak_12h")
+                        disk_free = row.get("disk_free_min_percent")
+
+                        if isinstance(cpu_peak, (int, float)):
+                            if float(cpu_peak) >= cpu_crit:
+                                _add_unique(
+                                    alert_notes[
+                                        f"CPU sangat tinggi (>= {cpu_crit:.0f}%)"
+                                    ],
+                                    instance_label,
+                                )
+                            elif float(cpu_peak) >= cpu_warn:
+                                _add_unique(
+                                    alert_notes[f"CPU tinggi (>= {cpu_warn:.0f}%)"],
+                                    instance_label,
+                                )
+
+                        if isinstance(mem_peak, (int, float)):
+                            if float(mem_peak) >= mem_crit:
+                                _add_unique(
+                                    alert_notes[
+                                        f"Memory sangat tinggi (>= {mem_crit:.0f}%)"
+                                    ],
+                                    instance_label,
+                                )
+                            elif float(mem_peak) >= mem_warn:
+                                _add_unique(
+                                    alert_notes[f"Memory tinggi (>= {mem_warn:.0f}%)"],
+                                    instance_label,
+                                )
+
+                        if isinstance(disk_free, (int, float)):
+                            if float(disk_free) <= disk_crit:
+                                _add_unique(
+                                    alert_notes[
+                                        f"Disk sisa sangat rendah (<= {disk_crit:.0f}%)"
+                                    ],
+                                    instance_label,
+                                )
+                            elif float(disk_free) <= disk_warn:
+                                _add_unique(
+                                    alert_notes[
+                                        f"Disk sisa rendah (<= {disk_warn:.0f}%)"
+                                    ],
+                                    instance_label,
+                                )
+
+                        metric_parts = []
+                        if cpu_peak is not None:
+                            metric_parts.append(f"CPU={_fmt_pct(cpu_peak)}")
+                        if mem_peak is not None:
+                            metric_parts.append(f"MEM={_fmt_pct(mem_peak)}")
+                        if disk_free is not None:
+                            metric_parts.append(f"DISK={_fmt_pct(disk_free)}")
+
+                        missing_labels = []
+                        if row.get("memory_peak_12h") is None:
+                            missing_labels.append("MEM")
+                        if row.get("disk_free_min_percent") is None:
+                            missing_labels.append("DISK")
+
+                        if missing_labels:
+                            missing_data_notes.append(
+                                f"{instance_label}: {', '.join(missing_labels)}"
+                            )
+
+                        metric_text = (
+                            " | ".join(metric_parts)
+                            if metric_parts
+                            else "metric tidak tersedia"
+                        )
+                        lines.append(
+                            (
+                                f"    - {row.get('instance_id', 'unknown')} ({row.get('name', '-')}) "
+                                f"| {metric_text}"
+                            )
+                        )
+
+                if any(alert_notes.values()):
+                    lines.append("  Catatan Alert:")
+                    for key in [
+                        f"CPU sangat tinggi (>= {cpu_crit:.0f}%)",
+                        f"CPU tinggi (>= {cpu_warn:.0f}%)",
+                        f"Memory sangat tinggi (>= {mem_crit:.0f}%)",
+                        f"Memory tinggi (>= {mem_warn:.0f}%)",
+                        f"Disk sisa sangat rendah (<= {disk_crit:.0f}%)",
+                        f"Disk sisa rendah (<= {disk_warn:.0f}%)",
+                    ]:
+                        items = alert_notes.get(key) or []
+                        if not items:
+                            continue
+                        lines.append(f"    - {key}: {', '.join(items)}")
+
+                if missing_data_notes:
+                    lines.append("  Data Tidak Tersedia:")
+                    for note in missing_data_notes:
+                        lines.append(f"    - {note}")
+            lines.append("")
+
+        lines.append("Ringkasan Check Lain")
+        anomaly_lines = []
+        check_status_lines = []
+        check_labels = {
+            "notifications": "Notifikasi (12 jam)",
+            "cost": "Cost Anomaly",
+            "guardduty": "GuardDuty Finding",
+            "cloudwatch": "Alarm CloudWatch",
+        }
+        no_issue_messages = {
+            "notifications": "tidak ada notifikasi baru",
+            "cost": "tidak ada cost anomaly",
+            "guardduty": "tidak ada finding",
+            "cloudwatch": "tidak ada alarm aktif",
+        }
+        for chk_name, checker in checkers.items():
+            if chk_name == util_key:
+                continue
+            label = check_labels.get(chk_name, chk_name)
+            has_error = False
+            total_issues = 0
+            error_profiles = []
+            for profile in profiles:
+                result = all_results.get(profile, {}).get(chk_name, {})
+                profile_label = _profile_label(profile)
+                if result.get("status") == "error":
+                    has_error = True
+                    error_profiles.append(profile_label)
+                    anomaly_lines.append(
+                        f"- {label} - {profile_label}: gagal cek - {result.get('error', 'unknown error')}"
+                    )
+                    continue
+
+                issue_count = checker.count_issues(result)
+                total_issues += int(issue_count or 0)
+                if issue_count <= 0:
+                    continue
+
+                if chk_name == "cloudwatch":
+                    anomaly_lines.append(
+                        f"- Alarm CloudWatch - {profile_label}: {result.get('count', issue_count)} alarm aktif"
+                    )
+                elif chk_name == "notifications":
+                    anomaly_lines.append(
+                        f"- Notifikasi - {profile_label}: {result.get('recent_count', issue_count)} notifikasi baru (12 jam)"
+                    )
+                elif chk_name == "guardduty":
+                    anomaly_lines.append(
+                        f"- GuardDuty Finding - {profile_label}: {issue_count} finding terdeteksi (LOW diabaikan)"
+                    )
+                elif chk_name == "cost":
+                    anomaly_lines.append(
+                        f"- Cost Anomaly - {profile_label}: {result.get('total_anomalies', issue_count)} anomaly"
+                    )
+                else:
+                    detail_label = checker.issue_label or "temuan"
+                    anomaly_lines.append(
+                        f"- {chk_name} - {profile_label}: {issue_count} {detail_label}"
+                    )
+
+            if has_error and total_issues == 0:
+                check_status_lines.append(
+                    f"- {label}: gagal cek pada {', '.join(error_profiles)}"
+                )
+            elif total_issues == 0:
+                check_status_lines.append(
+                    f"- {label}: {no_issue_messages.get(chk_name, 'tidak ada temuan')}"
+                )
+            else:
+                check_status_lines.append(f"- {label}: ada temuan")
+
+        lines.extend(check_status_lines)
+
+        if anomaly_lines:
+            lines.append("Temuan Penting")
+            lines.extend(anomaly_lines)
+        elif util_issue_total == 0 and not check_errors:
+            lines.append("All Is Ok")
+        else:
+            lines.append(
+                "Check lain tidak ada temuan, perhatian ada pada utilisasi di atas."
+            )
+
+        print("\n" + "\n".join(lines))
+        return
+
     lines = []
 
     # Header
@@ -591,9 +907,13 @@ def _print_consolidated_report(
             totals[chk_name] = total
 
     if is_huawei_only:
-        summary_text = f"Utilization assessment completed across {len(profiles)} Huawei accounts."
+        summary_text = (
+            f"Utilization assessment completed across {len(profiles)} Huawei accounts."
+        )
     else:
-        summary_text = f"Security assessment completed across {len(profiles)} AWS accounts."
+        summary_text = (
+            f"Security assessment completed across {len(profiles)} AWS accounts."
+        )
     if check_errors:
         summary_text += f" {len(check_errors)} check error(s) encountered; see CHECK ERRORS section."
 
@@ -601,7 +921,9 @@ def _print_consolidated_report(
         if is_huawei_only:
             summary_text += " No significant utilization findings detected. All systems operating normally."
         else:
-            summary_text += " No new security incidents detected. All systems operating normally."
+            summary_text += (
+                " No new security incidents detected. All systems operating normally."
+            )
     elif totals:
         issue_parts = []
         if check_errors:
@@ -611,7 +933,9 @@ def _print_consolidated_report(
             if checker.issue_label:
                 issue_parts.append(f"{total} {checker.issue_label}")
         if issue_parts:
-            summary_text += f" {' and '.join(issue_parts)} detected requiring attention."
+            summary_text += (
+                f" {' and '.join(issue_parts)} detected requiring attention."
+            )
 
     lines.append(summary_text)
     lines.append("")
@@ -682,9 +1006,11 @@ def _print_consolidated_report(
             if checker.recommendation_text:
                 lines.append(f"{rec_count}. {checker.recommendation_text}")
                 affected = [
-                    p for p in profiles
-                    if checker.count_issues(all_results.get(p, {}).get(chk_name, {})) > 0
-    ]
+                    p
+                    for p in profiles
+                    if checker.count_issues(all_results.get(p, {}).get(chk_name, {}))
+                    > 0
+                ]
                 if affected:
                     lines.append(f"   Affected accounts: {', '.join(affected)}")
                 rec_count += 1
@@ -701,15 +1027,24 @@ def _print_consolidated_report(
         lines.append("WHATSAPP MESSAGE (READY TO SEND)")
         lines.append("=" * 70)
         lines.append("--backup")
-        lines.append(build_whatsapp_backup(date_str_wa, {
-            p: {chk: all_results.get(p, {}).get(chk, {}) for chk in checks}
-            for p in profiles
-        }))
+        lines.append(
+            build_whatsapp_backup(
+                date_str_wa,
+                {
+                    p: {chk: all_results.get(p, {}).get(chk, {}) for chk in checks}
+                    for p in profiles
+                },
+            )
+        )
         lines.append("")
         lines.append("--rds")
-        lines.append(build_whatsapp_rds({
-            p: {chk: all_results.get(p, {}).get(chk, {}) for chk in checks}
-            for p in profiles
-        }))
+        lines.append(
+            build_whatsapp_rds(
+                {
+                    p: {chk: all_results.get(p, {}).get(chk, {}) for chk in checks}
+                    for p in profiles
+                }
+            )
+        )
 
     print("\n" + "\n".join(lines))

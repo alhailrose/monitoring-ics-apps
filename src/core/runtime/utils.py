@@ -26,6 +26,17 @@ def get_account_id(profile):
     for group in PROFILE_GROUPS.values():
         if profile in group:
             return group[profile]
+
+    try:
+        from src.configs.loader import get_profile_metadata
+
+        meta = get_profile_metadata(profile)
+        account_id = meta.get("account_id")
+        if account_id and account_id != "Unknown":
+            return account_id
+    except Exception:
+        pass
+
     return "Unknown"
 
 

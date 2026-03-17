@@ -12,7 +12,7 @@ def _checker_factory(supports_consolidated=False):
     )
 
 
-def test_run_generic_customer_uses_searchable_selectors(monkeypatch):
+def test_run_generic_customer_uses_checkbox_selectors(monkeypatch):
     cfg = {
         "customer_id": "acme",
         "display_name": "Acme",
@@ -34,15 +34,13 @@ def test_run_generic_customer_uses_searchable_selectors(monkeypatch):
         },
     )
 
-    def fake_multi_select(prompt, choices, ask_search=True):
-        selector_calls.append((prompt, list(choices), ask_search))
+    def fake_checkbox(prompt, choices, **kwargs):
+        selector_calls.append((prompt, [c.value for c in choices]))
         if "Checks" in prompt:
             return ["health"]
         return ["prod-a"]
 
-    monkeypatch.setattr(
-        customer.common, "_searchable_multi_select_prompt", fake_multi_select
-    )
+    monkeypatch.setattr(customer.common, "_checkbox_prompt", fake_checkbox)
     monkeypatch.setattr(customer, "run_all_checks", lambda **kwargs: None)
     monkeypatch.setattr(
         customer,
@@ -70,11 +68,7 @@ def test_run_generic_customer_returns_none_on_empty_check_selection(monkeypatch)
     errors = []
 
     monkeypatch.setattr(customer, "AVAILABLE_CHECKS", {"health": _checker_factory()})
-    monkeypatch.setattr(
-        customer.common,
-        "_searchable_multi_select_prompt",
-        lambda *args, **kwargs: [],
-    )
+    monkeypatch.setattr(customer.common, "_checkbox_prompt", lambda *args, **kwargs: [])
     monkeypatch.setattr(customer, "print_error", lambda message: errors.append(message))
 
     result = customer._run_generic_customer(cfg)
@@ -83,7 +77,7 @@ def test_run_generic_customer_returns_none_on_empty_check_selection(monkeypatch)
     assert errors[-1] == "Tidak ada check dipilih."
 
 
-def test_run_generic_customer_returns_none_on_empty_account_selection(monkeypatch):
+def test_run_generic_customer_prompts_again_on_empty_account_selection(monkeypatch):
     cfg = {
         "customer_id": "acme",
         "display_name": "Acme",
@@ -96,21 +90,28 @@ def test_run_generic_customer_returns_none_on_empty_account_selection(monkeypatc
 
     call_index = {"value": 0}
 
-    def fake_multi_select(*args, **kwargs):
+    def fake_checkbox(*args, **kwargs):
         call_index["value"] += 1
         if call_index["value"] == 1:
             return ["health"]
-        return []
+        if call_index["value"] == 2:
+            return []
+        return ["prod-a"]
 
-    monkeypatch.setattr(
-        customer.common, "_searchable_multi_select_prompt", fake_multi_select
-    )
+    monkeypatch.setattr(customer.common, "_checkbox_prompt", fake_checkbox)
     monkeypatch.setattr(customer, "print_error", lambda message: errors.append(message))
+    group_calls = []
+    monkeypatch.setattr(
+        customer,
+        "run_group_specific",
+        lambda *args, **kwargs: group_calls.append((args, kwargs)),
+    )
 
     result = customer._run_generic_customer(cfg)
 
-    assert result is None
+    assert result == {"customer_id": "acme", "checks": ["health"]}
     assert errors[-1] == "Tidak ada akun dipilih."
+    assert len(group_calls) == 1
 
 
 def test_run_generic_customer_injects_alarm_names_for_alarm_verification(monkeypatch):
@@ -133,15 +134,13 @@ def test_run_generic_customer_injects_alarm_names_for_alarm_verification(monkeyp
 
     call_index = {"value": 0}
 
-    def fake_multi_select(*args, **kwargs):
+    def fake_checkbox(*args, **kwargs):
         call_index["value"] += 1
         if call_index["value"] == 1:
             return ["alarm_verification"]
         return ["prod-a", "prod-b"]
 
-    monkeypatch.setattr(
-        customer.common, "_searchable_multi_select_prompt", fake_multi_select
-    )
+    monkeypatch.setattr(customer.common, "_checkbox_prompt", fake_checkbox)
     monkeypatch.setattr(
         customer,
         "get_alarm_names_for_profile",
@@ -166,7 +165,84 @@ def test_run_generic_customer_injects_alarm_names_for_alarm_verification(monkeyp
     ]
 
 
-def test_run_customer_report_filters_customer_choices_by_keyword(monkeypatch):
+def test_run_generic_customer_summary_mode_passes_output_mode_and_regions(monkeypatch):
+    cfg = {
+        "customer_id": "techmeister",
+        "display_name": "Techmeister",
+        "check_mode": "summary",
+        "checks": ["aws-utilization-3core", "cloudwatch"],
+        "accounts": [
+            {
+                "profile": "Techmeister",
+                "regions": ["ap-southeast-1", "eu-central-1", "ap-southeast-3"],
+            }
+        ],
+    }
+    calls = []
+
+    monkeypatch.setattr(
+        customer,
+        "AVAILABLE_CHECKS",
+        {
+            "aws-utilization-3core": _checker_factory(supports_consolidated=True),
+            "cloudwatch": _checker_factory(supports_consolidated=True),
+        },
+    )
+
+    select_state = {"n": 0}
+
+    def fake_checkbox(*_args, **_kwargs):
+        select_state["n"] += 1
+        if select_state["n"] == 1:
+            return ["aws-utilization-3core", "cloudwatch"]
+        return ["Techmeister"]
+
+    monkeypatch.setattr(customer.common, "_checkbox_prompt", fake_checkbox)
+    monkeypatch.setattr(
+        customer,
+        "run_all_checks",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    monkeypatch.setattr(customer, "run_group_specific", lambda *args, **kwargs: None)
+
+    result = customer._run_generic_customer(cfg)
+
+    assert result == {
+        "customer_id": "techmeister",
+        "checks": ["aws-utilization-3core", "cloudwatch"],
+    }
+    assert len(calls) == 1
+    assert calls[0]["output_mode"] == "summary"
+    assert calls[0]["check_kwargs_by_name"] == {
+        "aws-utilization-3core": {
+            "profile_regions": {
+                "Techmeister": ["ap-southeast-1", "eu-central-1", "ap-southeast-3"]
+            }
+        }
+    }
+
+
+def test_run_generic_customer_back_from_account_selection_returns_back(monkeypatch):
+    cfg = {
+        "customer_id": "acme",
+        "display_name": "Acme",
+        "checks": ["health"],
+        "accounts": [{"profile": "prod-a", "region": "ap-southeast-3"}],
+    }
+
+    monkeypatch.setattr(customer, "AVAILABLE_CHECKS", {"health": _checker_factory()})
+
+    selections = iter([["health"], None, None])
+    monkeypatch.setattr(
+        customer.common, "_checkbox_prompt", lambda *args, **kwargs: next(selections)
+    )
+
+    result = customer._run_generic_customer(cfg)
+
+    assert result == {"back": True}
+
+
+def test_run_customer_report_uses_checkbox_picker_without_mode_prompt(monkeypatch):
     customers = [
         {
             "customer_id": "alpha",
@@ -194,29 +270,26 @@ def test_run_customer_report_filters_customer_choices_by_keyword(monkeypatch):
     monkeypatch.setattr(customer, "list_customers", lambda: customers)
 
     monkeypatch.setattr(
-        customer.questionary,
-        "text",
-        lambda *args, **kwargs: SimpleNamespace(ask=lambda: "alp"),
+        customer.common,
+        "_checkbox_prompt",
+        lambda prompt, choices, **kwargs: (
+            captured.setdefault("prompt", prompt),
+            captured.setdefault("values", [choice.value for choice in choices]),
+            None,
+        )[-1],
     )
 
-    def fake_select(prompt, choices, default=None, **kwargs):
+    def fake_select(*_args, **_kwargs):
         select_calls["count"] += 1
-        if select_calls["count"] == 1:
-            # First call: mode selection — pick "single"
-            return "single"
-        # Second call: customer picker — capture and return None (escape)
-        # Subsequent calls (mode picker re-shown after back nav) → None (exit)
-        if "prompt" not in captured:
-            captured["prompt"] = prompt
-            captured["values"] = [choice.value for choice in choices]
         return None
 
     monkeypatch.setattr(customer.common, "_select_prompt", fake_select)
 
     customer.run_customer_report()
 
-    assert captured["prompt"].endswith("Pilih Customer")
-    assert captured["values"] == ["alpha"]
+    assert "Pilih Customer" in captured["prompt"]
+    assert captured["values"] == ["alpha", "bravo"]
+    assert select_calls["count"] == 0
 
 
 def test_quick_check_uses_customer_mapping_profiles_only(monkeypatch):
@@ -301,8 +374,7 @@ def test_pick_profiles_from_customers_uses_mode_selector(monkeypatch):
     assert sorted(profiles) == ["prod-a", "prod-b"]
 
 
-def test_run_customer_report_back_from_customer_picker_to_mode(monkeypatch):
-    """Escape di customer picker harus kembali ke mode selector."""
+def test_run_customer_report_returns_false_when_cancelled_from_picker(monkeypatch):
     customers = [
         {
             "customer_id": "alpha",
@@ -318,23 +390,129 @@ def test_run_customer_report_back_from_customer_picker_to_mode(monkeypatch):
     monkeypatch.setattr(customer, "_render_customer_dashboard", lambda *a: None)
     monkeypatch.setattr(customer, "list_customers", lambda: customers)
     monkeypatch.setattr(
-        customer.questionary,
-        "text",
-        lambda *a, **kw: SimpleNamespace(ask=lambda: ""),
+        customer.common,
+        "_checkbox_prompt",
+        lambda _msg, _choices, **_kw: None,
     )
 
-    select_seq = iter(
-        [
-            "single",  # mode picker: single
-            None,  # customer picker: escape → back to mode
-            None,  # mode picker: escape → exit flow
-        ]
-    )
+    result = customer.run_customer_report()
+
+    assert result is False
+
+
+def test_run_customer_report_single_selection_runs_detail_flow(monkeypatch):
+    customers = [
+        {
+            "customer_id": "alpha",
+            "display_name": "Alpha",
+            "account_count": 1,
+            "checks": ["health"],
+            "slack_enabled": False,
+        },
+    ]
+
+    monkeypatch.setattr(customer, "print_mini_banner", lambda: None)
+    monkeypatch.setattr(customer, "print_section_header", lambda *a, **kw: None)
+    monkeypatch.setattr(customer, "_render_customer_dashboard", lambda *a: None)
+    monkeypatch.setattr(customer, "list_customers", lambda: customers)
     monkeypatch.setattr(
         customer.common,
-        "_select_prompt",
-        lambda _msg, _choices, **_kw: next(select_seq),
+        "_checkbox_prompt",
+        lambda _msg, _choices, **_kw: ["alpha"],
+    )
+    monkeypatch.setattr(
+        customer,
+        "load_customer_config",
+        lambda customer_id: {
+            "customer_id": customer_id,
+            "display_name": "Alpha",
+            "accounts": [{"profile": "prod-a", "region": "ap-southeast-3"}],
+            "checks": ["health"],
+        },
     )
 
-    # Should complete without raising or hanging
-    customer.run_customer_report()
+    flow_calls = {"detail": 0, "auto": 0, "slack": 0}
+    monkeypatch.setattr(customer, "_run_generic_customer", lambda _cfg: {"ok": True})
+    monkeypatch.setattr(
+        customer,
+        "_run_generic_customer",
+        lambda _cfg: (
+            flow_calls.__setitem__("detail", flow_calls["detail"] + 1) or {"ok": True}
+        ),
+    )
+    monkeypatch.setattr(
+        customer,
+        "_run_customer_auto",
+        lambda _cfg: flow_calls.__setitem__("auto", flow_calls["auto"] + 1),
+    )
+    monkeypatch.setattr(
+        customer,
+        "_prompt_slack",
+        lambda _cfg: flow_calls.__setitem__("slack", flow_calls["slack"] + 1),
+    )
+
+    result = customer.run_customer_report()
+
+    assert result is True
+    assert flow_calls["detail"] == 1
+    assert flow_calls["auto"] == 0
+    assert flow_calls["slack"] == 1
+
+
+def test_run_customer_report_multi_selection_runs_auto(monkeypatch):
+    customers = [
+        {
+            "customer_id": "alpha",
+            "display_name": "Alpha",
+            "account_count": 1,
+            "checks": ["health"],
+            "slack_enabled": False,
+        },
+        {
+            "customer_id": "bravo",
+            "display_name": "Bravo",
+            "account_count": 1,
+            "checks": ["health"],
+            "slack_enabled": False,
+        },
+    ]
+
+    monkeypatch.setattr(customer, "print_mini_banner", lambda: None)
+    monkeypatch.setattr(customer, "print_section_header", lambda *a, **kw: None)
+    monkeypatch.setattr(customer, "_render_customer_dashboard", lambda *a: None)
+    monkeypatch.setattr(customer, "list_customers", lambda: customers)
+    monkeypatch.setattr(
+        customer.common,
+        "_checkbox_prompt",
+        lambda _msg, _choices, **_kw: ["alpha", "bravo"],
+    )
+    monkeypatch.setattr(
+        customer,
+        "load_customer_config",
+        lambda customer_id: {
+            "customer_id": customer_id,
+            "display_name": customer_id,
+            "accounts": [
+                {"profile": f"{customer_id}-prod", "region": "ap-southeast-3"}
+            ],
+            "checks": ["health"],
+        },
+    )
+
+    flow_calls = {"detail": 0, "auto": 0}
+    monkeypatch.setattr(
+        customer,
+        "_run_generic_customer",
+        lambda _cfg: flow_calls.__setitem__("detail", flow_calls["detail"] + 1),
+    )
+    monkeypatch.setattr(
+        customer,
+        "_run_customer_auto",
+        lambda _cfg: flow_calls.__setitem__("auto", flow_calls["auto"] + 1),
+    )
+
+    result = customer.run_customer_report()
+
+    assert result is True
+    assert flow_calls["detail"] == 0
+    assert flow_calls["auto"] == 2

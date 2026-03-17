@@ -149,7 +149,7 @@ def main():
   # Note: helper scripts are not bundled with monitoring-hub package.
   # They live in repository scripts/huawei/.
 
-{ICONS["check"]} Available checks: health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list, huawei-ecs-util
+{ICONS["check"]} Available checks: health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list, huawei-ecs-util, aws-utilization-3core
 
 {ICONS["settings"]} Config file: {CONFIG_FILE}
         """,
@@ -165,7 +165,7 @@ def main():
     )
     parser.add_argument(
         "--check",
-        help="Run specific check (health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list, huawei-ecs-util)",
+        help="Run specific check (health, cost, guardduty, cloudwatch, notifications, backup, daily-arbel, ec2list, huawei-ecs-util, aws-utilization-3core)",
     )
     parser.add_argument(
         "--all", action="store_true", help="Run all checks (summary mode)"

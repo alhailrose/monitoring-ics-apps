@@ -7,11 +7,13 @@ slack:
   channel: ""
   enabled: false
 checks:
+  - aws-utilization-3core
   - notifications
   - cost
   - guardduty
   - cloudwatch
 
+check_mode: summary
 accounts:
   - profile: bbi
     account_id: "940404076348"

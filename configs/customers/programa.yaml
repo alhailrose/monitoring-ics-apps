@@ -6,10 +6,13 @@ slack:
   enabled: false
 
 checks:
+  - aws-utilization-3core
+  - notifications
   - cost
   - guardduty
   - cloudwatch
-  - notifications
+
+check_mode: summary
 
 accounts:
   - profile: programa

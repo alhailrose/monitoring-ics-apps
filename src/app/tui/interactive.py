@@ -4,7 +4,11 @@ import questionary
 
 from src.app.tui import common
 from src.app.tui.flows import cloudwatch_cost, customer, dashboard, settings
-from src.configs.loader import get_alarm_names_for_profile, load_customer_config
+from src.configs.loader import (
+    collect_customer_profiles,
+    get_alarm_names_for_profile,
+    load_customer_config,
+)
 from src.core.runtime.config import AVAILABLE_CHECKS
 from src.core.runtime.runners import (
     run_all_checks,
@@ -99,6 +103,10 @@ CHECK_CHOICES = [
         f"{ICONS['alarm']} Alarm Verification (>10m)", value="alarm_verification"
     ),
     questionary.Choice(f"{ICONS['ec2list']} EC2 List", value="ec2list"),
+    questionary.Choice(
+        f"{ICONS['cloudwatch']} AWS Utilization (CPU/MEM/DISK 12h)",
+        value="aws-utilization-3core",
+    ),
 ]
 
 
@@ -202,21 +210,13 @@ def _pick_profiles_from_customers():
             step = "accounts"
 
         elif step == "accounts":
-            import questionary as _q
-            from src.core.runtime.config import CUSTOM_STYLE
-
-            try:
-                use_all = _q.confirm(
-                    f"{ICONS['check']} Pilih semua akun {_current_display}? ({len(_current_accounts)} akun)",
-                    default=True,
-                    style=CUSTOM_STYLE,
-                ).ask()
-            except KeyboardInterrupt:
-                # Escape at account confirm = back to customer picker
-                step = "customer"
-                continue
-
+            use_all = common._confirm_prompt(
+                f"{ICONS['check']} Pilih semua akun {_current_display}? ({len(_current_accounts)} akun)",
+                default=True,
+                allow_back=True,
+            )
             if use_all is None:
+                # Escape at account confirm = back to customer picker
                 step = "customer"
                 continue
 
@@ -256,7 +256,7 @@ def _run_quick_check():
     Escape at profile step goes back to check picker.
     """
     print_mini_banner()
-    print_section_header("Quick Check", ICONS["single"])
+    print_section_header("Detail Check", ICONS["single"])
 
     step = "check"
     selected_check = None
@@ -273,9 +273,9 @@ def _run_quick_check():
         elif step == "profiles":
             profiles, group_choice, back = _pick_profiles_from_customers()
             if not profiles:
-                # Empty profiles = user escaped all the way out of profile picker
-                # Go back to check picker
-                step = "check"
+                print_error("Pilih minimal satu akun untuk menjalankan check.")
+                # Stay on profile picker until at least one account selected.
+                step = "profiles"
                 continue
 
             region = common._choose_region(profiles)
@@ -339,6 +339,37 @@ def run_huawei_utilization():
     )
 
 
+def run_aws_utilization(trial_mode: bool = True):
+    """Run consolidated AWS utilization over configured customer profiles."""
+    print_mini_banner()
+    print_section_header("AWS Utilization", ICONS["cloudwatch"])
+
+    aws_checker = AVAILABLE_CHECKS.get("aws-utilization-3core")
+    if aws_checker is None:
+        print_error(
+            "Check 'aws-utilization-3core' tidak terdaftar. Periksa runtime config."
+        )
+        return
+
+    profiles = collect_customer_profiles(
+        sso_session="sadewa-sso" if trial_mode else None
+    )
+    if not profiles:
+        if trial_mode:
+            print_error("Tidak ada profile ditemukan untuk sso_session sadewa-sso.")
+        else:
+            print_error("Tidak ada profile ditemukan dari customer config.")
+        return
+
+    mode_label = "Trial sadewa-sso" if trial_mode else "All Customers"
+    run_all_checks(
+        profiles=profiles,
+        region="ap-southeast-3",
+        group_name=f"AWS Utilization ({mode_label})",
+        checks_override={"aws-utilization-3core": aws_checker},
+    )
+
+
 def _run_huawei_menu():
     submenu_choice = common._select_prompt(
         f"{ICONS.get('huawei', ICONS['cloudwatch'])} Huawei Check",
@@ -346,15 +377,45 @@ def _run_huawei_menu():
             questionary.Choice("Utilization", value="utilization"),
             questionary.Choice("Back", value="back"),
         ],
+        allow_back=True,
     )
     if submenu_choice == "utilization":
         run_huawei_utilization()
 
 
+def _run_aws_utilization_menu():
+    submenu_choice = common._select_prompt(
+        f"{ICONS['cloudwatch']} AWS Utilization",
+        [
+            questionary.Choice("Trial (sadewa-sso)", value="trial_sadewa"),
+            questionary.Choice("All Customer Accounts", value="all_customers"),
+            questionary.Choice("Specific Accounts", value="specific_accounts"),
+            questionary.Choice("Back", value="back"),
+        ],
+        allow_back=True,
+    )
+    if submenu_choice == "trial_sadewa":
+        run_aws_utilization(trial_mode=True)
+    if submenu_choice == "all_customers":
+        run_aws_utilization(trial_mode=False)
+    if submenu_choice == "specific_accounts":
+        profiles, group_choice, _back = _pick_profiles_from_customers()
+        if not profiles:
+            return
+        run_all_checks(
+            profiles=profiles,
+            region="ap-southeast-3",
+            group_name=f"AWS Utilization ({group_choice or 'Selected Accounts'})",
+            checks_override={
+                "aws-utilization-3core": AVAILABLE_CHECKS["aws-utilization-3core"]
+            },
+        )
+
+
 def run_interactive():
     main_choices = [
         questionary.Choice(
-            f"{ICONS['single']} Quick Check      Cek 1 service spesifik",
+            f"{ICONS['single']} Detail Check     Cek 1 service spesifik",
             value="quick",
         ),
         questionary.Choice(
@@ -366,7 +427,7 @@ def run_interactive():
             value="aryanoble",
         ),
         questionary.Choice(
-            f"{ICONS['all']} Customer Report  Daily monitoring report per customer",
+            f"{ICONS['all']} Daily Check      Daily monitoring report per customer",
             value="customer",
         ),
         questionary.Choice(
@@ -380,8 +441,13 @@ def run_interactive():
         questionary.Choice(f"{ICONS['exit']} Exit", value="exit"),
     ]
 
+    clear_before_menu = True
+
     while True:
-        console.clear()
+        if clear_before_menu:
+            console.clear()
+        else:
+            console.print()
         print_banner(show_tips=False)
         _render_main_dashboard()
 
@@ -394,31 +460,32 @@ def run_interactive():
         if main_choice == "settings":
             run_settings_menu()
             common._pause()
+            clear_before_menu = True
             continue
 
         if main_choice == "customer":
             run_customer_report()
-            common._pause()
+            clear_before_menu = False
             continue
 
         if main_choice == "aryanoble":
             run_aryanoble()
-            common._pause()
+            clear_before_menu = False
             continue
 
         if main_choice == "huawei_check":
             _run_huawei_menu()
-            common._pause()
+            clear_before_menu = False
             continue
 
         if main_choice == "cw_cost":
             run_cloudwatch_cost_report()
-            common._pause()
+            clear_before_menu = False
             continue
 
         if main_choice == "quick":
             _run_quick_check()
-            common._pause()
+            clear_before_menu = False
             continue
 
 
