@@ -1,10 +1,5 @@
-"""CLI entrypoints for src-first runtime."""
+"""Compatibility wrapper for legacy src CLI entrypoint."""
 
-from src.app.cli.bootstrap import main
-
-
-def run_cli():
-    return main()
-
+from backend.interfaces.cli.main import main, run_cli
 
 __all__ = ["main", "run_cli"]
