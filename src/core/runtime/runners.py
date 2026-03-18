@@ -796,6 +796,7 @@ def _print_consolidated_report(
             has_error = False
             total_issues = 0
             error_profiles = []
+            disabled_profiles = []  # Track disabled services (e.g., GuardDuty not enabled)
             for profile in profiles:
                 result = all_results.get(profile, {}).get(chk_name, {})
                 profile_label = _profile_label(profile)
@@ -805,6 +806,11 @@ def _print_consolidated_report(
                     anomaly_lines.append(
                         f"- {label} - {profile_label}: gagal cek - {result.get('error', 'unknown error')}"
                     )
+                    continue
+
+                # Track disabled status (e.g., GuardDuty not enabled)
+                if result.get("status") == "disabled":
+                    disabled_profiles.append(profile_label)
                     continue
 
                 issue_count = checker.count_issues(result)
@@ -834,7 +840,13 @@ def _print_consolidated_report(
                         f"- {chk_name} - {profile_label}: {issue_count} {detail_label}"
                     )
 
-            if has_error and total_issues == 0:
+            # Build status line based on errors, disabled, and issues
+            if disabled_profiles and total_issues == 0 and not has_error:
+                # All checked profiles have service disabled
+                check_status_lines.append(
+                    f"- {label}: tidak aktif pada {', '.join(disabled_profiles)}"
+                )
+            elif has_error and total_issues == 0:
                 check_status_lines.append(
                     f"- {label}: gagal cek pada {', '.join(error_profiles)}"
                 )
