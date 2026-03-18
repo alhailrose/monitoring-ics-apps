@@ -54,6 +54,7 @@ DEFAULT_PROFILE_GROUPS = {
         "dermies-max": "637423567244",
         "tgw": "654654394944",
         "iris-prod": "522814722913",
+        "iris-dev": "522814711071",
         "sfa": "546158667544",
         "erha-buddy": "486250145105",
         "centralized-s3": "533267291161",
