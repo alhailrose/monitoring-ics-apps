@@ -1,4 +1,4 @@
-"""API entrypoint in monitoring_hub namespace."""
+"""API entrypoint in backend namespace."""
 
 from src.app.api.main import app, create_app
 

@@ -1,4 +1,4 @@
-"""CLI entrypoint in monitoring_hub namespace."""
+"""CLI entrypoint in backend namespace."""
 
 from src.app.cli.main import main
 

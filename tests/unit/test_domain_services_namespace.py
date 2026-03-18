@@ -1,4 +1,4 @@
-from monitoring_hub.domain.services import (
+from backend.domain.services import (
     check_executor,
     customer_service,
     session_health,

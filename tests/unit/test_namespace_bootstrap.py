@@ -1,2 +1,2 @@
-def test_monitoring_hub_namespace_importable():
-    import monitoring_hub  # noqa: F401
+def test_backend_namespace_importable():
+    import backend  # noqa: F401

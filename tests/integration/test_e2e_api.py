@@ -1,6 +1,6 @@
 """End-to-end backend tests against real PostgreSQL and AWS.
 
-Run: python -m pytest tests/test_e2e_api.py -v -s
+Run: python -m pytest tests/integration/test_e2e_api.py -v -s
 Requires: PostgreSQL running, AWS SSO credentials active
 """
 
@@ -34,12 +34,15 @@ class TestHealth:
 class TestCustomerCRUD:
     def test_create_customer(self):
         global _customer_id
-        r = client.post("/api/v1/customers", json={
-            "name": "e2e-test-customer",
-            "display_name": "E2E Test Customer",
-            "checks": ["cost", "guardduty", "cloudwatch", "notifications"],
-            "slack_enabled": False,
-        })
+        r = client.post(
+            "/api/v1/customers",
+            json={
+                "name": "e2e-test-customer",
+                "display_name": "E2E Test Customer",
+                "checks": ["cost", "guardduty", "cloudwatch", "notifications"],
+                "slack_enabled": False,
+            },
+        )
         assert r.status_code == 201, r.text
         data = r.json()
         assert data["name"] == "e2e-test-customer"
@@ -59,19 +62,25 @@ class TestCustomerCRUD:
         assert "e2e-test-customer" in names
 
     def test_update_customer(self):
-        r = client.patch(f"/api/v1/customers/{_customer_id}", json={
-            "display_name": "E2E Updated",
-            "checks": ["cost", "guardduty"],
-        })
+        r = client.patch(
+            f"/api/v1/customers/{_customer_id}",
+            json={
+                "display_name": "E2E Updated",
+                "checks": ["cost", "guardduty"],
+            },
+        )
         assert r.status_code == 200
         assert r.json()["display_name"] == "E2E Updated"
         assert r.json()["checks"] == ["cost", "guardduty"]
 
     def test_duplicate_name_rejected(self):
-        r = client.post("/api/v1/customers", json={
-            "name": "e2e-test-customer",
-            "display_name": "Duplicate",
-        })
+        r = client.post(
+            "/api/v1/customers",
+            json={
+                "name": "e2e-test-customer",
+                "display_name": "Duplicate",
+            },
+        )
         assert r.status_code == 409
 
     def test_not_found(self):
@@ -82,10 +91,13 @@ class TestCustomerCRUD:
 class TestAccounts:
     def test_add_account(self):
         global _account_id
-        r = client.post(f"/api/v1/customers/{_customer_id}/accounts", json={
-            "profile_name": "connect-prod",
-            "display_name": "Connect Production",
-        })
+        r = client.post(
+            f"/api/v1/customers/{_customer_id}/accounts",
+            json={
+                "profile_name": "connect-prod",
+                "display_name": "Connect Production",
+            },
+        )
         assert r.status_code == 201, r.text
         data = r.json()
         assert data["profile_name"] == "connect-prod"
@@ -99,9 +111,12 @@ class TestAccounts:
         assert any(a["profile_name"] == "connect-prod" for a in accounts)
 
     def test_update_account(self):
-        r = client.patch(f"/api/v1/customers/accounts/{_account_id}", json={
-            "display_name": "Connect Prod (Updated)",
-        })
+        r = client.patch(
+            f"/api/v1/customers/accounts/{_account_id}",
+            json={
+                "display_name": "Connect Prod (Updated)",
+            },
+        )
         assert r.status_code == 200
         assert r.json()["display_name"] == "Connect Prod (Updated)"
 
@@ -124,11 +139,14 @@ class TestCheckExecution:
 
     def test_single_check_guardduty(self):
         global _check_run_id
-        r = client.post("/api/v1/checks/execute", json={
-            "customer_ids": [_customer_id],
-            "mode": "single",
-            "check_name": "guardduty",
-        })
+        r = client.post(
+            "/api/v1/checks/execute",
+            json={
+                "customer_ids": [_customer_id],
+                "mode": "single",
+                "check_name": "guardduty",
+            },
+        )
         assert r.status_code == 200, r.text
         data = r.json()
         assert "check_run_id" in data
@@ -136,7 +154,10 @@ class TestCheckExecution:
         assert "consolidated_output" in data
         assert len(data["results"]) >= 1
         # consolidated_output should have per-account output for single mode
-        assert "connect-prod" in data["consolidated_output"].lower() or "Connect" in data["consolidated_output"]
+        assert (
+            "connect-prod" in data["consolidated_output"].lower()
+            or "Connect" in data["consolidated_output"]
+        )
         _check_run_id = data["check_run_id"]
 
         # Check result structure
@@ -147,11 +168,14 @@ class TestCheckExecution:
         print(f"\n  GuardDuty result: {result['status']} - {result['summary']}")
 
     def test_single_check_cost(self):
-        r = client.post("/api/v1/checks/execute", json={
-            "customer_ids": [_customer_id],
-            "mode": "single",
-            "check_name": "cost",
-        })
+        r = client.post(
+            "/api/v1/checks/execute",
+            json={
+                "customer_ids": [_customer_id],
+                "mode": "single",
+                "check_name": "cost",
+            },
+        )
         assert r.status_code == 200, r.text
         data = r.json()
         result = data["results"][0]
@@ -160,14 +184,20 @@ class TestCheckExecution:
 
     def test_all_mode_consolidated_report(self):
         # First restore checks to the full set
-        client.patch(f"/api/v1/customers/{_customer_id}", json={
-            "checks": ["cost", "guardduty", "cloudwatch", "notifications"],
-        })
+        client.patch(
+            f"/api/v1/customers/{_customer_id}",
+            json={
+                "checks": ["cost", "guardduty", "cloudwatch", "notifications"],
+            },
+        )
 
-        r = client.post("/api/v1/checks/execute", json={
-            "customer_ids": [_customer_id],
-            "mode": "all",
-        })
+        r = client.post(
+            "/api/v1/checks/execute",
+            json={
+                "customer_ids": [_customer_id],
+                "mode": "all",
+            },
+        )
         assert r.status_code == 200, r.text
         data = r.json()
 
@@ -186,17 +216,23 @@ class TestCheckExecution:
         print(f"  First 200 chars:\n  {report[:200]}")
 
     def test_invalid_mode(self):
-        r = client.post("/api/v1/checks/execute", json={
-            "customer_ids": [_customer_id],
-            "mode": "invalid",
-        })
+        r = client.post(
+            "/api/v1/checks/execute",
+            json={
+                "customer_ids": [_customer_id],
+                "mode": "invalid",
+            },
+        )
         assert r.status_code == 422  # pydantic validation
 
     def test_single_without_check_name(self):
-        r = client.post("/api/v1/checks/execute", json={
-            "customer_ids": [_customer_id],
-            "mode": "single",
-        })
+        r = client.post(
+            "/api/v1/checks/execute",
+            json={
+                "customer_ids": [_customer_id],
+                "mode": "single",
+            },
+        )
         assert r.status_code == 400
 
     def test_available_checks(self):
@@ -210,9 +246,12 @@ class TestCheckExecution:
 
 class TestHistory:
     def test_list_history(self):
-        r = client.get("/api/v1/history", params={
-            "customer_id": _customer_id,
-        })
+        r = client.get(
+            "/api/v1/history",
+            params={
+                "customer_id": _customer_id,
+            },
+        )
         assert r.status_code == 200, r.text
         data = r.json()
         assert "total" in data
@@ -223,10 +262,13 @@ class TestHistory:
         assert "single" in modes or "all" in modes
 
     def test_history_filter_by_mode(self):
-        r = client.get("/api/v1/history", params={
-            "customer_id": _customer_id,
-            "check_mode": "single",
-        })
+        r = client.get(
+            "/api/v1/history",
+            params={
+                "customer_id": _customer_id,
+                "check_mode": "single",
+            },
+        )
         assert r.status_code == 200
         for item in r.json()["items"]:
             assert item["check_mode"] == "single"
@@ -262,8 +304,11 @@ class TestCleanup:
         assert r.status_code == 404
 
     def test_history_empty_after_cascade(self):
-        r = client.get("/api/v1/history", params={
-            "customer_id": _customer_id,
-        })
+        r = client.get(
+            "/api/v1/history",
+            params={
+                "customer_id": _customer_id,
+            },
+        )
         assert r.status_code == 200
         assert r.json()["total"] == 0
