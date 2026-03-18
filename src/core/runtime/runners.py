@@ -266,7 +266,14 @@ def run_group_specific(
     # WhatsApp message and detailed output for backup
     if check_name == "backup":
         date_str = datetime.now(timezone(timedelta(hours=7))).strftime("%d-%m-%Y")
-        whatsapp = build_whatsapp_backup(date_str, all_results)
+
+        # Use Aryanoble-specific formatter if customer is Aryanoble
+        if group_name == "Aryanoble":
+            from .reports import build_whatsapp_backup_aryanoble
+
+            whatsapp = build_whatsapp_backup_aryanoble(date_str, all_results)
+        else:
+            whatsapp = build_whatsapp_backup(date_str, all_results)
 
         # Detailed per-account view
         print("\n" + "=" * 70)
