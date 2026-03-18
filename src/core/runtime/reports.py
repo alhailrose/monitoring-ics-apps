@@ -529,3 +529,143 @@ def generate_whatsapp_message(all_results):
 
     lines.append("Terima kasih.")
     return "\n".join(lines)
+
+
+def build_whatsapp_backup_aryanoble(date_str, all_results):
+    """Build Aryanoble-specific WhatsApp backup report with Completed/Failed/Expired sections."""
+
+    # Exclude arbel-master from reporting
+    EXCLUDED_PROFILES = ["arbel-master"]
+    filtered_results = {
+        k: v for k, v in all_results.items() if k not in EXCLUDED_PROFILES
+    }
+
+    # Get display names
+    display_names = BACKUP_DISPLAY_NAMES
+
+    # Categorize accounts
+    completed_accounts = []
+    failed_accounts = []
+    expired_accounts = []
+
+    for profile, checks in filtered_results.items():
+        backup_result = checks.get("backup")
+        if not backup_result:
+            continue
+
+        display_name = display_names.get(profile, profile)
+        account_id = backup_result.get("account_id", "")
+        failed_jobs = backup_result.get("failed_jobs", 0)
+        expired_jobs = backup_result.get("expired_jobs", 0)
+        completed_jobs = backup_result.get("completed_jobs", 0)
+        issues = backup_result.get("issues", [])
+
+        # Check for vault issues (no activity or errors)
+        has_vault_issues = any("vault" in issue.lower() for issue in issues)
+
+        # Categorize account
+        if failed_jobs > 0 or has_vault_issues:
+            failed_accounts.append(
+                {
+                    "display_name": display_name,
+                    "account_id": account_id,
+                    "profile": profile,
+                    "backup_result": backup_result,
+                }
+            )
+
+        if expired_jobs > 0:
+            expired_accounts.append(
+                {
+                    "display_name": display_name,
+                    "account_id": account_id,
+                    "profile": profile,
+                    "backup_result": backup_result,
+                }
+            )
+
+        # Only add to completed if no failures, no expired, and has activity
+        if (
+            failed_jobs == 0
+            and expired_jobs == 0
+            and not has_vault_issues
+            and (
+                completed_jobs > 0
+                or any(
+                    "recovery_points_24h" in str(v)
+                    for v in backup_result.get("vaults", [])
+                )
+            )
+        ):
+            completed_accounts.append(
+                {"display_name": display_name, "account_id": account_id}
+            )
+
+    # Build report
+    lines = [
+        "Selamat Pagi Team,",
+        "Berikut report untuk AryaNoble Backup pada hari ini",
+        date_str,
+        "",
+        "Completed:",
+    ]
+
+    if completed_accounts:
+        for acc in completed_accounts:
+            lines.append(f"- {acc['display_name']} - {acc['account_id']}")
+    else:
+        lines.append("- (tidak ada)")
+
+    lines.extend(["", "Failed:"])
+
+    if failed_accounts:
+        for acc in failed_accounts:
+            lines.append(f"- {acc['display_name']} - {acc['account_id']}")
+
+            # Add job details for failed jobs
+            job_details = acc["backup_result"].get("job_details", [])
+            failed_job_details = [j for j in job_details if j.get("state") == "FAILED"]
+
+            for i, job in enumerate(failed_job_details[:10], 1):  # Limit to 10 details
+                lines.append(f"  Detail {i}:")
+                lines.append(f"    Resource: {job.get('resource_label', 'N/A')}")
+
+                # Format timestamp
+                created_wib = job.get("created_wib")
+                if created_wib:
+                    time_str = created_wib.strftime("%d-%m-%Y %H:%M WIB")
+                else:
+                    time_str = "N/A"
+                lines.append(f"    Time: {time_str}")
+                lines.append(f"    Reason: {job.get('reason', 'No reason provided')}")
+    else:
+        lines.append("- (tidak ada)")
+
+    lines.extend(["", "Expired:"])
+
+    if expired_accounts:
+        for acc in expired_accounts:
+            lines.append(f"- {acc['display_name']} - {acc['account_id']}")
+
+            # Add job details for expired jobs
+            job_details = acc["backup_result"].get("job_details", [])
+            expired_job_details = [
+                j for j in job_details if j.get("state") == "EXPIRED"
+            ]
+
+            for i, job in enumerate(expired_job_details[:10], 1):  # Limit to 10 details
+                lines.append(f"  Detail {i}:")
+                lines.append(f"    Resource: {job.get('resource_label', 'N/A')}")
+
+                # Format timestamp
+                created_wib = job.get("created_wib")
+                if created_wib:
+                    time_str = created_wib.strftime("%d-%m-%Y %H:%M WIB")
+                else:
+                    time_str = "N/A"
+                lines.append(f"    Time: {time_str}")
+                lines.append(f"    Reason: {job.get('reason', 'Backup job expired')}")
+    else:
+        lines.append("- (tidak ada)")
+
+    return "\n".join(lines)
