@@ -104,6 +104,38 @@ def find_customer_account(customer_id, account_id):
     return None
 
 
+def get_customer_profiles(
+    customer_id: str,
+    exclude_pattern: str | None = "master",
+) -> list[str]:
+    """Get profile names from a customer's YAML config.
+
+    Args:
+        customer_id: Customer ID (e.g., 'aryanoble')
+        exclude_pattern: Exclude profiles containing this pattern (default: 'master')
+
+    Returns:
+        List of profile names from the customer's accounts.
+        Returns empty list if customer not found.
+    """
+    try:
+        cfg = load_customer_config(customer_id)
+    except FileNotFoundError:
+        return []
+
+    profiles = []
+    for account in cfg.get("accounts", []):
+        profile = account.get("profile")
+        if not profile:
+            continue
+        # Exclude profiles matching pattern (case-insensitive)
+        if exclude_pattern and exclude_pattern.lower() in profile.lower():
+            continue
+        profiles.append(profile)
+
+    return profiles
+
+
 def find_customer_by_profile(profile: str) -> dict | None:
     """Find which customer owns a given AWS profile.
 

@@ -11,6 +11,7 @@ from src.core.runtime.config_loader import (
     CONFIG_FILE,
     get_sample_config_content,
 )
+from src.configs.loader import get_customer_profiles
 from src.core.runtime.utils import resolve_region
 from src.core.runtime.runners import (
     run_individual_check,
@@ -263,7 +264,16 @@ def main():
 
     group_choice = args.group or args.sso
     if group_choice:
-        profiles.extend(list(PROFILE_GROUPS[group_choice].keys()))
+        # Try to get profiles from customer YAML first (excludes 'master' profiles)
+        # This allows the YAML to be the single source of truth
+        yaml_profiles = get_customer_profiles(
+            group_choice.lower(), exclude_pattern="master"
+        )
+        if yaml_profiles:
+            profiles.extend(yaml_profiles)
+        else:
+            # Fallback to PROFILE_GROUPS if no customer YAML found
+            profiles.extend(list(PROFILE_GROUPS[group_choice].keys()))
 
     seen = set()
     deduped = []
