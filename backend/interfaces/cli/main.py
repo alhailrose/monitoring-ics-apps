@@ -1,6 +1,6 @@
 """CLI entrypoints in backend namespace."""
 
-from src.app.cli.bootstrap import main
+from backend.interfaces.cli.bootstrap import main
 
 
 def run_cli():

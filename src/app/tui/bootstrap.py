@@ -1,16 +1,3 @@
-"""Canonical TUI bootstrap exports."""
+"""Compatibility wrapper for legacy src TUI bootstrap."""
 
-
-def run_interactive():
-    from src.app.tui import interactive
-
-    return interactive.run_interactive()
-
-
-def run_interactive_v2():
-    from src.app.tui import interactive
-
-    return interactive.run_interactive_v2()
-
-
-__all__ = ["run_interactive", "run_interactive_v2"]
+from backend.interfaces.cli.bootstrap_tui import *  # noqa: F403
