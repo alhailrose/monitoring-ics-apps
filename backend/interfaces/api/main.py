@@ -9,12 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-import src.app.api.dependencies as deps
-from src.app.api.routes.checks import router as checks_router
-from src.app.api.routes.customers import router as customers_router
-from src.app.api.routes.history import router as history_router
-from src.app.api.routes.profiles import router as profiles_router
-from src.app.api.routes.sessions import router as sessions_router
+import backend.interfaces.api.dependencies as deps
+from backend.interfaces.api.routes.checks import router as checks_router
+from backend.interfaces.api.routes.customers import router as customers_router
+from backend.interfaces.api.routes.history import router as history_router
+from backend.interfaces.api.routes.profiles import router as profiles_router
+from backend.interfaces.api.routes.sessions import router as sessions_router
 from src.app.settings import get_settings
 
 
