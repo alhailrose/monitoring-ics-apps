@@ -1,6 +1,6 @@
 """Compatibility wrapper for TUI scaffold path."""
 
-from src.app.cli.main import main as _main
+from monitoring_hub.interfaces.cli.main import main as _main
 
 
 def main() -> int:
