@@ -1,0 +1,25 @@
+customer_id: frisianflag
+display_name: Frisian Flag Indonesia
+sso_session: null
+
+slack:
+  webhook_url: ""
+  channel: ""
+  enabled: false
+
+checks:
+  - cloudwatch
+
+check_mode: summary
+
+accounts:
+  - profile: frisianflag
+    account_id: "315897480848"
+    display_name: "Frisian Flag Indonesia"
+    region: ap-southeast-1
+
+# Untuk menggunakan alarm_verification check, tambahkan:
+# alarm_names:
+#   <profile>:
+#     - nama-alarm-1
+#     - nama-alarm-2

@@ -18,7 +18,10 @@ from rich.progress import (
     TaskProgressColumn,
 )
 
-from src.checks.common.aws_errors import is_credential_error, friendly_credential_message
+from src.checks.common.aws_errors import (
+    is_credential_error,
+    friendly_credential_message,
+)
 from src.configs.loader import load_customer_config
 from src.core.runtime.config import AVAILABLE_CHECKS, DEFAULT_WORKERS
 from src.core.runtime.ui import console, ICONS
@@ -28,8 +31,17 @@ from src.integrations.slack.notifier import send_to_webhook
 logger = logging.getLogger(__name__)
 
 
+def _resolve_account_region(account: dict, fallback_region: str) -> str:
+    region = str(account.get("region") or "").strip()
+    return region or fallback_region
+
+
 def _run_check_for_account(
-    check_name: str, profile: str, account_id: str, region: str, check_kwargs: Optional[dict] = None
+    check_name: str,
+    profile: str,
+    account_id: str,
+    region: str,
+    check_kwargs: Optional[dict] = None,
 ) -> dict:
     """Run a single check on a single account."""
     if check_name not in AVAILABLE_CHECKS:
@@ -61,7 +73,9 @@ def run_customer_checks(
         console.print(
             f"[bold red]{ICONS['error']} ERROR[/bold red]: Customer config not found: {customer_id}"
         )
-        console.print("[dim]Run: monitoring-hub customer init {0}[/dim]".format(customer_id))
+        console.print(
+            "[dim]Run: monitoring-hub customer init {0}[/dim]".format(customer_id)
+        )
         return None
     except Exception as exc:
         console.print(
@@ -85,17 +99,23 @@ def run_customer_checks(
         )
         return None
 
+    profile_regions = {
+        str(account.get("profile") or ""): _resolve_account_region(account, region)
+        for account in accounts
+        if account.get("profile")
+    }
+    unique_regions = sorted(set(profile_regions.values()))
+    region_label = unique_regions[0] if len(unique_regions) == 1 else "mixed"
+
     # Header
     console.print()
+    console.print(f"[bold cyan]{ICONS['star']} Customer: {display_name}[/bold cyan]")
     console.print(
-        f"[bold cyan]{ICONS['star']} Customer: {display_name}[/bold cyan]"
-    )
-    console.print(
-        f"[dim]Checks: {', '.join(checks)} | Accounts: {len(accounts)} | Region: {region}[/dim]"
+        f"[dim]Checks: {', '.join(checks)} | Accounts: {len(accounts)} | Region: {region_label}[/dim]"
     )
     console.print()
 
-    # Build work items: (check_name, profile, account_id, display_name)
+    # Build work items: (check_name, profile, account_id, account_region)
     work_items = []
     for check_name in checks:
         if check_name not in AVAILABLE_CHECKS:
@@ -105,8 +125,11 @@ def run_customer_checks(
             continue
         for account in accounts:
             profile = account.get("profile")
-            acct_id = account.get("account_id", get_account_id(profile) if profile else "Unknown")
-            work_items.append((check_name, profile, str(acct_id)))
+            acct_id = account.get(
+                "account_id", get_account_id(profile) if profile else "Unknown"
+            )
+            acct_region = _resolve_account_region(account, region)
+            work_items.append((check_name, profile, str(acct_id), acct_region))
 
     if not work_items:
         console.print("[yellow]No valid check/account combinations to run.[/yellow]")
@@ -131,9 +154,9 @@ def run_customer_checks(
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {}
-            for check_name, profile, acct_id in work_items:
+            for check_name, profile, acct_id, acct_region in work_items:
                 future = executor.submit(
-                    _run_check_for_account, check_name, profile, acct_id, region
+                    _run_check_for_account, check_name, profile, acct_id, acct_region
                 )
                 futures[future] = (check_name, profile, acct_id)
 
@@ -176,7 +199,8 @@ def run_customer_checks(
                 continue
 
             checker_class = AVAILABLE_CHECKS[check_name]
-            checker = checker_class(region=region)
+            profile_region = profile_regions.get(str(profile or ""), region)
+            checker = checker_class(region=profile_region)
             report = checker.format_report(result)
             print(report)
             print()
@@ -218,15 +242,18 @@ def prompt_and_send_slack(customer_result: dict) -> bool:
 
     try:
         import questionary
+
         send = questionary.confirm(
             f"Kirim report ke Slack {display_name} ({channel_display})?",
             default=False,
         ).ask()
     except (ImportError, ModuleNotFoundError):
         # Fallback to simple input if questionary not available
-        answer = input(
-            f"Kirim report ke Slack {display_name} ({channel_display})? [y/N] "
-        ).strip().lower()
+        answer = (
+            input(f"Kirim report ke Slack {display_name} ({channel_display})? [y/N] ")
+            .strip()
+            .lower()
+        )
         send = answer in ("y", "yes")
 
     if not send:
@@ -243,6 +270,7 @@ def prompt_and_send_slack(customer_result: dict) -> bool:
         profile = account.get("profile")
         acct_display = account.get("display_name", profile)
         acct_id = account.get("account_id", "")
+        account_region = _resolve_account_region(account, "ap-southeast-3")
         profile_results = results.get(profile, {})
 
         report_lines.append(f"== {acct_display} ({acct_id}) ==")
@@ -255,7 +283,7 @@ def prompt_and_send_slack(customer_result: dict) -> bool:
                 continue
 
             checker_class = AVAILABLE_CHECKS[check_name]
-            checker = checker_class(region="ap-southeast-3")
+            checker = checker_class(region=account_region)
             report = checker.format_report(result)
             report_lines.append(report)
             report_lines.append("")
@@ -268,8 +296,6 @@ def prompt_and_send_slack(customer_result: dict) -> bool:
             f"[green]{ICONS['check']} Report sent to Slack {display_name} ({channel_display})[/green]"
         )
     else:
-        console.print(
-            f"[red]{ICONS['error']} Failed to send to Slack: {reason}[/red]"
-        )
+        console.print(f"[red]{ICONS['error']} Failed to send to Slack: {reason}[/red]")
 
     return sent

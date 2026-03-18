@@ -251,6 +251,44 @@ def test_format_report_renders_extra_ec2_section():
     assert "aws-prod-rabbitmq pukul 10:00-10:20 WIB (20 menit)" in report
 
 
+def test_format_report_uses_result_window_hours_for_rds_header():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+
+    report = checker.format_report(
+        {
+            "status": "OK",
+            "profile": "cis-erha",
+            "account_id": "451916275465",
+            "account_name": "CIS ERHA",
+            "service_type": "rds",
+            "window_hours": 3,
+            "instances": {},
+            "extra_sections": [],
+        }
+    )
+
+    assert "monitoring 3 jam terakhir" in report
+
+
+def test_format_report_uses_result_window_hours_for_ec2_header():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+
+    report = checker.format_report(
+        {
+            "status": "OK",
+            "profile": "cis-erha",
+            "account_id": "451916275465",
+            "account_name": "CIS ERHA",
+            "service_type": "ec2",
+            "window_hours": 1,
+            "instances": {},
+            "extra_sections": [],
+        }
+    )
+
+    assert "monitoring 1 jam terakhir" in report
+
+
 def test_resolve_live_threshold_uses_min_for_above_metrics():
     checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
     cw = _CloudWatchMetricAlarmsStub([85, 75, 80])

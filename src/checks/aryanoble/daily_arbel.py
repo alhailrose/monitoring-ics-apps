@@ -1396,13 +1396,16 @@ class DailyArbelChecker(BaseChecker):
         acct_name = results.get("account_name", results.get("profile"))
         acct_id = results.get("account_id", "")
         profile = results.get("profile", "")
+        window_hours = int(
+            results.get("window_hours", self.window_hours) or self.window_hours
+        )
 
         lines: List[str] = []
         lines.append(f"{greeting} Team,")
 
         # Tambahkan info monitoring window
         lines.append(
-            f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini (Data per {time_str}, monitoring {self.window_hours} jam terakhir)"
+            f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini (Data per {time_str}, monitoring {window_hours} jam terakhir)"
         )
 
         lines.append(date_str)

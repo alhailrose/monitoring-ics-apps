@@ -8,10 +8,10 @@ def test_collect_instance_metrics_returns_partial_data_when_memory_missing(monke
     now = datetime.now(timezone.utc)
 
     monkeypatch.setattr(
-        checker, "_get_cpu_usage", lambda *_args, **_kwargs: (30.0, 50.0)
+        checker, "_get_cpu_usage", lambda *_args, **_kwargs: (30.0, 50.0, now)
     )
     monkeypatch.setattr(
-        checker, "_get_memory_usage", lambda *_args, **_kwargs: (None, None, None)
+        checker, "_get_memory_usage", lambda *_args, **_kwargs: (None, None, None, None)
     )
     monkeypatch.setattr(checker, "_get_disk_free_min", lambda *_args, **_kwargs: 55.0)
 
@@ -34,6 +34,8 @@ def test_collect_instance_metrics_returns_partial_data_when_memory_missing(monke
 
     assert row["memory_avg_12h"] is None
     assert row["memory_peak_12h"] is None
+    assert row["cpu_peak_at_12h"] is not None
+    assert row["memory_peak_at_12h"] is None
     assert row["status"] == "PARTIAL_DATA"
 
 
@@ -68,9 +70,20 @@ def test_get_memory_usage_uses_windows_metric_name():
             Period,
             Statistics,
         ):
-            return {"Datapoints": [{"Average": 55.0}, {"Average": 70.0}]}
+            return {
+                "Datapoints": [
+                    {
+                        "Average": 55.0,
+                        "Timestamp": datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+                    },
+                    {
+                        "Average": 70.0,
+                        "Timestamp": datetime(2026, 3, 18, 8, 5, tzinfo=timezone.utc),
+                    },
+                ]
+            }
 
-    avg_val, peak_val, metric_name = checker._get_memory_usage(
+    avg_val, peak_val, metric_name, peak_at = checker._get_memory_usage(
         _CloudWatch(),
         instance_id="i-win",
         os_type="windows",
@@ -81,6 +94,7 @@ def test_get_memory_usage_uses_windows_metric_name():
     assert avg_val == 62.5
     assert peak_val == 70.0
     assert metric_name == "Memory % Committed Bytes In Use"
+    assert peak_at == datetime(2026, 3, 18, 8, 5, tzinfo=timezone.utc)
 
 
 def test_get_disk_free_min_calculates_from_disk_used_percent():
