@@ -236,3 +236,60 @@ def test_execute_multi_customer_skips_no_active_accounts():
     # cust-1 skipped (no accounts), only cust-2 in check_runs
     assert len(result["check_runs"]) == 1
     assert result["check_runs"][0]["customer_id"] == "cust-2"
+
+
+def test_execute_single_backup_returns_whatsapp_primary_output_and_backup_overview():
+    from src.app.services.check_executor import CheckExecutor
+
+    acct_ok = _make_account("connect-prod", region="ap-southeast-1")
+    acct_fail = _make_account("ffi", region="ap-southeast-1")
+    customer = _make_customer(
+        "cust-1", display_name="Aryanoble", accounts=[acct_ok, acct_fail]
+    )
+
+    customer_repo = MagicMock()
+    customer_repo.get_customer.return_value = customer
+
+    check_repo = MagicMock()
+    run = MagicMock()
+    run.id = "run-uuid-1"
+    check_repo.create_check_run.return_value = run
+
+    executor = CheckExecutor(
+        check_repo=check_repo,
+        customer_repo=customer_repo,
+        region="ap-southeast-3",
+    )
+
+    def _fake_run(check_name, profile, _region, _kwargs):
+        base = {
+            "status": "success",
+            "total_jobs": 2,
+            "completed_jobs": 2,
+            "failed_jobs": 0,
+            "expired_jobs": 0,
+            "issues": [],
+            "vaults": [],
+            "_formatted_output": f"detail-{profile}",
+        }
+        if profile == "ffi":
+            base["failed_jobs"] = 1
+            base["completed_jobs"] = 1
+            base["issues"] = ["1 failed job(s)"]
+        return base
+
+    with patch(
+        "src.app.services.check_executor._run_single_check", side_effect=_fake_run
+    ):
+        result = executor.execute(
+            customer_ids=["cust-1"],
+            mode="single",
+            check_name="backup",
+            send_slack=False,
+        )
+
+    assert result["consolidated_outputs"]["cust-1"]
+    assert "Status Utama" in result["consolidated_outputs"]["cust-1"]
+    assert "Akun Bermasalah" in result["consolidated_outputs"]["cust-1"]
+    assert result["backup_overviews"]["cust-1"]["all_success"] is False
+    assert result["backup_overviews"]["cust-1"]["problem_accounts_count"] == 1

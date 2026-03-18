@@ -24,7 +24,11 @@ from src.core.runtime.config import (
     DEFAULT_WORKERS,
 )
 from src.core.runtime.utils import get_account_id as get_account_id_from_profile
-from src.core.runtime.reports import build_whatsapp_backup, build_whatsapp_rds
+from src.core.runtime.reports import (
+    build_whatsapp_backup,
+    build_whatsapp_rds,
+    summarize_backup_whatsapp,
+)
 from src.checks.common.aws_errors import (
     is_credential_error,
     friendly_credential_message,
@@ -392,6 +396,7 @@ class CheckExecutor:
         check_runs_list = []
         all_result_items = []
         consolidated_outputs = {}
+        backup_overviews = {}
         warnings = []
 
         for customer_id in customer_ids:
@@ -531,15 +536,44 @@ class CheckExecutor:
                     region=effective_region,
                     group_name=customer.display_name,
                 )
+                if "backup" in checks_to_run:
+                    wa_results = {
+                        p: {
+                            chk: profile_results.get(p, {}).get(chk, {})
+                            for chk in checks_to_run
+                        }
+                        for p in profiles
+                    }
+                    backup_overviews[customer_id] = summarize_backup_whatsapp(
+                        wa_results
+                    )
             elif mode == "single":
-                parts = []
-                for item in result_items:
-                    acct = item["account"]
-                    header = f"=== {acct['display_name']} ({acct['profile_name']}) ==="
-                    parts.append(header)
-                    parts.append(item.get("output", "") or item["summary"])
-                    parts.append("")
-                consolidated = "\n".join(parts)
+                if check_name == "backup":
+                    date_str_wa = datetime.now(timezone(timedelta(hours=7))).strftime(
+                        "%d-%m-%Y"
+                    )
+                    wa_results = {
+                        p: {
+                            chk: profile_results.get(p, {}).get(chk, {})
+                            for chk in checks_to_run
+                        }
+                        for p in profiles
+                    }
+                    consolidated = build_whatsapp_backup(date_str_wa, wa_results)
+                    backup_overviews[customer_id] = summarize_backup_whatsapp(
+                        wa_results
+                    )
+                else:
+                    parts = []
+                    for item in result_items:
+                        acct = item["account"]
+                        header = (
+                            f"=== {acct['display_name']} ({acct['profile_name']}) ==="
+                        )
+                        parts.append(header)
+                        parts.append(item.get("output", "") or item["summary"])
+                        parts.append("")
+                    consolidated = "\n".join(parts)
 
             consolidated_outputs[customer_id] = consolidated
 
@@ -575,6 +609,7 @@ class CheckExecutor:
             "execution_time_seconds": round(time.time() - start_time, 2),
             "results": all_result_items,
             "consolidated_outputs": consolidated_outputs,
+            "backup_overviews": backup_overviews,
         }
 
     def _resolve_checks(self, mode: str, check_name: str | None, customer=None) -> dict:

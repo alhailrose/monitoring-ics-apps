@@ -13,6 +13,8 @@ checks:
   - guardduty
   - cloudwatch
 
+check_mode: detail
+
 accounts:
   - profile: ksni-master
     account_id: "317949653982"

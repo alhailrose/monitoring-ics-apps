@@ -231,10 +231,11 @@ def test_format_report_renders_extra_ec2_section():
                     "instances": {
                         "rabbitmq": {
                             "instance_id": "i-076e1d2c0c3478c21",
+                            "instance_name": "aws-prod-rabbitmq",
                             "metrics": {
                                 "CPUUtilization": {
-                                    "status": "ok",
-                                    "message": "CPU Utilization: 40% (normal)",
+                                    "status": "warn",
+                                    "message": "CPU Utilization: 88% (di atas 80%) | ALARM pukul 10:00-10:20 WIB (20 menit)",
                                 }
                             },
                             "disk_memory_alarms": [],
@@ -245,7 +246,9 @@ def test_format_report_renders_extra_ec2_section():
         }
     )
 
-    assert "CIS ERHA EC2:" in report
+    assert "CIS ERHA EC2 (EC2):" in report
+    assert "Instances: aws-prod-rabbitmq (i-076e1d2c0c3478c21)" in report
+    assert "aws-prod-rabbitmq pukul 10:00-10:20 WIB (20 menit)" in report
 
 
 def test_resolve_live_threshold_uses_min_for_above_metrics():
@@ -289,3 +292,197 @@ def test_resolve_live_threshold_supports_cluster_role_dimensions():
     )
 
     assert threshold == 24.0
+
+
+def test_collect_section_report_sets_ec2_instance_name_from_config(monkeypatch):
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+
+    monkeypatch.setattr(
+        checker,
+        "_fetch_metrics",
+        lambda *args, **kwargs: {
+            "CPUUtilization": {
+                "max": 65,
+                "breach_count": 0,
+                "alarm_periods": [],
+            }
+        },
+    )
+    monkeypatch.setattr(
+        checker,
+        "_resolve_role_thresholds",
+        lambda *args, **kwargs: {"CPUUtilization": 80},
+    )
+    monkeypatch.setattr(
+        checker, "_resolve_live_threshold", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(checker, "_check_ec2_alarms", lambda *args, **kwargs: [])
+
+    class _SessionStub:
+        def client(self, service_name, region_name=None):
+            _ = service_name, region_name
+            return object()
+
+    reports, _ = checker._collect_section_report(
+        _SessionStub(),
+        object(),
+        "cis-erha",
+        {
+            "service_type": "ec2",
+            "instances": {"rabbitmq": "i-076e1d2c0c3478c21"},
+            "instance_names": {"i-076e1d2c0c3478c21": "aws-prod-rabbitmq"},
+            "metrics": ["CPUUtilization"],
+            "thresholds": {"CPUUtilization": 80},
+        },
+    )
+
+    assert reports["rabbitmq"]["instance_name"] == "aws-prod-rabbitmq"
+
+
+def test_check_rds_scope_skips_extra_ec2_section(monkeypatch):
+    checker = DailyArbelChecker(
+        region="ap-southeast-3", window_hours=3, section_scope="rds"
+    )
+    calls = []
+
+    monkeypatch.setattr(
+        checker,
+        "_resolve_account_config",
+        lambda profile, account_id: {
+            "account_name": "CIS ERHA",
+            "cluster_id": "cis-prod-rds",
+            "service_type": "rds",
+            "instances": {"writer": "cis-prod-rds-instance"},
+            "metrics": ["CPUUtilization"],
+            "thresholds": {"CPUUtilization": 75},
+            "extra_sections": [
+                {
+                    "section_name": "CIS ERHA EC2",
+                    "service_type": "ec2",
+                    "instances": {"rabbitmq": "i-076e1d2c0c3478c21"},
+                    "metrics": ["CPUUtilization"],
+                    "thresholds": {"CPUUtilization": 80},
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        checker,
+        "_collect_section_report",
+        lambda session, cw, profile, cfg: (
+            calls.append(cfg.get("service_type")) or {"writer": {"metrics": {}}},
+            False,
+        ),
+    )
+
+    class _SessionStub:
+        def client(self, service_name, region_name=None):
+            _ = service_name, region_name
+            return object()
+
+    monkeypatch.setattr(
+        "src.checks.aryanoble.daily_arbel.boto3.Session",
+        lambda *args, **kwargs: _SessionStub(),
+    )
+
+    result = checker.check("cis-erha", "451916275465")
+
+    assert calls == ["rds"]
+    assert result.get("extra_sections") == []
+
+
+def test_check_ec2_scope_skips_rds_section(monkeypatch):
+    checker = DailyArbelChecker(
+        region="ap-southeast-3", window_hours=3, section_scope="ec2"
+    )
+    calls = []
+
+    monkeypatch.setattr(
+        checker,
+        "_resolve_account_config",
+        lambda profile, account_id: {
+            "account_name": "CIS ERHA",
+            "cluster_id": "cis-prod-rds",
+            "service_type": "rds",
+            "instances": {"writer": "cis-prod-rds-instance"},
+            "metrics": ["CPUUtilization"],
+            "thresholds": {"CPUUtilization": 75},
+            "extra_sections": [
+                {
+                    "section_name": "CIS ERHA EC2",
+                    "service_type": "ec2",
+                    "instances": {"rabbitmq": "i-076e1d2c0c3478c21"},
+                    "instance_names": {"i-076e1d2c0c3478c21": "aws-prod-rabbitmq"},
+                    "metrics": ["CPUUtilization"],
+                    "thresholds": {"CPUUtilization": 80},
+                }
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        checker,
+        "_collect_section_report",
+        lambda session, cw, profile, cfg: (
+            calls.append(cfg.get("service_type")) or {"rabbitmq": {"metrics": {}}},
+            False,
+        ),
+    )
+
+    class _SessionStub:
+        def client(self, service_name, region_name=None):
+            _ = service_name, region_name
+            return object()
+
+    monkeypatch.setattr(
+        "src.checks.aryanoble.daily_arbel.boto3.Session",
+        lambda *args, **kwargs: _SessionStub(),
+    )
+
+    result = checker.check("cis-erha", "451916275465")
+
+    assert calls == ["ec2"]
+    assert result.get("service_type") == "ec2"
+
+
+def test_check_rds_scope_skips_primary_ec2_account(monkeypatch):
+    checker = DailyArbelChecker(
+        region="ap-southeast-3", window_hours=3, section_scope="rds"
+    )
+    calls = []
+
+    monkeypatch.setattr(
+        checker,
+        "_resolve_account_config",
+        lambda profile, account_id: {
+            "account_name": "HRIS",
+            "service_type": "ec2",
+            "instances": {"app": "i-hris-1"},
+            "metrics": ["CPUUtilization"],
+            "thresholds": {"CPUUtilization": 75},
+            "extra_sections": [],
+        },
+    )
+    monkeypatch.setattr(
+        checker,
+        "_collect_section_report",
+        lambda session, cw, profile, cfg: (
+            calls.append(cfg.get("service_type")) or {},
+            False,
+        ),
+    )
+
+    class _SessionStub:
+        def client(self, service_name, region_name=None):
+            _ = service_name, region_name
+            return object()
+
+    monkeypatch.setattr(
+        "src.checks.aryanoble.daily_arbel.boto3.Session",
+        lambda *args, **kwargs: _SessionStub(),
+    )
+
+    result = checker.check("HRIS", "774206556800")
+
+    assert calls == []
+    assert result.get("status") == "skipped"
+    assert result.get("reason") == "section_scope_not_configured"

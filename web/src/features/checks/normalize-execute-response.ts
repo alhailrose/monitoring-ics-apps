@@ -12,11 +12,17 @@ export const normalizeExecuteResponse = (payload: ExecuteResponseWire): ExecuteC
         ? { default: payload.consolidated_output }
         : {}
 
+  const backup_overviews =
+    payload.backup_overviews && typeof payload.backup_overviews === "object"
+      ? payload.backup_overviews
+      : {}
+
   return {
     check_runs: Array.isArray(payload.check_runs) ? payload.check_runs : [],
     execution_time_seconds:
       typeof payload.execution_time_seconds === "number" ? payload.execution_time_seconds : 0,
     results: Array.isArray(payload.results) ? payload.results : [],
     consolidated_outputs,
+    backup_overviews,
   }
 }

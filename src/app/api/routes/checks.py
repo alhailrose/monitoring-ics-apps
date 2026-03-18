@@ -92,6 +92,7 @@ class ExecuteCheckResponse(BaseModel):
     execution_time_seconds: float
     results: list[CheckResultResponse]
     consolidated_outputs: dict[str, str]
+    backup_overviews: dict[str, dict[str, object]] = Field(default_factory=dict)
 
 
 class AvailableCheckItem(BaseModel):

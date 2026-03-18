@@ -19,6 +19,19 @@ from src.core.runtime.ui import (
 )
 
 
+def _parse_alarm_input(raw: str) -> list[str]:
+    tokens = str(raw or "").replace("\n", ",").split(",")
+    alarm_names = []
+    seen = set()
+    for token in tokens:
+        name = token.strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        alarm_names.append(name)
+    return alarm_names
+
+
 def run_arbel_check(is_dense_mode):
     print_mini_banner()
     print_section_header("Arbel Check (RDS Utilization)", ICONS["arbel"])
@@ -65,13 +78,15 @@ def run_arbel_check(is_dense_mode):
         mode.add_column("mode", style="cyan")
         mode.add_column("flow", style="white")
         mode.add_row("RDS Monitoring", "pilih akun -> pilih window -> run")
-        mode.add_row("Alarm Verification", "pilih akun -> pilih alarm -> run")
+        mode.add_row(
+            "Alarm Verification", "pilih akun -> By Account/By Alarm Names -> run"
+        )
         mode.add_row("Backup", "langsung run semua akun Aryanoble")
 
         if is_dense_mode():
             flow_panel = Panel(
                 "[bold cyan]RDS Monitoring[/bold cyan]\nPilih akun lalu window 1h / 3h / 12h\n\n"
-                "[bold cyan]Alarm Verification[/bold cyan]\nPilih akun lalu alarm yang mau dicek\n\n"
+                "[bold cyan]Alarm Verification[/bold cyan]\nPilih akun lalu source alarm (By Account / By Alarm Names)\n\n"
                 "[bold cyan]Backup[/bold cyan]\nLaporan backup semua akun Arbel",
                 title="⚙️ Flow Utama",
                 border_style="cyan",
@@ -124,10 +139,21 @@ def run_arbel_check(is_dense_mode):
         selected = common._checkbox_prompt(
             f"{ICONS['check']} Pilih akun Arbel (default sudah tercentang)",
             profile_choices,
+            allow_back=True,
         )
-        return selected or []
+        return selected
 
-    def _collect_alarm_names(selected_profiles):
+    def _collect_alarm_names(selected_profiles, source="from-account"):
+        if source == "paste-input":
+            try:
+                alarm_input = questionary.text(
+                    "Masukkan nama alarm (pisahkan dengan koma atau baris baru):",
+                    style=CUSTOM_STYLE,  # type: ignore[arg-type]
+                ).ask()
+            except KeyboardInterrupt:
+                return None
+            return _parse_alarm_input(str(alarm_input or ""))
+
         candidate_alarm_names = []
         seen_alarm_names = set()
         for profile in selected_profiles:
@@ -151,12 +177,20 @@ def run_arbel_check(is_dense_mode):
         try:
             alarm_input = questionary.text(
                 "Masukkan nama alarm (pisahkan dengan koma jika lebih dari 1):",
-                style=CUSTOM_STYLE,
+                style=CUSTOM_STYLE,  # type: ignore[arg-type]
             ).ask()
         except KeyboardInterrupt:
             common._handle_interrupt(exit_direct=True)
             return []
-        return [x.strip() for x in (alarm_input or "").split(",") if x.strip()]
+        return _parse_alarm_input(str(alarm_input or ""))
+
+    def _match_profiles_for_alarm_names(alarm_names):
+        alarm_set = set(alarm_names)
+        matched_profiles = []
+        for profile, names in arbel_alarm_catalog.items():
+            if any(name in alarm_set for name in names):
+                matched_profiles.append(profile)
+        return matched_profiles
 
     _render_arbel_dashboard()
 
@@ -180,6 +214,60 @@ def run_arbel_check(is_dense_mode):
         run_group_specific("backup", profiles, region, group_name="Aryanoble")
         return
 
+    if choice == "alarm-name":
+        while True:
+            source = common._select_prompt(
+                f"{ICONS['alarm']} Alarm Verification - Pilih Metode",
+                [
+                    questionary.Choice("By Account", value="from-account"),
+                    questionary.Choice("By Alarm Names", value="paste-input"),
+                ],
+                default="from-account",
+                allow_back=True,
+            )
+            if not source:
+                return
+
+            if source == "from-account":
+                selected_profiles = _pick_arbel_profiles()
+                if selected_profiles is None:
+                    continue
+                if not selected_profiles:
+                    print_error("Tidak ada akun dipilih.")
+                    continue
+                alarm_names = _collect_alarm_names(selected_profiles, source=source)
+            else:
+                alarm_names = _collect_alarm_names([], source=source)
+                if alarm_names is None:
+                    continue
+                if not alarm_names:
+                    print_error("Nama alarm wajib diisi.")
+                    continue
+                selected_profiles = _match_profiles_for_alarm_names(alarm_names)
+                if not selected_profiles:
+                    print_error(
+                        "Alarm tidak ditemukan pada katalog account. Gunakan By Account atau update alarm_names di config."
+                    )
+                    continue
+
+            if alarm_names is None:
+                continue
+            if not alarm_names:
+                print_error("Nama alarm wajib diisi.")
+                continue
+
+            run_group_specific(
+                "alarm_verification",
+                selected_profiles,
+                region,
+                group_name="Aryanoble Alarm",
+                check_kwargs={
+                    "alarm_names": alarm_names,
+                    "min_duration_minutes": 10,
+                },
+            )
+            return
+
     selected_profiles = _pick_arbel_profiles()
     if not selected_profiles:
         print_error("Tidak ada akun dipilih.")
@@ -191,24 +279,6 @@ def run_arbel_check(is_dense_mode):
             selected_profiles,
             region,
             group_name="Aryanoble Budget",
-        )
-        return
-
-    if choice == "alarm-name":
-        alarm_names = _collect_alarm_names(selected_profiles)
-        if not alarm_names:
-            print_error("Nama alarm wajib diisi.")
-            return
-
-        run_group_specific(
-            "alarm_verification",
-            selected_profiles,
-            region,
-            group_name="Aryanoble Alarm",
-            check_kwargs={
-                "alarm_names": alarm_names,
-                "min_duration_minutes": 10,
-            },
         )
         return
 

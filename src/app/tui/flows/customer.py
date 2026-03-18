@@ -385,7 +385,12 @@ def _run_generic_customer(cfg):
     """
     customer_id = cfg["customer_id"]
     display_name = cfg.get("display_name", customer_id)
-    output_mode = "summary"
+    check_mode = (
+        str(cfg.get("check_mode") or cfg.get("report_mode") or "summary")
+        .lower()
+        .strip()
+    )
+    output_mode = "summary" if check_mode == "summary" else "default"
     checks = cfg.get("checks") or []
     accounts = cfg.get("accounts") or []
 
@@ -580,7 +585,12 @@ def _run_customer_auto(cfg):
     """
     customer_id = cfg["customer_id"]
     display_name = cfg.get("display_name", customer_id)
-    output_mode = "summary"
+    check_mode = (
+        str(cfg.get("check_mode") or cfg.get("report_mode") or "summary")
+        .lower()
+        .strip()
+    )
+    output_mode = "summary" if check_mode == "summary" else "default"
     checks = cfg.get("checks") or []
     accounts = cfg.get("accounts") or []
 

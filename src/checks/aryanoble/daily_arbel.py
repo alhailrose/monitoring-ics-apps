@@ -326,10 +326,18 @@ class DailyArbelChecker(BaseChecker):
     recommendation_text = "REVIEW: Investigate RDS/EC2 metric warnings"
 
     def __init__(
-        self, region: str = "ap-southeast-3", window_hours: int = 12, **kwargs
+        self,
+        region: str = "ap-southeast-3",
+        window_hours: int = 12,
+        section_scope: str = "both",
+        **kwargs,
     ):
         super().__init__(region, **kwargs)
         self.window_hours = window_hours
+        normalized_scope = (section_scope or "both").strip().lower()
+        if normalized_scope not in {"both", "rds", "ec2"}:
+            normalized_scope = "both"
+        self.section_scope = normalized_scope
 
     def _fetch_metrics(
         self, cw_client, instance_id, metric_names, profile=None, service_type="rds"
@@ -1145,6 +1153,10 @@ class DailyArbelChecker(BaseChecker):
                 "instance_id": inst_id,
                 "metrics": evaluations,
             }
+            if service_type == "ec2":
+                instance_reports[role]["instance_name"] = (
+                    instance_names.get(inst_id) or role
+                )
 
             if service_type == "ec2":
                 alarm_results = self._check_ec2_alarms(cw, profile, role, cfg=cfg)
@@ -1232,48 +1244,106 @@ class DailyArbelChecker(BaseChecker):
         try:
             session = boto3.Session(profile_name=profile, region_name=self.region)
             cw = session.client("cloudwatch", region_name=self.region)
-            service_type = cfg.get("service_type", "rds")
+            primary_service_type = cfg.get("service_type", "rds")
+            scope = self.section_scope
+            include_rds = scope in {"both", "rds"}
+            include_ec2 = scope in {"both", "ec2"}
 
-            instance_reports, any_warn = self._collect_section_report(
-                session,
-                cw,
-                profile,
-                cfg,
+            should_run_primary = (primary_service_type == "rds" and include_rds) or (
+                primary_service_type == "ec2" and include_ec2
             )
 
+            service_type = (
+                primary_service_type
+                if should_run_primary
+                else ("ec2" if include_ec2 else "rds")
+            )
+            instance_reports = {}
             extra_sections_output = []
-            for idx, section in enumerate(cfg.get("extra_sections") or [], start=1):
-                if not isinstance(section, dict):
-                    continue
+            any_warn = False
+            primary_section_name = None
+            ran_sections = False
 
-                section_cfg = {
-                    "cluster_id": section.get("cluster_id"),
-                    "service_type": section.get("service_type", "rds"),
-                    "instances": section.get("instances", {}),
-                    "instance_names": section.get("instance_names", {}),
-                    "metrics": section.get("metrics", []),
-                    "thresholds": section.get("thresholds", {}),
-                    "role_thresholds": section.get("role_thresholds", {}),
-                    "alarm_thresholds": section.get("alarm_thresholds", {}),
-                }
-
-                section_instances, section_warn = self._collect_section_report(
+            if should_run_primary:
+                instance_reports, rds_warn = self._collect_section_report(
                     session,
                     cw,
                     profile,
-                    section_cfg,
+                    cfg,
                 )
-                if section_warn:
+                ran_sections = True
+                if rds_warn:
                     any_warn = True
 
-                extra_sections_output.append(
-                    {
-                        "section_name": section.get("section_name")
-                        or f"Extra Section {idx}",
-                        "service_type": section_cfg.get("service_type", "rds"),
-                        "instances": section_instances,
+            consumed_primary_ec2 = should_run_primary and primary_service_type == "ec2"
+            if include_ec2:
+                for idx, section in enumerate(cfg.get("extra_sections") or [], start=1):
+                    if not isinstance(section, dict):
+                        continue
+
+                    section_cfg = {
+                        "cluster_id": section.get("cluster_id"),
+                        "service_type": section.get("service_type", "rds"),
+                        "instances": section.get("instances", {}),
+                        "instance_names": section.get("instance_names", {}),
+                        "metrics": section.get("metrics", []),
+                        "thresholds": section.get("thresholds", {}),
+                        "role_thresholds": section.get("role_thresholds", {}),
+                        "alarm_thresholds": section.get("alarm_thresholds", {}),
                     }
-                )
+
+                    section_instances, section_warn = self._collect_section_report(
+                        session,
+                        cw,
+                        profile,
+                        section_cfg,
+                    )
+                    if section_warn:
+                        any_warn = True
+
+                    section_name = section.get("section_name") or f"Extra Section {idx}"
+                    section_type = section_cfg.get("service_type", "rds")
+
+                    if section_type == "rds" and not include_rds:
+                        continue
+                    if section_type == "ec2" and not include_ec2:
+                        continue
+
+                    if (
+                        scope == "ec2"
+                        and not consumed_primary_ec2
+                        and section_type == "ec2"
+                    ):
+                        instance_reports = section_instances
+                        primary_section_name = section_name
+                        service_type = "ec2"
+                        consumed_primary_ec2 = True
+                        ran_sections = True
+                        continue
+
+                    ran_sections = True
+                    extra_sections_output.append(
+                        {
+                            "section_name": section_name,
+                            "service_type": section_type,
+                            "instances": section_instances,
+                        }
+                    )
+
+            if not ran_sections:
+                return {
+                    "status": "skipped",
+                    "reason": "section_scope_not_configured",
+                    "profile": profile,
+                    "account_id": account_id,
+                    "region": self.region,
+                    "window_hours": self.window_hours,
+                    "account_name": cfg.get("account_name", profile),
+                    "service_type": service_type,
+                    "instances": {},
+                    "extra_sections": [],
+                    "primary_section_name": None,
+                }
 
             status = "ATTENTION REQUIRED" if any_warn else "OK"
 
@@ -1287,6 +1357,7 @@ class DailyArbelChecker(BaseChecker):
                 "service_type": service_type,
                 "instances": instance_reports,
                 "extra_sections": extra_sections_output,
+                "primary_section_name": primary_section_name,
             }
 
         except Exception as e:  # pragma: no cover
@@ -1338,8 +1409,11 @@ class DailyArbelChecker(BaseChecker):
         lines.append("")
 
         service_type = results.get("service_type", "rds")
+        primary_section_name = results.get("primary_section_name")
 
         if service_type == "ec2":
+            if primary_section_name:
+                lines.append(f"{primary_section_name} (EC2):")
             self._format_ec2_summary(results, lines)
         else:
             self._format_rds_detail(results, lines, include_summary=True)
@@ -1348,9 +1422,14 @@ class DailyArbelChecker(BaseChecker):
             if not isinstance(section, dict):
                 continue
             lines.append("")
-            lines.append(f"{section.get('section_name', 'Extra Section')}:")
+            section_name = section.get("section_name", "Extra Section")
+            section_type = section.get("service_type", "rds")
+            if section_type == "ec2":
+                lines.append(f"{section_name} (EC2):")
+            else:
+                lines.append(f"{section_name}:")
             section_result = {"instances": section.get("instances", {})}
-            if section.get("service_type", "rds") == "ec2":
+            if section_type == "ec2":
                 self._format_ec2_summary(section_result, lines)
             else:
                 self._format_rds_detail(section_result, lines, include_summary=False)
@@ -1376,6 +1455,14 @@ class DailyArbelChecker(BaseChecker):
     def _format_ec2_summary(self, results, lines):
         """Format EC2 summary-style report — 1 line per metric across all instances."""
         instances = results.get("instances", {})
+
+        if instances:
+            labels = []
+            for role, data in instances.items():
+                inst_name = data.get("instance_name") or role
+                inst_id = data.get("instance_id", "N/A")
+                labels.append(f"{inst_name} ({inst_id})")
+            lines.append("Instances: " + ", ".join(labels))
 
         # Collect per-metric across all instances
         metric_order = []
@@ -1472,13 +1559,14 @@ class DailyArbelChecker(BaseChecker):
                 alarms = data.get("disk_memory_alarms") or []
                 if not alarms:
                     continue
+                inst_name = data.get("instance_name") or role
                 for alarm in alarms:
                     alarm_name = alarm["alarm_name"]
                     current_state = alarm["current_state"]
                     periods = alarm.get("periods") or []
                     if current_state == "ALARM":
                         # Aktif sekarang — tanpa detail waktu
-                        lines.append(f"    {role} | {alarm_name}: ALARM")
+                        lines.append(f"    {inst_name} | {alarm_name}: ALARM")
                     else:
                         # Pernah ALARM — tampilkan hanya periode >= 15 menit
                         long_periods = [(s, e, d) for _, s, e, d in periods if d >= 15]
@@ -1487,7 +1575,7 @@ class DailyArbelChecker(BaseChecker):
                                 f"{s}-{e} WIB ({d} menit)" for s, e, d in long_periods
                             ]
                             lines.append(
-                                f"    {role} | {alarm_name}: pernah ALARM — "
+                                f"    {inst_name} | {alarm_name}: pernah ALARM — "
                                 + ", ".join(period_strs)
                             )
         else:

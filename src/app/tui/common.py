@@ -142,6 +142,52 @@ def _checkbox_prompt(prompt, choices, allow_back: bool = False):
     return ans or None
 
 
+def _text_prompt(prompt, default: str = "", allow_back: bool = False):
+    """Text prompt with consistent Escape/Ctrl+C handling."""
+    try:
+        instruction = (
+            "(Ketik lalu Enter, Ctrl+C/Esc kembali)"
+            if allow_back
+            else "(Ketik lalu Enter)"
+        )
+        q = questionary.text(
+            prompt,
+            default=default,
+            style=CUSTOM_STYLE,
+            instruction=instruction,
+        )
+        if allow_back:
+            _inject_escape_binding(q)
+        ans = q.ask()
+    except KeyboardInterrupt:
+        if allow_back:
+            return None
+        _handle_interrupt(exit_direct=True)
+        return None
+    return ans
+
+
+def _confirm_prompt(prompt, default=False, allow_back: bool = False):
+    """Confirm prompt with consistent Escape/Ctrl+C handling."""
+    try:
+        instruction = "(y/n, Ctrl+C/Esc kembali)" if allow_back else "(y/n)"
+        q = questionary.confirm(
+            prompt,
+            default=default,
+            style=CUSTOM_STYLE,
+            instruction=instruction,
+        )
+        if allow_back:
+            _inject_escape_binding(q)
+        ans = q.ask()
+    except KeyboardInterrupt:
+        if allow_back:
+            return None
+        _handle_interrupt(exit_direct=True)
+        return None
+    return ans
+
+
 def filter_values_by_query(values: Iterable[str], query: str | None):
     """Return values that contain query (case-insensitive)."""
     all_values = list(values)
@@ -167,23 +213,24 @@ def apply_bulk_action(
     raise ValueError(f"Unsupported bulk action: {action}")
 
 
-def _searchable_multi_select_prompt(prompt, choices, ask_search=True):
+def _searchable_multi_select_prompt(
+    prompt, choices, ask_search=True, allow_back: bool = False
+):
     """Prompt user for optional search + bulk action + manual multi-select."""
     available_choices = list(choices)
 
     if ask_search:
-        try:
-            search_query = questionary.text(
-                "Kata kunci pencarian (opsional):",
-                style=CUSTOM_STYLE,
-                default="",
-            ).ask()
-        except KeyboardInterrupt:
-            _handle_interrupt(exit_direct=True)
-            return []
+        search_query = _text_prompt(
+            "Kata kunci pencarian (opsional):",
+            default="",
+            allow_back=allow_back,
+        )
+        if search_query is None and allow_back:
+            return None
         available_choices = filter_values_by_query(available_choices, search_query)
 
     if not available_choices:
+        print_error("Tidak ada item yang cocok dengan kata kunci.")
         return []
 
     action_choices = [
@@ -191,35 +238,44 @@ def _searchable_multi_select_prompt(prompt, choices, ask_search=True):
         questionary.Choice("Pilih semua", value="select_all"),
         questionary.Choice("Bersihkan semua", value="clear_all"),
     ]
-    action = _select_prompt("Aksi pemilihan", action_choices, default="manual")
+    action = _select_prompt(
+        "Aksi pemilihan",
+        action_choices,
+        default="manual",
+        allow_back=allow_back,
+    )
+    if action is None and allow_back:
+        return None
     if not action:
         return []
 
     if action in {"select_all", "clear_all"}:
         return apply_bulk_action(available_choices, action)
 
-    selected_values = _checkbox_prompt(prompt, available_choices)
+    selected_values = _checkbox_prompt(prompt, available_choices, allow_back=allow_back)
+    if selected_values is None and allow_back:
+        return None
     return apply_bulk_action(available_choices, "manual", selected_values)
 
 
 def _simple_account_select(display_name, accounts):
     """Simplified account selection with default select-all.
-    
+
     Args:
         display_name: Customer display name
         accounts: List of account dicts with 'profile' key
-        
+
     Returns:
         List of selected profile names
     """
     if not accounts:
         return []
-    
+
     # Show info
     console.print(
         f"\n[cyan]{display_name}[/cyan] memiliki [yellow]{len(accounts)}[/yellow] akun aktif"
     )
-    
+
     # Ask: use all accounts?
     try:
         use_all = questionary.confirm(
@@ -230,10 +286,10 @@ def _simple_account_select(display_name, accounts):
     except KeyboardInterrupt:
         _handle_interrupt(exit_direct=True)
         return []
-    
+
     if use_all:
         return [a["profile"] for a in accounts]
-    
+
     # Otherwise, show checkboxes (with all pre-checked)
     try:
         selected = questionary.checkbox(
@@ -242,7 +298,7 @@ def _simple_account_select(display_name, accounts):
                 questionary.Choice(
                     title=a.get("display_name") or a["profile"],
                     value=a["profile"],
-                    checked=True  # All pre-checked
+                    checked=True,  # All pre-checked
                 )
                 for a in accounts
             ],
@@ -252,36 +308,36 @@ def _simple_account_select(display_name, accounts):
     except KeyboardInterrupt:
         _handle_interrupt(exit_direct=True)
         return []
-    
+
     return selected or []
 
 
 def _simple_check_select(display_name, configured_checks, available_checks):
     """Simplified check selection with default using customer-configured checks.
-    
+
     Args:
         display_name: Customer display name
         configured_checks: List of check names configured for this customer
         available_checks: Dict of all available check classes
-        
+
     Returns:
         List of selected check names
     """
     if not configured_checks:
         return []
-    
+
     # Filter only valid checks
     valid_checks = [c for c in configured_checks if c in available_checks]
-    
+
     if not valid_checks:
         return []
-    
+
     # Show info
     console.print(
         f"\n[cyan]{display_name}[/cyan] memiliki [yellow]{len(valid_checks)}[/yellow] checks terkonfigurasi"
     )
     console.print(f"[dim]Checks: {', '.join(valid_checks)}[/dim]\n")
-    
+
     # Ask: use all configured checks?
     try:
         use_all = questionary.confirm(
@@ -292,10 +348,10 @@ def _simple_check_select(display_name, configured_checks, available_checks):
     except KeyboardInterrupt:
         _handle_interrupt(exit_direct=True)
         return []
-    
+
     if use_all:
         return valid_checks
-    
+
     # Otherwise, show checkboxes (with all pre-checked)
     try:
         selected = questionary.checkbox(
@@ -304,7 +360,7 @@ def _simple_check_select(display_name, configured_checks, available_checks):
                 questionary.Choice(
                     title=check_name,
                     value=check_name,
-                    checked=True  # All pre-checked
+                    checked=True,  # All pre-checked
                 )
                 for check_name in valid_checks
             ],
@@ -314,7 +370,7 @@ def _simple_check_select(display_name, configured_checks, available_checks):
     except KeyboardInterrupt:
         _handle_interrupt(exit_direct=True)
         return []
-    
+
     return selected or []
 
 
@@ -333,18 +389,19 @@ def _choose_region(selected_profiles):
         f"{ICONS['settings']} Pilih Region",
         region_choices,
         default=default_region,
+        allow_back=True,
     )
     if region is None:
         return None
     if region == "other":
-        try:
-            region = questionary.text(
-                "Masukkan region (contoh: eu-west-1):",
-                style=CUSTOM_STYLE,
-            ).ask()
-        except KeyboardInterrupt:
-            _handle_interrupt(exit_direct=True)
+        region = _text_prompt(
+            "Masukkan region (contoh: eu-west-1):",
+            allow_back=True,
+        )
+        if region is None:
             return None
+    if not str(region or "").strip():
+        return default_region
     return region
 
 

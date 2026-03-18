@@ -1,6 +1,6 @@
 import type { Account, Customer } from "../../types/api"
 
-export type ArbelMenu = "backup" | "rds" | "alarm" | "budget"
+export type ArbelMenu = "backup" | "rds" | "ec2" | "alarm" | "budget"
 
 export type MenuConfig = {
   key: ArbelMenu
@@ -18,8 +18,14 @@ export const MENUS: MenuConfig[] = [
   },
   {
     key: "rds",
-    label: "RDS / EC2 Metrics",
-    description: "Daily RDS & EC2 metric monitoring with threshold alerts",
+    label: "RDS Metrics",
+    description: "Daily RDS metric monitoring with threshold alerts",
+    checkName: "daily-arbel",
+  },
+  {
+    key: "ec2",
+    label: "EC2 Metrics",
+    description: "Daily EC2 metric monitoring with threshold alerts",
     checkName: "daily-arbel",
   },
   {

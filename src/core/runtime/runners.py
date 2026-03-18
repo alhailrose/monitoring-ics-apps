@@ -30,6 +30,7 @@ from .reports import (
     build_whatsapp_rds,
     build_whatsapp_alarm,
     build_whatsapp_budget,
+    build_whatsapp_backup_aryanoble,
 )
 from src.core.formatting.reports import build_huawei_legacy_consolidated_report
 from .ui import (
@@ -269,8 +270,6 @@ def run_group_specific(
 
         # Use Aryanoble-specific formatter if customer is Aryanoble
         if group_name == "Aryanoble":
-            from .reports import build_whatsapp_backup_aryanoble
-
             whatsapp = build_whatsapp_backup_aryanoble(date_str, all_results)
         else:
             whatsapp = build_whatsapp_backup(date_str, all_results)

@@ -66,6 +66,18 @@ export type ExecuteCheckResponse = {
   execution_time_seconds: number
   results: CheckResultItem[]
   consolidated_outputs: Record<string, string>
+  backup_overviews: Record<string, BackupOverview>
+}
+
+export type BackupOverview = {
+  all_success?: boolean
+  total_accounts?: number
+  ok_accounts_count?: number
+  problem_accounts_count?: number
+  problem_accounts?: Array<{
+    display_name?: string
+    profile?: string
+  }>
 }
 
 export type HistorySummary = {

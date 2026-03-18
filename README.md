@@ -39,6 +39,27 @@ bash scripts/ci/web-quality.sh
 docker compose -f infra/docker/docker-compose.yml config
 ```
 
+### Local dev hot-reload (web + api)
+
+Untuk development cepat tanpa restart manual:
+
+Terminal 1 (API auto-reload + postgres):
+
+```bash
+bash scripts/dev/api-dev.sh
+```
+
+Terminal 2 (Web HMR):
+
+```bash
+bash scripts/dev/web-dev.sh
+```
+
+Port dev:
+
+- Web: `http://localhost:4173`
+- API: `http://localhost:8000`
+
 ### Industrial Ops Glass Web UI (foundation status)
 
 Web package saat ini berfungsi sebagai fondasi UI yang sudah tervalidasi lewat test, namun belum diposisikan sebagai runtime service produksi siap pakai (build/deploy production belum menjadi default path di repo ini):
@@ -413,22 +434,19 @@ monitoring-hub                # atau: monitoring-hub --check health --profile my
 
 ## Arbel Daily & Alarm (update terbaru)
 - Menu `Arbel Check` berfokus pada `RDS Monitoring`, `Alarm Verification`, dan `Backup`.
+- Di dalam menu `Alarm Verification`, tersedia submenu metode input alarm:
+  - pilih dari account (catalog YAML), atau
+  - paste nama alarm (multi baris / koma, bisa lebih dari 1).
 - Pemilihan akun Arbel menggunakan checkbox dengan default akun utama tercentang: `dermies-max`, `cis-erha`, `connect-prod`.
 - Pemilihan alarm menggunakan checkbox dengan default alarm relevan tercentang.
 - Alarm check bersifat spesifik nama alarm (tidak mengambil semua alarm ALARM secara global).
 - Rule eskalasi alarm: laporkan hanya jika status `ALARM` masih berlangsung `>= 10 menit`.
 
 ## Format output WhatsApp alarm
-- Ringkasan alarm menampilkan `REPORT_NOW`, `MONITOR`, dan `OK_NOW`.
-- Untuk alarm yang sudah pulih, output tetap menampilkan history dan status terkini OK.
+- Output detail status alarm ada di hasil checker/TUI dengan format tabel `Alarm Verification Data`.
+- WhatsApp hanya menampilkan narasi `Pelaporan` untuk alarm `Report Now` (masih ALARM dan >= 10 menit).
+- Tidak memakai ringkasan `Summary` dan istilah `OK_NOW`.
 - Format klien (contoh):
   ```text
-  Selamat Siang Team 👋
-  *Arbel Alarm Verification* | 11:34 WIB
-
-  📊 Summary: REPORT_NOW=0 | MONITOR=0 | OK_NOW=1
-
-  ✅ SAAT INI OK (history):
-  - Kami informasikan bahwa pada akun *DERMIES MAX*, metrik *Freeable Memory (Reader), CPU Utilization (Reader), serta ACU Utilization (Reader)* terdeteksi *alert melebihi > 75 Percent* pada rentang waktu *11:03 WIB - 11:13 WIB* (10m). Saat ini status alarm sudah *OK*.
-    reason: Threshold Crossed
+  Selamat Siang, kami informasikan pada *dc-dwh-olap-memory-above-70* sedang melewati threshold >= 70 sejak 11:03 WIB (status: ongoing 26 menit).
   ```

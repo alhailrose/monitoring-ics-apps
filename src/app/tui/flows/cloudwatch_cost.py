@@ -10,7 +10,6 @@ from rich.panel import Panel
 
 from src.app.tui import common
 from src.checks import cloudwatch_cost_report as cw_cost_report
-from src.core.runtime.config import CUSTOM_STYLE
 from src.core.runtime.ui import (
     console,
     print_error,
@@ -80,19 +79,17 @@ def run_cloudwatch_cost_report():
         questionary.Choice(f"{ICONS['dot']} Rich table (terminal)", value="table"),
     ]
     fmt_choice = common._select_prompt(
-        f"{ICONS['settings']} Format Output", format_choices
+        f"{ICONS['settings']} Format Output", format_choices, allow_back=True
     )
     if not fmt_choice:
         return
 
-    try:
-        top_str = questionary.text(
-            "Top berapa akun?",
-            default="10",
-            style=CUSTOM_STYLE,
-        ).ask()
-    except KeyboardInterrupt:
-        common._handle_interrupt(exit_direct=True)
+    top_str = common._text_prompt(
+        "Top berapa akun?",
+        default="10",
+        allow_back=True,
+    )
+    if top_str is None:
         return
 
     try:

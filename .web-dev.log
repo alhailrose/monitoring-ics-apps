@@ -1,0 +1,32 @@
+
+> monitoring-hub-web@0.1.0 dev
+> vite
+
+Re-optimizing dependencies because lockfile has changed
+
+  VITE v5.4.21  ready in 259 ms
+
+  ➜  Local:   http://localhost:4173/
+  ➜  Network: http://10.1.2.76:4173/
+  ➜  Network: http://172.18.0.1:4173/
+4:38:49 PM [vite] page reload src/features/arbel/menu.ts
+4:39:09 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:09:38 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:09:46 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:10:04 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:10:31 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:10:40 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:10:55 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:11:10 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:11:16 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:15:37 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:15:53 PM [vite] hmr update /src/styles/pages/arbel.css
+5:19:34 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:26:07 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:29:41 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:30:05 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:30:34 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:31:48 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:49:53 PM [vite] page reload src/features/checks/normalize-execute-response.ts
+5:50:21 PM [vite] page reload src/app/checks/arbel/page.tsx
+5:50:35 PM [vite] hmr update /src/styles/pages/arbel.css

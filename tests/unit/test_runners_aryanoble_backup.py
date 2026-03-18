@@ -22,7 +22,7 @@ def test_aryanoble_uses_custom_backup_formatter():
     with (
         patch("src.core.runtime.runners._check_single_profile") as mock_check,
         patch(
-            "src.core.runtime.reports.build_whatsapp_backup_aryanoble"
+            "src.core.runtime.runners.build_whatsapp_backup_aryanoble"
         ) as mock_aryanoble_formatter,
         patch(
             "src.core.runtime.runners.build_whatsapp_backup"
@@ -63,7 +63,7 @@ def test_non_aryanoble_uses_default_backup_formatter():
     with (
         patch("src.core.runtime.runners._check_single_profile") as mock_check,
         patch(
-            "src.core.runtime.reports.build_whatsapp_backup_aryanoble"
+            "src.core.runtime.runners.build_whatsapp_backup_aryanoble"
         ) as mock_aryanoble_formatter,
         patch(
             "src.core.runtime.runners.build_whatsapp_backup"
