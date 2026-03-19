@@ -27,7 +27,12 @@ def test_finding_event_check_name_constraint_matches_shared_constant():
     )
 
     check_sql = str(check_constraint.sqltext)
-    expected = "check_name in ('guardduty','cloudwatch','notifications')"
+    expected = "check_name in ('guardduty','cloudwatch','notifications','backup')"
 
     assert check_sql == expected
-    assert FINDING_EVENT_CHECK_NAMES == ("guardduty", "cloudwatch", "notifications")
+    assert FINDING_EVENT_CHECK_NAMES == (
+        "guardduty",
+        "cloudwatch",
+        "notifications",
+        "backup",
+    )

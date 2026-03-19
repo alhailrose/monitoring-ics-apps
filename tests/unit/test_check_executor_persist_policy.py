@@ -198,3 +198,71 @@ def test_execute_tui_mode_does_not_write_normalized_finding_events():
         )
 
     check_repo.add_finding_events.assert_not_called()
+
+
+def test_execute_api_mode_writes_normalized_finding_events_for_backup():
+    from src.app.services.check_executor import CheckExecutor
+
+    account = _make_account("prof-a")
+    customer = _make_customer("cust-1", [account])
+
+    customer_repo = MagicMock()
+    customer_repo.get_customer.return_value = customer
+
+    check_repo = MagicMock()
+    check_run = MagicMock()
+    check_run.id = "run-2"
+    check_repo.create_check_run.return_value = check_run
+
+    executor = CheckExecutor(
+        check_repo=check_repo,
+        customer_repo=customer_repo,
+        region="ap-southeast-3",
+    )
+
+    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+        mock_run.return_value = {
+            "status": "ATTENTION REQUIRED",
+            "failed_jobs": 1,
+            "expired_jobs": 1,
+            "completed_jobs": 1,
+            "job_details": [
+                {
+                    "job_id": "job-1",
+                    "state": "FAILED",
+                    "resource_label": "db-prod",
+                    "reason": "Backup window missed",
+                    "created_wib": "2026-03-19 02:10 WIB",
+                },
+                {
+                    "job_id": "job-2",
+                    "state": "EXPIRED",
+                    "resource_label": "db-replica",
+                    "reason": "Retention exceeded",
+                    "created_wib": "2026-03-19 03:15 WIB",
+                },
+                {
+                    "job_id": "job-3",
+                    "state": "COMPLETED",
+                    "resource_label": "db-archive",
+                    "reason": "",
+                    "created_wib": "2026-03-19 04:20 WIB",
+                },
+            ],
+            "_formatted_output": "ok",
+        }
+        executor.execute(
+            customer_ids=["cust-1"],
+            mode="single",
+            check_name="backup",
+            send_slack=False,
+            run_source="api",
+            persist_mode="normalized",
+        )
+
+    check_repo.add_finding_events.assert_called_once()
+    args = check_repo.add_finding_events.call_args.kwargs
+    assert args["check_run_id"] == "run-2"
+    assert args["account_id"] == account.id
+    assert len(args["events"]) == 3
+    assert args["events"][0]["check_name"] == "backup"

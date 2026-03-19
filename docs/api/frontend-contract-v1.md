@@ -55,6 +55,7 @@ Query params:
 
 - `customer_id` (required)
 - `check_name` (optional): `guardduty|cloudwatch|notifications`
+- `check_name` (optional): `guardduty|cloudwatch|notifications|backup`
 - `severity` (optional): `INFO|LOW|MEDIUM|HIGH|CRITICAL|ALARM`
 - `account_id` (optional)
 - `limit` (optional, default `50`, max `200`)
@@ -89,3 +90,6 @@ Response:
 
 - TUI remains non-persistent and does not write finding history.
 - Findings endpoints return data from API-managed persistent runs only.
+- Backup-focused query shortcut:
+  - `check_name=backup&severity=ALARM` -> backup failures/expired alerts
+  - `check_name=backup&severity=INFO` -> successful backup events

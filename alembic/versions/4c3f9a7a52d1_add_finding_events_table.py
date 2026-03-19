@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.Column("raw_payload", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
-            "check_name in ('guardduty','cloudwatch','notifications')",
+            "check_name in ('guardduty','cloudwatch','notifications','backup')",
             name="ck_finding_events_check_name_valid",
         ),
         sa.CheckConstraint(

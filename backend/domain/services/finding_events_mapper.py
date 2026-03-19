@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.domain.finding_events import (
+    FINDING_EVENT_CHECK_BACKUP,
     FINDING_EVENT_CHECK_CLOUDWATCH,
     FINDING_EVENT_CHECK_GUARDDUTY,
     FINDING_EVENT_CHECK_NOTIFICATIONS,
@@ -100,6 +101,41 @@ def _map_notifications(account_id: str, raw_result: dict) -> list[dict]:
     return events
 
 
+def _map_backup(account_id: str, raw_result: dict) -> list[dict]:
+    details = raw_result.get("job_details")
+    if not isinstance(details, list):
+        return []
+
+    events = []
+    for index, detail in enumerate(details):
+        if not isinstance(detail, dict):
+            continue
+
+        state = str(detail.get("state") or "UNKNOWN").upper()
+        if state not in {"FAILED", "EXPIRED", "COMPLETED"}:
+            continue
+
+        job_id = str(detail.get("job_id") or f"unknown-{index}")
+        resource_label = str(detail.get("resource_label") or "resource")
+        reason = str(detail.get("reason") or "")
+        created = str(detail.get("created_wib") or detail.get("created") or "")
+        severity = "ALARM" if state in {"FAILED", "EXPIRED"} else "INFO"
+
+        events.append(
+            {
+                "check_name": FINDING_EVENT_CHECK_BACKUP,
+                "account_id": account_id,
+                "finding_key": f"backup-job:{state}:{job_id}",
+                "severity": severity,
+                "title": f"Backup job {state} for {resource_label}",
+                "description": f"reason={reason} created={created}".strip(),
+                "raw_payload": detail,
+            }
+        )
+
+    return events
+
+
 def map_check_findings(
     check_name: str, account_id: str, raw_result: dict
 ) -> list[dict]:
@@ -113,4 +149,6 @@ def map_check_findings(
         return _map_guardduty(account_id, raw_result)
     if check_name == FINDING_EVENT_CHECK_CLOUDWATCH:
         return _map_cloudwatch(account_id, raw_result)
-    return _map_notifications(account_id, raw_result)
+    if check_name == FINDING_EVENT_CHECK_NOTIFICATIONS:
+        return _map_notifications(account_id, raw_result)
+    return _map_backup(account_id, raw_result)

@@ -133,3 +133,46 @@ def test_map_notifications_handles_malformed_nested_payloads_safely():
     assert events[0]["title"] == "notification"
     assert events[1]["finding_key"] == "notification"
     assert events[1]["title"] == "notification"
+
+
+def test_map_backup_job_details_to_finding_events():
+    raw = {
+        "status": "ATTENTION REQUIRED",
+        "job_details": [
+            {
+                "job_id": "job-1",
+                "state": "FAILED",
+                "resource_label": "db-prod",
+                "reason": "Backup window missed",
+                "created_wib": "2026-03-19 02:10 WIB",
+            },
+            {
+                "job_id": "job-2",
+                "state": "EXPIRED",
+                "resource_label": "db-replica",
+                "reason": "Retention exceeded",
+                "created_wib": "2026-03-19 03:15 WIB",
+            },
+            {
+                "job_id": "job-3",
+                "state": "COMPLETED",
+                "resource_label": "db-archive",
+                "reason": "",
+                "created_wib": "2026-03-19 04:20 WIB",
+            },
+        ],
+    }
+
+    events = map_check_findings(
+        check_name="backup",
+        account_id="acct-7",
+        raw_result=raw,
+    )
+
+    assert len(events) == 3
+    assert events[0]["severity"] == "ALARM"
+    assert events[0]["finding_key"] == "backup-job:FAILED:job-1"
+    assert events[1]["severity"] == "ALARM"
+    assert events[1]["finding_key"] == "backup-job:EXPIRED:job-2"
+    assert events[2]["severity"] == "INFO"
+    assert events[2]["finding_key"] == "backup-job:COMPLETED:job-3"
