@@ -26,7 +26,28 @@ ACCOUNT_LABELS = {
 
 
 class DailyBudgetChecker(BaseChecker):
+    def __init__(
+        self,
+        region: str = "ap-southeast-3",
+        budget_names=None,
+        warn_percent: float | None = None,
+        account_name: str | None = None,
+        **kwargs,
+    ):
+        super().__init__(region=region, **kwargs)
+        if isinstance(budget_names, str):
+            parsed = [x.strip() for x in budget_names.split(",")]
+            self.budget_names = {x for x in parsed if x}
+        elif isinstance(budget_names, list):
+            self.budget_names = {str(x).strip() for x in budget_names if str(x).strip()}
+        else:
+            self.budget_names = set()
+        self.warn_percent = float(warn_percent) if warn_percent is not None else None
+        self.account_name_override = account_name
+
     def _account_name(self, profile):
+        if self.account_name_override:
+            return self.account_name_override
         return ACCOUNT_LABELS.get(profile, profile.replace("-", " ").title())
 
     def _is_threshold_hit(self, percent, notif):
@@ -60,6 +81,8 @@ class DailyBudgetChecker(BaseChecker):
                         continue
 
                     name = budget.get("BudgetName", "")
+                    if self.budget_names and name not in self.budget_names:
+                        continue
                     limit = Decimal(
                         (budget.get("BudgetLimit") or {}).get("Amount", "0")
                     )
@@ -82,6 +105,8 @@ class DailyBudgetChecker(BaseChecker):
                     for n in notif_resp.get("Notifications", []):
                         if self._is_threshold_hit(percent, n):
                             threshold_hits.append(float(n.get("Threshold", 0)))
+                    if self.warn_percent is not None and percent > self.warn_percent:
+                        threshold_hits.append(float(self.warn_percent))
 
                     threshold_hits = sorted(set(threshold_hits))
                     items.append(

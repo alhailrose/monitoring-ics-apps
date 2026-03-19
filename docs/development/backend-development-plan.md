@@ -28,8 +28,8 @@ This is the main living plan for backend evolution.
 | 0 | Enforce execution-mode policy (TUI non-persistent, API persistent) | completed |
 | 1 | Normalize security/alert findings | completed |
 | 2 | Normalize backup reliability events | completed |
-| 3 | Normalize utilization and globalize config-driven checks | in_progress |
-| 4 | Finalize remaining checks + frontend API contract | planned |
+| 3 | Normalize utilization and globalize config-driven checks | completed |
+| 4 | Finalize remaining checks + frontend API contract | completed |
 
 ## Detailed checklist
 
@@ -61,25 +61,25 @@ This is the main living plan for backend evolution.
 
 ### Phase 3 - Utilization and global config-driven rollout
 
-- [ ] Add normalized `metric_samples` schema and migration
-- [ ] Map `daily-arbel` outputs into `metric_samples`
+- [x] Add normalized `metric_samples` schema and migration
+- [x] Map `daily-arbel` outputs into `metric_samples`
 - [x] Add account-level check config model in DB (alarm names, budget names, backup filters, thresholds)
 - [x] Implement API management endpoints for per-account check config
-- [ ] Enable global rollout path for:
-  - [ ] `alarm_verification`
-  - [ ] `daily-budget`
-  - [ ] RDS/utilization checks
-  - [ ] `backup`
-- [ ] Keep TUI behavior unchanged (YAML-driven, non-persistent)
-- [ ] Mark phase as done in this plan
+- [x] Enable global rollout path for:
+  - [x] `alarm_verification`
+  - [x] `daily-budget`
+  - [x] RDS/utilization checks
+  - [x] `backup`
+- [x] Keep TUI behavior unchanged (YAML-driven, non-persistent)
+- [x] Mark phase as done in this plan
 
 ### Phase 4 - API spec and frontend readiness
 
-- [ ] Publish stable API spec for frontend (`runs`, `findings`, `metrics`, `dashboard`)
-- [ ] Add DTO contracts and response examples
-- [ ] Add integration tests for contract stability
-- [ ] Update README and interface docs at phase completion
-- [ ] Mark phase as done in this plan
+- [x] Publish stable API spec for frontend (`runs`, `findings`, `metrics`, `dashboard`)
+- [x] Add DTO contracts and response examples
+- [x] Add integration tests for contract stability
+- [x] Update README and interface docs at phase completion
+- [x] Mark phase as done in this plan
 
 ## Commit and docs workflow
 
@@ -102,3 +102,7 @@ This is the main living plan for backend evolution.
 - 2026-03-19: Phase 1 completed (`/api/v1/findings` + frontend contract examples).
 - 2026-03-19: Phase 2 completed (backup normalized finding mapping + persistence and tests).
 - 2026-03-19: Phase 3 started (account check-config DB model + API CRUD + executor merge path).
+- 2026-03-19: Phase 3 progress (added metric_samples schema + daily-arbel metric normalization persistence path).
+- 2026-03-19: Phase 3 progress (globalized DB-config rollout for alarm verification, budget, backup, and utilization checks).
+- 2026-03-19: Phase 3 completed.
+- 2026-03-19: Phase 4 completed (stable contract for runs/findings/metrics/dashboard + integration contract test).

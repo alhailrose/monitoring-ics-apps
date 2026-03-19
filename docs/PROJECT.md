@@ -15,6 +15,8 @@ Keduanya menjalankan check yang sama dari modul `src/checks/`, hanya berbeda di 
 - Runtime TUI/CLI kanonis di `backend/interfaces/cli/`; `src/app/cli/*`, `src/app/tui/*`, dan `apps/tui/main.py` adalah compatibility wrapper.
 - Execution policy saat ini: TUI non-persistent (tidak menulis DB), API persistent (menulis DB).
 - Endpoint findings normalisasi tersedia: `GET /api/v1/findings` (termasuk `backup` via filter `check_name=backup`).
+- Endpoint metrics normalisasi tersedia: `GET /api/v1/metrics`.
+- Endpoint dashboard summary tersedia: `GET /api/v1/dashboard/summary`.
 - Runtime web aktif tetap di `web/`; `apps/web/` masih scaffold migrasi bertahap.
 - Deploy single server saat ini menggunakan `postgres + api + nginx` (tanpa worker/redis terpisah).
 - Rilis dipisah per target dengan workflow gate `deploy-manual` + checklist bukti di `docs/operations/release-checklist.md`.
@@ -226,6 +228,46 @@ TUI (Textual) / CLI
 | output | text | Output teks lengkap |
 | details | JSON | Data mentah hasil check |
 
+### `finding_events`
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| id | UUID | Primary key |
+| check_run_id | UUID | FK ke check_runs |
+| account_id | UUID | FK ke accounts |
+| check_name | string | Sumber check (`guardduty`, `cloudwatch`, `notifications`, `backup`) |
+| finding_key | string | Kunci temuan unik per check |
+| severity | string | `INFO`, `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`, `ALARM` |
+| title | string | Judul temuan |
+| description | text | Deskripsi temuan |
+| raw_payload | JSON | Payload mentah untuk analitik |
+
+### `account_check_configs`
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| id | UUID | Primary key |
+| account_id | UUID | FK ke accounts |
+| check_name | string | Nama check yang dikonfigurasi |
+| config | JSON | Konfigurasi per-check per-account |
+| created_at | timestamp | Waktu dibuat |
+| updated_at | timestamp | Waktu diubah |
+
+### `metric_samples`
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| id | UUID | Primary key |
+| check_run_id | UUID | FK ke check_runs |
+| account_id | UUID | FK ke accounts |
+| check_name | string | Sumber check (saat ini `daily-arbel`) |
+| metric_name | string | Nama metrik, contoh `CPUUtilization` |
+| metric_status | string | Status evaluasi metrik (`ok/warn/...`) |
+| value_num | float | Nilai numerik ter-normalisasi |
+| unit | string | Unit metrik (`Percent`, `Bytes`, `Count`) |
+| resource_role | string | Role resource (contoh `writer`) |
+| resource_id | string | ID resource |
+| service_type | string | Jenis service (`rds`/`ec2`) |
+| section_name | string | Nama section sumber |
+| raw_payload | JSON | Payload metrik mentah |
+
 ---
 
 ## API Endpoints
@@ -283,6 +325,13 @@ Alarm names tidak perlu dikirim via `check_params` — sudah tersimpan di `confi
 | GET | `/history?customer_id=...` | List riwayat check run |
 | GET | `/history/{id}` | Detail check run |
 | GET | `/history/{id}/report` | Regenerasi report teks dari data tersimpan |
+
+### Findings, Metrics, Dashboard
+| Method | Path | Keterangan |
+|---|---|---|
+| GET | `/findings?customer_id=...` | List findings normalisasi (filterable) |
+| GET | `/metrics?customer_id=...` | List metric samples normalisasi (filterable) |
+| GET | `/dashboard/summary?customer_id=...` | Agregasi KPI run/result/finding/metric |
 
 ### Profiles & Sessions
 | Method | Path | Keterangan |

@@ -1,3 +1,7 @@
-"""Compatibility wrapper for legacy src TUI interactive module."""
+"""Compatibility module alias for legacy src TUI interactive."""
 
-from backend.interfaces.cli.interactive import *  # noqa: F403
+import sys
+
+from backend.interfaces.cli import interactive as _impl
+
+sys.modules[__name__] = _impl

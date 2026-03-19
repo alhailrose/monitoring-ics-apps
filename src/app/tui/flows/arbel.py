@@ -1,3 +1,7 @@
-"""Compatibility wrapper for legacy src TUI arbel flow."""
+"""Compatibility module alias for legacy src TUI arbel flow."""
 
-from backend.interfaces.cli.flows.arbel import *  # noqa: F403
+import sys
+
+from backend.interfaces.cli.flows import arbel as _impl
+
+sys.modules[__name__] = _impl

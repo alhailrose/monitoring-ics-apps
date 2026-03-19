@@ -1,3 +1,7 @@
-"""Compatibility wrapper for legacy src customer CLI commands."""
+"""Compatibility module alias for legacy src customer CLI commands."""
 
-from backend.interfaces.cli.customer_commands import *  # noqa: F403
+import sys
+
+from backend.interfaces.cli import customer_commands as _impl
+
+sys.modules[__name__] = _impl

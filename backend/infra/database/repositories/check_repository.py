@@ -1,11 +1,17 @@
 """Repository for check runs and results persistence."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session, selectinload
 
-from backend.infra.database.models import Account, CheckResult, CheckRun, FindingEvent
+from backend.infra.database.models import (
+    Account,
+    CheckResult,
+    CheckRun,
+    FindingEvent,
+    MetricSample,
+)
 
 
 class CheckRepository:
@@ -97,6 +103,38 @@ class CheckRepository:
         self.session.flush()
         return rows
 
+    def add_metric_samples(
+        self,
+        check_run_id: str,
+        account_id: str,
+        samples: list[dict],
+    ) -> list[MetricSample]:
+        if not samples:
+            return []
+
+        rows: list[MetricSample] = []
+        for sample in samples:
+            row = MetricSample(
+                check_run_id=check_run_id,
+                account_id=account_id,
+                check_name=sample["check_name"],
+                metric_name=sample["metric_name"],
+                metric_status=sample["metric_status"],
+                value_num=sample.get("value_num"),
+                unit=sample.get("unit"),
+                resource_role=sample.get("resource_role"),
+                resource_id=sample.get("resource_id"),
+                resource_name=sample.get("resource_name"),
+                service_type=sample.get("service_type"),
+                section_name=sample.get("section_name"),
+                raw_payload=sample.get("raw_payload"),
+            )
+            rows.append(row)
+
+        self.session.add_all(rows)
+        self.session.flush()
+        return rows
+
     # -- History queries --
 
     def get_check_run(self, check_run_id: str) -> CheckRun | None:
@@ -179,6 +217,145 @@ class CheckRepository:
         )
         findings = list(self.session.execute(stmt).scalars().all())
         return findings, total
+
+    def list_metric_samples(
+        self,
+        customer_id: str,
+        check_name: str | None = None,
+        metric_name: str | None = None,
+        metric_status: str | None = None,
+        account_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[MetricSample], int]:
+        base = (
+            select(MetricSample)
+            .join(CheckRun, MetricSample.check_run_id == CheckRun.id)
+            .where(CheckRun.customer_id == customer_id)
+        )
+
+        if check_name:
+            base = base.where(MetricSample.check_name == check_name)
+        if metric_name:
+            base = base.where(MetricSample.metric_name == metric_name)
+        if metric_status:
+            base = base.where(MetricSample.metric_status == metric_status)
+        if account_id:
+            base = base.where(MetricSample.account_id == account_id)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        total = self.session.execute(count_stmt).scalar_one()
+
+        stmt = (
+            base.options(selectinload(MetricSample.account))
+            .order_by(MetricSample.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        samples = list(self.session.execute(stmt).scalars().all())
+        return samples, total
+
+    def get_dashboard_summary(
+        self,
+        customer_id: str,
+        window_hours: int = 24,
+    ) -> dict:
+        since = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+
+        run_filter = (CheckRun.customer_id == customer_id, CheckRun.created_at >= since)
+
+        total_runs = self.session.execute(
+            select(func.count(CheckRun.id)).where(*run_filter)
+        ).scalar_one()
+
+        mode_counts = {
+            row[0]: int(row[1])
+            for row in self.session.execute(
+                select(CheckRun.check_mode, func.count(CheckRun.id))
+                .where(*run_filter)
+                .group_by(CheckRun.check_mode)
+            ).all()
+        }
+
+        latest_created_at = self.session.execute(
+            select(func.max(CheckRun.created_at)).where(*run_filter)
+        ).scalar_one_or_none()
+
+        result_counts = {
+            row[0]: int(row[1])
+            for row in self.session.execute(
+                select(CheckResult.status, func.count(CheckResult.id))
+                .join(CheckRun, CheckResult.check_run_id == CheckRun.id)
+                .where(*run_filter)
+                .group_by(CheckResult.status)
+            ).all()
+        }
+
+        findings_by_severity = {
+            row[0]: int(row[1])
+            for row in self.session.execute(
+                select(FindingEvent.severity, func.count(FindingEvent.id))
+                .join(CheckRun, FindingEvent.check_run_id == CheckRun.id)
+                .where(*run_filter)
+                .group_by(FindingEvent.severity)
+            ).all()
+        }
+
+        metric_status_counts = {
+            row[0]: int(row[1])
+            for row in self.session.execute(
+                select(MetricSample.metric_status, func.count(MetricSample.id))
+                .join(CheckRun, MetricSample.check_run_id == CheckRun.id)
+                .where(*run_filter)
+                .group_by(MetricSample.metric_status)
+            ).all()
+        }
+
+        top_checks_rows = self.session.execute(
+            select(CheckRun.check_name, func.count(CheckRun.id))
+            .where(*run_filter, CheckRun.check_name.is_not(None))
+            .group_by(CheckRun.check_name)
+            .order_by(func.count(CheckRun.id).desc())
+            .limit(5)
+        ).all()
+
+        total_results = int(sum(result_counts.values()))
+        total_findings = int(sum(findings_by_severity.values()))
+        total_metrics = int(sum(metric_status_counts.values()))
+
+        return {
+            "customer_id": customer_id,
+            "window_hours": window_hours,
+            "generated_at": datetime.now(timezone.utc),
+            "since": since,
+            "runs": {
+                "total": int(total_runs),
+                "single": int(mode_counts.get("single", 0)),
+                "all": int(mode_counts.get("all", 0)),
+                "arbel": int(mode_counts.get("arbel", 0)),
+                "latest_created_at": latest_created_at,
+            },
+            "results": {
+                "total": total_results,
+                "ok": int(result_counts.get("OK", 0)),
+                "warn": int(result_counts.get("WARN", 0)),
+                "error": int(result_counts.get("ERROR", 0)),
+                "alarm": int(result_counts.get("ALARM", 0)),
+                "no_data": int(result_counts.get("NO_DATA", 0)),
+            },
+            "findings": {
+                "total": total_findings,
+                "by_severity": findings_by_severity,
+            },
+            "metrics": {
+                "total": total_metrics,
+                "by_status": metric_status_counts,
+            },
+            "top_checks": [
+                {"check_name": str(row[0]), "runs": int(row[1])}
+                for row in top_checks_rows
+            ],
+        }
 
     # -- Internal --
 

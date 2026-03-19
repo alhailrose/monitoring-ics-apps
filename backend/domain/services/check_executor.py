@@ -30,6 +30,7 @@ from backend.domain.runtime.reports import (
     summarize_backup_whatsapp,
 )
 from backend.domain.services.finding_events_mapper import map_check_findings
+from backend.domain.services.metric_samples_mapper import map_check_metric_samples
 from src.checks.common.aws_errors import (
     is_credential_error,
     friendly_credential_message,
@@ -528,6 +529,18 @@ class CheckExecutor:
                                 check_run_id=check_run.id,
                                 account_id=account.id,
                                 events=finding_events,
+                            )
+
+                        metric_samples = map_check_metric_samples(
+                            check_name=chk_name,
+                            account_id=account.id,
+                            raw_result=raw_result,
+                        )
+                        if metric_samples:
+                            self.check_repo.add_metric_samples(
+                                check_run_id=check_run.id,
+                                account_id=account.id,
+                                samples=metric_samples,
                             )
 
                     result_items.append(

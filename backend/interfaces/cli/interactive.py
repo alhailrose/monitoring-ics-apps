@@ -482,3 +482,7 @@ def run_interactive():
 
 def run_interactive_v2():
     return run_interactive()
+
+
+def main():
+    return run_interactive()

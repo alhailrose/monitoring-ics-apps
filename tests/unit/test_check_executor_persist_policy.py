@@ -266,3 +266,103 @@ def test_execute_api_mode_writes_normalized_finding_events_for_backup():
     assert args["account_id"] == account.id
     assert len(args["events"]) == 3
     assert args["events"][0]["check_name"] == "backup"
+
+
+def test_execute_api_mode_writes_normalized_metric_samples_for_daily_arbel():
+    from src.app.services.check_executor import CheckExecutor
+
+    account = _make_account("prof-a")
+    customer = _make_customer("cust-1", [account])
+
+    customer_repo = MagicMock()
+    customer_repo.get_customer.return_value = customer
+
+    check_repo = MagicMock()
+    check_run = MagicMock()
+    check_run.id = "run-3"
+    check_repo.create_check_run.return_value = check_run
+
+    executor = CheckExecutor(
+        check_repo=check_repo,
+        customer_repo=customer_repo,
+        region="ap-southeast-3",
+    )
+
+    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+        mock_run.return_value = {
+            "status": "ATTENTION REQUIRED",
+            "service_type": "rds",
+            "instances": {
+                "writer": {
+                    "instance_id": "cis-prod-rds-instance",
+                    "metrics": {
+                        "CPUUtilization": {
+                            "status": "warn",
+                            "message": "CPU Utilization: 88% (di atas 75%)",
+                        }
+                    },
+                }
+            },
+            "_formatted_output": "ok",
+        }
+        executor.execute(
+            customer_ids=["cust-1"],
+            mode="single",
+            check_name="daily-arbel",
+            send_slack=False,
+            run_source="api",
+            persist_mode="normalized",
+        )
+
+    check_repo.add_metric_samples.assert_called_once()
+    args = check_repo.add_metric_samples.call_args.kwargs
+    assert args["check_run_id"] == "run-3"
+    assert args["account_id"] == account.id
+    assert len(args["samples"]) == 1
+    assert args["samples"][0]["check_name"] == "daily-arbel"
+
+
+def test_execute_tui_mode_does_not_write_normalized_metric_samples():
+    from src.app.services.check_executor import CheckExecutor
+
+    account = _make_account("prof-a")
+    customer = _make_customer("cust-1", [account])
+
+    customer_repo = MagicMock()
+    customer_repo.get_customer.return_value = customer
+
+    check_repo = MagicMock()
+
+    executor = CheckExecutor(
+        check_repo=check_repo,
+        customer_repo=customer_repo,
+        region="ap-southeast-3",
+    )
+
+    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+        mock_run.return_value = {
+            "status": "ATTENTION REQUIRED",
+            "service_type": "rds",
+            "instances": {
+                "writer": {
+                    "instance_id": "cis-prod-rds-instance",
+                    "metrics": {
+                        "CPUUtilization": {
+                            "status": "warn",
+                            "message": "CPU Utilization: 88% (di atas 75%)",
+                        }
+                    },
+                }
+            },
+            "_formatted_output": "ok",
+        }
+        executor.execute(
+            customer_ids=["cust-1"],
+            mode="single",
+            check_name="daily-arbel",
+            send_slack=False,
+            run_source="tui",
+            persist_mode="none",
+        )
+
+    check_repo.add_metric_samples.assert_not_called()

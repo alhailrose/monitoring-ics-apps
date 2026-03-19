@@ -594,7 +594,7 @@ def _print_consolidated_report(
     if output_mode == "summary":
         lines = []
 
-        from backend.config.loader import get_profile_metadata
+        from src.configs.loader import get_profile_metadata
 
         profile_meta_cache = {}
 
@@ -615,12 +615,45 @@ def _print_consolidated_report(
         hour = now.hour
         if hour < 11:
             greeting = "Selamat Pagi Team"
+            period_label = "Pagi"
         elif hour < 15:
             greeting = "Selamat Siang Team"
+            period_label = "Siang"
         elif hour < 18:
             greeting = "Selamat Sore Team"
+            period_label = "Sore"
         else:
             greeting = "Selamat Malam Team"
+
+            period_label = "Malam"
+
+        if set(checks.keys()) == {"cloudwatch"}:
+            lines.append(greeting.replace(" Team", ""))
+            lines.append(f"Berikut Alert {period_label} ini")
+            lines.append(now.strftime("%Y.%m.%d"))
+            lines.append("")
+
+            alarm_lines = []
+            for profile in profiles:
+                cw_result = all_results.get(profile, {}).get("cloudwatch", {})
+                profile_label = _profile_label(profile)
+                if cw_result.get("status") == "error":
+                    alarm_lines.append(
+                        f"Alarm check gagal pada {profile_label}: {cw_result.get('error', 'unknown error')}"
+                    )
+                    continue
+
+                for detail in cw_result.get("details", []) or []:
+                    alarm_name = str(detail.get("name") or "").strip()
+                    if alarm_name and alarm_name not in alarm_lines:
+                        alarm_lines.append(alarm_name)
+
+            if not alarm_lines:
+                alarm_lines.append("Tidak ada alarm aktif")
+
+            lines.extend(alarm_lines)
+            print("\n" + "\n".join(lines))
+            return
 
         lines.append(greeting)
         lines.append("Berikut Alert Monitoring")
@@ -674,18 +707,45 @@ def _print_consolidated_report(
                     if status_key in grouped:
                         grouped[status_key].append(row)
 
-                alert_notes = {
-                    f"CPU sangat tinggi (>= {cpu_crit:.0f}%)": [],
-                    f"CPU tinggi (>= {cpu_warn:.0f}%)": [],
-                    f"Memory sangat tinggi (>= {mem_crit:.0f}%)": [],
-                    f"Memory tinggi (>= {mem_warn:.0f}%)": [],
-                    f"Disk sisa sangat rendah (<= {disk_crit:.0f}%)": [],
-                    f"Disk sisa rendah (<= {disk_warn:.0f}%)": [],
-                }
+                alert_notes: list[str] = []
 
                 def _add_unique(container, item):
                     if item not in container:
                         container.append(item)
+
+                def _format_util_note(
+                    metric_label: str,
+                    instance_label: str,
+                    peak_value,
+                    avg_value,
+                    warn_threshold: float,
+                    critical_threshold: float,
+                    peak_at: str | None,
+                ) -> str:
+                    level = (
+                        "sangat tinggi"
+                        if float(peak_value) >= critical_threshold
+                        else "tinggi"
+                    )
+                    if (
+                        isinstance(avg_value, (int, float))
+                        and float(avg_value) >= warn_threshold
+                    ):
+                        trend_phrase = (
+                            "sangat tinggi dan konsisten"
+                            if level == "sangat tinggi"
+                            else "tinggi dan konsisten"
+                        )
+                        return (
+                            f"{metric_label} {instance_label} {trend_phrase} dalam 12 jam terakhir "
+                            f"(avg={_fmt_pct(avg_value)}, peak={_fmt_pct(peak_value)})."
+                        )
+
+                    peak_time_label = peak_at or "waktu puncak tidak tersedia"
+                    return (
+                        f"{metric_label} {instance_label} sempat {level} {_fmt_pct(peak_value)} "
+                        f"pada {peak_time_label} (avg={_fmt_pct(avg_value)})."
+                    )
 
                 for status_name in ["CRITICAL", "WARNING", "PARTIAL_DATA", "NORMAL"]:
                     status_rows = grouped.get(status_name) or []
@@ -695,59 +755,68 @@ def _print_consolidated_report(
                             instance_name = "instance-tanpa-nama"
                         instance_label = instance_name
 
+                        cpu_avg = row.get("cpu_avg_12h")
                         cpu_peak = row.get("cpu_peak_12h")
+                        cpu_peak_at = row.get("cpu_peak_at_12h")
+                        mem_avg = row.get("memory_avg_12h")
                         mem_peak = row.get("memory_peak_12h")
+                        mem_peak_at = row.get("memory_peak_at_12h")
                         disk_free = row.get("disk_free_min_percent")
 
                         if isinstance(cpu_peak, (int, float)):
-                            if float(cpu_peak) >= cpu_crit:
+                            if float(cpu_peak) >= cpu_warn:
                                 _add_unique(
-                                    alert_notes[
-                                        f"CPU sangat tinggi (>= {cpu_crit:.0f}%)"
-                                    ],
-                                    instance_label,
-                                )
-                            elif float(cpu_peak) >= cpu_warn:
-                                _add_unique(
-                                    alert_notes[f"CPU tinggi (>= {cpu_warn:.0f}%)"],
-                                    instance_label,
+                                    alert_notes,
+                                    _format_util_note(
+                                        metric_label="CPU",
+                                        instance_label=instance_label,
+                                        peak_value=cpu_peak,
+                                        avg_value=cpu_avg,
+                                        warn_threshold=cpu_warn,
+                                        critical_threshold=cpu_crit,
+                                        peak_at=cpu_peak_at
+                                        if isinstance(cpu_peak_at, str)
+                                        else None,
+                                    ),
                                 )
 
                         if isinstance(mem_peak, (int, float)):
-                            if float(mem_peak) >= mem_crit:
+                            if float(mem_peak) >= mem_warn:
                                 _add_unique(
-                                    alert_notes[
-                                        f"Memory sangat tinggi (>= {mem_crit:.0f}%)"
-                                    ],
-                                    instance_label,
-                                )
-                            elif float(mem_peak) >= mem_warn:
-                                _add_unique(
-                                    alert_notes[f"Memory tinggi (>= {mem_warn:.0f}%)"],
-                                    instance_label,
+                                    alert_notes,
+                                    _format_util_note(
+                                        metric_label="Memory",
+                                        instance_label=instance_label,
+                                        peak_value=mem_peak,
+                                        avg_value=mem_avg,
+                                        warn_threshold=mem_warn,
+                                        critical_threshold=mem_crit,
+                                        peak_at=mem_peak_at
+                                        if isinstance(mem_peak_at, str)
+                                        else None,
+                                    ),
                                 )
 
                         if isinstance(disk_free, (int, float)):
                             if float(disk_free) <= disk_crit:
                                 _add_unique(
-                                    alert_notes[
-                                        f"Disk sisa sangat rendah (<= {disk_crit:.0f}%)"
-                                    ],
-                                    instance_label,
+                                    alert_notes,
+                                    f"Disk {instance_label} sangat rendah (sisa minimum {_fmt_pct(disk_free)}).",
                                 )
                             elif float(disk_free) <= disk_warn:
                                 _add_unique(
-                                    alert_notes[
-                                        f"Disk sisa rendah (<= {disk_warn:.0f}%)"
-                                    ],
-                                    instance_label,
+                                    alert_notes,
+                                    f"Disk {instance_label} rendah (sisa minimum {_fmt_pct(disk_free)}).",
                                 )
 
+                        cpu_display = cpu_avg if cpu_avg is not None else cpu_peak
+                        mem_display = mem_avg if mem_avg is not None else mem_peak
+
                         metric_parts = []
-                        if cpu_peak is not None:
-                            metric_parts.append(f"CPU={_fmt_pct(cpu_peak)}")
-                        if mem_peak is not None:
-                            metric_parts.append(f"MEM={_fmt_pct(mem_peak)}")
+                        if cpu_display is not None:
+                            metric_parts.append(f"CPU(avg)={_fmt_pct(cpu_display)}")
+                        if mem_display is not None:
+                            metric_parts.append(f"MEM(avg)={_fmt_pct(mem_display)}")
                         if disk_free is not None:
                             metric_parts.append(f"DISK={_fmt_pct(disk_free)}")
 
@@ -758,20 +827,10 @@ def _print_consolidated_report(
                         )
                         lines.append(f"    - {instance_name} | {metric_text}")
 
-                if any(alert_notes.values()):
+                if alert_notes:
                     lines.append("  *Catatan Alert:*")
-                    for key in [
-                        f"CPU sangat tinggi (>= {cpu_crit:.0f}%)",
-                        f"CPU tinggi (>= {cpu_warn:.0f}%)",
-                        f"Memory sangat tinggi (>= {mem_crit:.0f}%)",
-                        f"Memory tinggi (>= {mem_warn:.0f}%)",
-                        f"Disk sisa sangat rendah (<= {disk_crit:.0f}%)",
-                        f"Disk sisa rendah (<= {disk_warn:.0f}%)",
-                    ]:
-                        items = alert_notes.get(key) or []
-                        if not items:
-                            continue
-                        lines.append(f"    - *{key}: {', '.join(items)}*")
+                    for note in alert_notes:
+                        lines.append(f"    - *{note}*")
             lines.append("")
 
         lines.append("Ringkasan Check Lain")

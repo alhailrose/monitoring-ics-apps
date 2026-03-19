@@ -128,4 +128,4 @@ def test_execute_single_mode_requires_check_name():
             "send_slack": False,
         },
     )
-    assert r.status_code == 422
+    assert r.status_code == 400

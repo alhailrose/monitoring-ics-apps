@@ -136,6 +136,76 @@ def test_execute_parallel_merges_account_check_configs_for_target_check():
     assert check_kwargs["warn_percent"] == 85
 
 
+def test_execute_parallel_merges_account_check_configs_for_alarm_verification():
+    executor = _make_executor()
+    check_config_row = MagicMock()
+    check_config_row.check_name = "alarm_verification"
+    check_config_row.config = {
+        "alarm_names": ["dc-dwh-olap-memory-above-70"],
+        "min_duration_minutes": 15,
+    }
+    acct = _make_account("dwh", check_configs=[check_config_row])
+
+    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+        mock_run.return_value = {"status": "ok"}
+        executor._execute_parallel(
+            [acct], {"alarm_verification": MagicMock()}, "ap-southeast-3"
+        )
+
+    args, _kwargs = mock_run.call_args
+    check_kwargs = args[3]
+    assert check_kwargs is not None
+    assert check_kwargs["alarm_names"] == ["dc-dwh-olap-memory-above-70"]
+    assert check_kwargs["min_duration_minutes"] == 15
+
+
+def test_execute_parallel_merges_account_check_configs_for_backup():
+    executor = _make_executor()
+    check_config_row = MagicMock()
+    check_config_row.check_name = "backup"
+    check_config_row.config = {
+        "vault_names": ["central-vault"],
+        "monitor_rds_snapshots": False,
+        "max_job_details": 10,
+    }
+    acct = _make_account("backup-hris", check_configs=[check_config_row])
+
+    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+        mock_run.return_value = {"status": "ok"}
+        executor._execute_parallel([acct], {"backup": MagicMock()}, "ap-southeast-3")
+
+    args, _kwargs = mock_run.call_args
+    check_kwargs = args[3]
+    assert check_kwargs is not None
+    assert check_kwargs["vault_names"] == ["central-vault"]
+    assert check_kwargs["monitor_rds_snapshots"] is False
+    assert check_kwargs["max_job_details"] == 10
+
+
+def test_execute_parallel_merges_account_check_configs_for_aws_utilization():
+    executor = _make_executor()
+    check_config_row = MagicMock()
+    check_config_row.check_name = "aws-utilization-3core"
+    check_config_row.config = {
+        "util_hours": 6,
+        "thresholds": {"cpu_warning": 60, "cpu_critical": 80},
+    }
+    acct = _make_account("public-web", check_configs=[check_config_row])
+
+    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+        mock_run.return_value = {"status": "ok"}
+        executor._execute_parallel(
+            [acct], {"aws-utilization-3core": MagicMock()}, "ap-southeast-3"
+        )
+
+    args, _kwargs = mock_run.call_args
+    check_kwargs = args[3]
+    assert check_kwargs is not None
+    assert check_kwargs["util_hours"] == 6
+    assert check_kwargs["thresholds"]["cpu_warning"] == 60
+    assert check_kwargs["thresholds"]["cpu_critical"] == 80
+
+
 def test_execute_parallel_times_out_stuck_checks():
     from src.app.services.check_executor import CheckExecutor
 

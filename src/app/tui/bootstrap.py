@@ -1,3 +1,16 @@
-"""Compatibility wrapper for legacy src TUI bootstrap."""
+"""Compatibility TUI bootstrap that delegates via src namespace."""
 
-from backend.interfaces.cli.bootstrap_tui import *  # noqa: F403
+
+def run_interactive():
+    from src.app.tui import interactive
+
+    return interactive.run_interactive()
+
+
+def run_interactive_v2():
+    from src.app.tui import interactive
+
+    return interactive.run_interactive_v2()
+
+
+__all__ = ["run_interactive", "run_interactive_v2"]

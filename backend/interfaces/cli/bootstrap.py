@@ -76,11 +76,16 @@ def _handle_customer_subcommand(argv):
     from backend.interfaces.cli.customer_commands import (
         customer_list,
         customer_scan,
+        customer_init,
+        customer_assign,
+        customer_checks,
         customer_validate,
     )
 
     if not argv:
-        print_error("Usage: monitoring-hub customer <list|scan|validate> [customer_id]")
+        print_error(
+            "Usage: monitoring-hub customer <list|scan|init|assign|checks|validate> [customer_id]"
+        )
         sys.exit(1)
 
     action = argv[0]
@@ -93,6 +98,27 @@ def _handle_customer_subcommand(argv):
         customer_scan()
         return
 
+    if action == "init":
+        if len(argv) < 2:
+            print_error("Usage: monitoring-hub customer init <customer_id>")
+            sys.exit(1)
+        success = customer_init(argv[1])
+        sys.exit(0 if success else 1)
+
+    if action == "assign":
+        if len(argv) < 2:
+            print_error("Usage: monitoring-hub customer assign <customer_id>")
+            sys.exit(1)
+        success = customer_assign(argv[1])
+        sys.exit(0 if success else 1)
+
+    if action == "checks":
+        if len(argv) < 2:
+            print_error("Usage: monitoring-hub customer checks <customer_id>")
+            sys.exit(1)
+        success = customer_checks(argv[1])
+        sys.exit(0 if success else 1)
+
     if action == "validate":
         if len(argv) < 2:
             print_error("Usage: monitoring-hub customer validate <customer_id>")
@@ -101,10 +127,13 @@ def _handle_customer_subcommand(argv):
         sys.exit(0 if success else 1)
 
     print_error(f"Unknown customer action: {action}")
-    print_info("Available: list, scan, validate")
+    print_info("Available: list, scan, init, assign, checks, validate")
     print_info("")
     print_info("  list     - Show all customer configurations")
     print_info("  scan     - Compare AWS profiles with customer configs")
+    print_info("  init     - Create new customer YAML file")
+    print_info("  assign   - Guidance for assigning customer accounts")
+    print_info("  checks   - Guidance for configuring customer checks")
     print_info("  validate - Validate a customer YAML file")
     print_info("")
     print_info("To add/edit customers, edit YAML files in configs/customers/")

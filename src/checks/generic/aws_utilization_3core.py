@@ -27,6 +27,17 @@ class AWSUtilization3CoreChecker(BaseChecker):
         self.util_hours = int(kwargs.get("util_hours", 12))
         self.period_seconds = int(kwargs.get("period_seconds", 300))
         self.thresholds = dict(DEFAULT_THRESHOLDS)
+        threshold_overrides = kwargs.get("thresholds")
+        if isinstance(threshold_overrides, dict):
+            for key, value in threshold_overrides.items():
+                if key in self.thresholds and isinstance(value, (int, float)):
+                    self.thresholds[key] = float(value)
+
+        for key in self.thresholds:
+            override = kwargs.get(key)
+            if isinstance(override, (int, float)):
+                self.thresholds[key] = float(override)
+
         self.profile_regions = dict(kwargs.get("profile_regions", {}) or {})
 
     @staticmethod
@@ -103,6 +114,9 @@ class AWSUtilization3CoreChecker(BaseChecker):
                                     "name": self._instance_name(inst),
                                     "state": state,
                                     "os_type": self._instance_os_type(inst),
+                                    "instance_type": str(
+                                        inst.get("InstanceType") or ""
+                                    ),
                                     "region": region,
                                 }
                             )
@@ -114,15 +128,29 @@ class AWSUtilization3CoreChecker(BaseChecker):
     @staticmethod
     def _stat_from_datapoints(
         datapoints: list[dict[str, Any]],
-    ) -> tuple[float | None, float | None]:
+    ) -> tuple[float | None, float | None, datetime | None]:
         values: list[float] = []
+        peak_value: float | None = None
+        peak_time: datetime | None = None
         for point in datapoints or []:
             val = point.get("Average")
             if isinstance(val, (int, float)):
-                values.append(float(val))
+                numeric_val = float(val)
+                values.append(numeric_val)
+                if peak_value is None or numeric_val >= peak_value:
+                    peak_value = numeric_val
+                    timestamp = point.get("Timestamp")
+                    if isinstance(timestamp, datetime):
+                        peak_time = timestamp
         if not values:
-            return None, None
-        return (sum(values) / len(values), max(values))
+            return None, None, None
+        return (sum(values) / len(values), peak_value, peak_time)
+
+    @staticmethod
+    def _format_peak_time(value: datetime | None) -> str | None:
+        if not isinstance(value, datetime):
+            return None
+        return value.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
     def _get_metric_summary(
         self,
@@ -132,7 +160,7 @@ class AWSUtilization3CoreChecker(BaseChecker):
         dimensions: list[dict[str, str]],
         start_time: datetime,
         end_time: datetime,
-    ) -> tuple[float | None, float | None]:
+    ) -> tuple[float | None, float | None, datetime | None]:
         out = cloudwatch.get_metric_statistics(
             Namespace=namespace,
             MetricName=metric_name,
@@ -150,7 +178,7 @@ class AWSUtilization3CoreChecker(BaseChecker):
         instance_id: str,
         start_time: datetime,
         end_time: datetime,
-    ) -> tuple[float | None, float | None]:
+    ) -> tuple[float | None, float | None, datetime | None]:
         return self._get_metric_summary(
             cloudwatch,
             namespace="AWS/EC2",
@@ -160,6 +188,95 @@ class AWSUtilization3CoreChecker(BaseChecker):
             end_time=end_time,
         )
 
+    def _get_instance_total_memory_bytes(
+        self, session, region: str, instance_type: str
+    ) -> float | None:
+        """Return total physical RAM in bytes for an instance type via EC2."""
+        if not instance_type:
+            return None
+        try:
+            ec2 = session.client("ec2", region_name=region)
+            resp = ec2.describe_instance_types(InstanceTypes=[instance_type])
+            size_mib = (
+                (resp.get("InstanceTypes") or [{}])[0]
+                .get("MemoryInfo", {})
+                .get("SizeInMiB")
+            )
+            if isinstance(size_mib, (int, float)):
+                return float(size_mib) * 1024 * 1024
+        except Exception:
+            pass
+        return None
+
+    def _get_memory_from_available_bytes(
+        self,
+        cloudwatch,
+        instance_id: str,
+        start_time: datetime,
+        end_time: datetime,
+        total_memory_bytes: float | None = None,
+    ) -> tuple[float | None, float | None, str | None, datetime | None]:
+        """Compute memory used% from Memory Available Bytes.
+
+        Total physical RAM must be supplied via total_memory_bytes (from EC2
+        describe_instance_types), since CloudWatch Agent does not emit a
+        Memory Total Bytes metric for Windows.
+
+        Returns (avg_used_pct, peak_used_pct, metric_name, peak_at) or
+        (None, None, None, None) if the metric is not available.
+        """
+        if not isinstance(total_memory_bytes, (int, float)) or total_memory_bytes <= 0:
+            return None, None, None, None
+
+        try:
+            listed = cloudwatch.list_metrics(
+                Namespace="CWAgent",
+                MetricName="Memory Available Bytes",
+                Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
+            )
+        except Exception:
+            return None, None, None, None
+
+        for metric_def in listed.get("Metrics", []) or []:
+            dims = metric_def.get("Dimensions", []) or []
+            try:
+                avail_out = cloudwatch.get_metric_statistics(
+                    Namespace="CWAgent",
+                    MetricName="Memory Available Bytes",
+                    Dimensions=dims,
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    Period=self.period_seconds,
+                    Statistics=["Average"],
+                )
+            except Exception:
+                continue
+
+            datapoints = avail_out.get("Datapoints") or []
+            used_pct_values: list[float] = []
+            peak_used_pct: float | None = None
+            peak_at: datetime | None = None
+
+            for point in datapoints:
+                avg_avail = point.get("Average")
+                if not isinstance(avg_avail, (int, float)):
+                    continue
+                used_pct = (1.0 - float(avg_avail) / total_memory_bytes) * 100.0
+                used_pct_values.append(used_pct)
+                if peak_used_pct is None or used_pct >= peak_used_pct:
+                    peak_used_pct = used_pct
+                    ts = point.get("Timestamp")
+                    if isinstance(ts, datetime):
+                        peak_at = ts
+
+            if not used_pct_values:
+                continue
+
+            avg_used_pct = sum(used_pct_values) / len(used_pct_values)
+            return avg_used_pct, peak_used_pct, "Memory Available Bytes", peak_at
+
+        return None, None, None, None
+
     def _get_memory_usage(
         self,
         cloudwatch,
@@ -167,7 +284,16 @@ class AWSUtilization3CoreChecker(BaseChecker):
         os_type: str,
         start_time: datetime,
         end_time: datetime,
-    ) -> tuple[float | None, float | None, str | None]:
+        total_memory_bytes: float | None = None,
+    ) -> tuple[float | None, float | None, str | None, datetime | None]:
+        if os_type == "windows":
+            result = self._get_memory_from_available_bytes(
+                cloudwatch, instance_id, start_time, end_time,
+                total_memory_bytes=total_memory_bytes,
+            )
+            if result[0] is not None:
+                return result
+
         metric_names = ["mem_used_percent"]
         if os_type == "windows":
             metric_names = ["Memory % Committed Bytes In Use", "mem_used_percent"]
@@ -185,7 +311,7 @@ class AWSUtilization3CoreChecker(BaseChecker):
             for metric_def in listed.get("Metrics", []) or []:
                 dims = metric_def.get("Dimensions", []) or []
                 try:
-                    avg_val, peak_val = self._get_metric_summary(
+                    avg_val, peak_val, peak_at = self._get_metric_summary(
                         cloudwatch,
                         namespace="CWAgent",
                         metric_name=metric_name,
@@ -196,9 +322,9 @@ class AWSUtilization3CoreChecker(BaseChecker):
                 except Exception:
                     continue
                 if avg_val is not None:
-                    return avg_val, peak_val, metric_name
+                    return avg_val, peak_val, metric_name, peak_at
 
-        return None, None, None
+        return None, None, None, None
 
     def _get_disk_free_min(
         self,
@@ -261,7 +387,7 @@ class AWSUtilization3CoreChecker(BaseChecker):
             if not _should_include_metric(dims):
                 continue
             try:
-                _avg_used, peak_used = self._get_metric_summary(
+                _avg_used, peak_used, _peak_at = self._get_metric_summary(
                     cloudwatch,
                     namespace="CWAgent",
                     metric_name="disk_used_percent",
@@ -288,18 +414,25 @@ class AWSUtilization3CoreChecker(BaseChecker):
     ) -> dict[str, Any]:
         cloudwatch = session.client("cloudwatch", region_name=instance["region"])
 
-        cpu_avg, cpu_peak = self._get_cpu_usage(
+        total_memory_bytes: float | None = None
+        if instance.get("os_type") == "windows" and instance.get("instance_type"):
+            total_memory_bytes = self._get_instance_total_memory_bytes(
+                session, instance["region"], instance["instance_type"]
+            )
+
+        cpu_avg, cpu_peak, cpu_peak_at = self._get_cpu_usage(
             cloudwatch,
             instance["instance_id"],
             start_time,
             end_time,
         )
-        mem_avg, mem_peak, mem_metric = self._get_memory_usage(
+        mem_avg, mem_peak, mem_metric, mem_peak_at = self._get_memory_usage(
             cloudwatch,
             instance["instance_id"],
             instance["os_type"],
             start_time,
             end_time,
+            total_memory_bytes=total_memory_bytes,
         )
         disk_free_min = self._get_disk_free_min(
             cloudwatch,
@@ -330,8 +463,10 @@ class AWSUtilization3CoreChecker(BaseChecker):
             **instance,
             "cpu_avg_12h": self._round2(cpu_avg),
             "cpu_peak_12h": self._round2(cpu_peak),
+            "cpu_peak_at_12h": self._format_peak_time(cpu_peak_at),
             "memory_avg_12h": self._round2(mem_avg),
             "memory_peak_12h": self._round2(mem_peak),
+            "memory_peak_at_12h": self._format_peak_time(mem_peak_at),
             "memory_metric": mem_metric,
             "memory_note": memory_note,
             "disk_free_min_percent": self._round2(disk_free_min),
@@ -383,8 +518,10 @@ class AWSUtilization3CoreChecker(BaseChecker):
                             **instance,
                             "cpu_avg_12h": None,
                             "cpu_peak_12h": None,
+                            "cpu_peak_at_12h": None,
                             "memory_avg_12h": None,
                             "memory_peak_12h": None,
+                            "memory_peak_at_12h": None,
                             "memory_metric": None,
                             "memory_note": "Metric memory tidak dapat diambil",
                             "disk_free_min_percent": None,

@@ -31,6 +31,11 @@ from src.integrations.slack.notifier import send_to_webhook
 logger = logging.getLogger(__name__)
 
 
+def _resolve_account_region(account: dict, fallback_region: str) -> str:
+    region = str(account.get("region") or "").strip()
+    return region or fallback_region
+
+
 def _run_check_for_account(
     check_name: str,
     profile: str,
@@ -94,15 +99,23 @@ def run_customer_checks(
         )
         return None
 
+    profile_regions = {
+        str(account.get("profile") or ""): _resolve_account_region(account, region)
+        for account in accounts
+        if account.get("profile")
+    }
+    unique_regions = sorted(set(profile_regions.values()))
+    region_label = unique_regions[0] if len(unique_regions) == 1 else "mixed"
+
     # Header
     console.print()
     console.print(f"[bold cyan]{ICONS['star']} Customer: {display_name}[/bold cyan]")
     console.print(
-        f"[dim]Checks: {', '.join(checks)} | Accounts: {len(accounts)} | Region: {region}[/dim]"
+        f"[dim]Checks: {', '.join(checks)} | Accounts: {len(accounts)} | Region: {region_label}[/dim]"
     )
     console.print()
 
-    # Build work items: (check_name, profile, account_id, display_name)
+    # Build work items: (check_name, profile, account_id, account_region)
     work_items = []
     for check_name in checks:
         if check_name not in AVAILABLE_CHECKS:
@@ -115,7 +128,8 @@ def run_customer_checks(
             acct_id = account.get(
                 "account_id", get_account_id(profile) if profile else "Unknown"
             )
-            work_items.append((check_name, profile, str(acct_id)))
+            acct_region = _resolve_account_region(account, region)
+            work_items.append((check_name, profile, str(acct_id), acct_region))
 
     if not work_items:
         console.print("[yellow]No valid check/account combinations to run.[/yellow]")
@@ -140,9 +154,9 @@ def run_customer_checks(
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {}
-            for check_name, profile, acct_id in work_items:
+            for check_name, profile, acct_id, acct_region in work_items:
                 future = executor.submit(
-                    _run_check_for_account, check_name, profile, acct_id, region
+                    _run_check_for_account, check_name, profile, acct_id, acct_region
                 )
                 futures[future] = (check_name, profile, acct_id)
 
@@ -185,7 +199,8 @@ def run_customer_checks(
                 continue
 
             checker_class = AVAILABLE_CHECKS[check_name]
-            checker = checker_class(region=region)
+            profile_region = profile_regions.get(str(profile or ""), region)
+            checker = checker_class(region=profile_region)
             report = checker.format_report(result)
             print(report)
             print()
@@ -255,6 +270,7 @@ def prompt_and_send_slack(customer_result: dict) -> bool:
         profile = account.get("profile")
         acct_display = account.get("display_name", profile)
         acct_id = account.get("account_id", "")
+        account_region = _resolve_account_region(account, "ap-southeast-3")
         profile_results = results.get(profile, {})
 
         report_lines.append(f"== {acct_display} ({acct_id}) ==")
@@ -267,7 +283,7 @@ def prompt_and_send_slack(customer_result: dict) -> bool:
                 continue
 
             checker_class = AVAILABLE_CHECKS[check_name]
-            checker = checker_class(region="ap-southeast-3")
+            checker = checker_class(region=account_region)
             report = checker.format_report(result)
             report_lines.append(report)
             report_lines.append("")

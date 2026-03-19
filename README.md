@@ -88,6 +88,13 @@ docker compose -f infra/docker/docker-compose.yml config
 - API menambahkan baseline observability: request ID (`x-request-id`) dan request duration logging.
 - API sekarang mendukung guard API key opsional (`API_AUTH_ENABLED`, `API_KEYS`, `API_KEY_HEADER`) untuk seluruh route `/api/v1/*`.
 
+### Frontend contract hardening (Phase 4)
+
+- Kontrak frontend v1 distabilkan untuk endpoint `runs/findings/metrics/dashboard` di `docs/api/frontend-contract-v1.md`.
+- Endpoint agregasi dashboard tersedia di `GET /api/v1/dashboard/summary`.
+- Endpoint metrik ter-normalisasi tersedia di `GET /api/v1/metrics`.
+- Ditambahkan integration test stabilitas kontrak API: `tests/integration/test_api_contract_stability.py`.
+
 ## Quick Start (3 langkah)
 1) Install aplikasi via pipx:
    ```bash

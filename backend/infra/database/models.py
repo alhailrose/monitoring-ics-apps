@@ -21,6 +21,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
 from backend.domain.finding_events import FINDING_EVENT_CHECK_NAMES
+from backend.domain.metric_samples import METRIC_SAMPLE_CHECK_NAMES
 
 
 def _utc_now() -> datetime:
@@ -33,6 +34,9 @@ def _uuid() -> str:
 
 FINDING_EVENT_CHECK_NAMES_SQL = ",".join(
     f"'{check_name}'" for check_name in FINDING_EVENT_CHECK_NAMES
+)
+METRIC_SAMPLE_CHECK_NAMES_SQL = ",".join(
+    f"'{check_name}'" for check_name in METRIC_SAMPLE_CHECK_NAMES
 )
 
 
@@ -112,6 +116,11 @@ class Account(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    metric_samples: Mapped[list[MetricSample]] = relationship(
+        back_populates="account",
+        cascade="all, delete-orphan",
+        lazy="noload",
+    )
 
 
 class CheckRun(Base):
@@ -144,6 +153,11 @@ class CheckRun(Base):
         lazy="selectin",
     )
     finding_events: Mapped[list[FindingEvent]] = relationship(
+        back_populates="check_run",
+        cascade="all, delete-orphan",
+        lazy="noload",
+    )
+    metric_samples: Mapped[list[MetricSample]] = relationship(
         back_populates="check_run",
         cascade="all, delete-orphan",
         lazy="noload",
@@ -241,3 +255,44 @@ class AccountCheckConfig(Base):
     )
 
     account: Mapped[Account] = relationship(back_populates="check_configs")
+
+
+class MetricSample(Base):
+    __tablename__ = "metric_samples"
+    __table_args__ = (
+        CheckConstraint(
+            f"check_name in ({METRIC_SAMPLE_CHECK_NAMES_SQL})",
+            name="ck_metric_samples_check_name_valid",
+        ),
+        Index(
+            "idx_metric_samples_account_metric",
+            "account_id",
+            "metric_name",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    check_run_id: Mapped[str] = mapped_column(
+        ForeignKey("check_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    check_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    metric_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    metric_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    value_num: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resource_role: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    resource_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    resource_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    service_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    section_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+
+    check_run: Mapped[CheckRun] = relationship(back_populates="metric_samples")
+    account: Mapped[Account] = relationship(back_populates="metric_samples")

@@ -60,9 +60,6 @@ class ExecuteCheckRequest(BaseModel):
 
         self.customer_ids = cleaned_customer_ids
 
-        if self.mode == "single" and not self.check_name:
-            raise ValueError("check_name required for single mode")
-
         return self
 
 
@@ -93,6 +90,8 @@ class ExecuteCheckResponse(BaseModel):
     results: list[CheckResultResponse]
     consolidated_outputs: dict[str, str]
     backup_overviews: dict[str, dict[str, object]] = Field(default_factory=dict)
+    check_run_id: str | None = None
+    consolidated_output: str | None = None
 
 
 class AvailableCheckItem(BaseModel):
@@ -107,6 +106,11 @@ class AvailableChecksResponse(BaseModel):
 @router.post("/execute", response_model=ExecuteCheckResponse)
 def execute_check(payload: ExecuteCheckRequest, executor=Depends(get_check_executor)):
     try:
+        if payload.mode == "single" and not payload.check_name:
+            raise HTTPException(
+                status_code=400, detail="check_name required for single mode"
+            )
+
         result = executor.execute(
             customer_ids=payload.customer_ids or [],
             mode=payload.mode,
@@ -118,9 +122,24 @@ def execute_check(payload: ExecuteCheckRequest, executor=Depends(get_check_execu
             run_source="api",
             persist_mode="normalized",
         )
+
+        if not result.get("check_run_id"):
+            check_runs = result.get("check_runs") or []
+            if check_runs:
+                result["check_run_id"] = check_runs[0].get("check_run_id")
+
+        if not result.get("consolidated_output"):
+            consolidated_outputs = result.get("consolidated_outputs") or {}
+            if isinstance(consolidated_outputs, dict) and consolidated_outputs:
+                result["consolidated_output"] = next(
+                    iter(consolidated_outputs.values())
+                )
+
         return ExecuteCheckResponse.model_validate(result)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Check execution failed")
         raise HTTPException(status_code=500, detail="Execution failed") from exc

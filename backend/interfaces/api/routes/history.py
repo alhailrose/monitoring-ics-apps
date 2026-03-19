@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from backend.interfaces.api.dependencies import get_check_repository
 from backend.domain.runtime.config import AVAILABLE_CHECKS
@@ -10,7 +11,70 @@ from backend.domain.runtime.config import AVAILABLE_CHECKS
 router = APIRouter(prefix="/history", tags=["history"])
 
 
-@router.get("")
+class HistoryResultsSummaryResponse(BaseModel):
+    total: int
+    ok: int
+    warn: int
+    error: int
+
+
+class HistoryItemResponse(BaseModel):
+    check_run_id: str
+    check_mode: str
+    check_name: str | None = None
+    created_at: str
+    execution_time_seconds: float | None = None
+    slack_sent: bool
+    results_summary: HistoryResultsSummaryResponse
+
+
+class HistoryListResponse(BaseModel):
+    total: int
+    items: list[HistoryItemResponse]
+
+
+class HistoryDetailCustomerResponse(BaseModel):
+    id: str
+    name: str
+    display_name: str
+
+
+class HistoryDetailAccountResponse(BaseModel):
+    id: str
+    profile_name: str
+    display_name: str
+
+
+class HistoryDetailResultResponse(BaseModel):
+    account: HistoryDetailAccountResponse
+    check_name: str
+    status: str
+    summary: str | None = None
+    output: str | None = None
+    details: dict | None = None
+    created_at: str
+
+
+class HistoryDetailResponse(BaseModel):
+    check_run_id: str
+    customer: HistoryDetailCustomerResponse
+    check_mode: str
+    check_name: str | None = None
+    created_at: str
+    execution_time_seconds: float | None = None
+    slack_sent: bool
+    results: list[HistoryDetailResultResponse]
+
+
+class HistoryReportResponse(BaseModel):
+    check_run_id: str
+    check_mode: str
+    check_name: str | None = None
+    created_at: str
+    report: str
+
+
+@router.get("", response_model=HistoryListResponse)
 def list_history(
     customer_id: str,
     start_date: datetime | None = Query(None),
@@ -57,7 +121,7 @@ def list_history(
     return {"total": total, "items": items}
 
 
-@router.get("/{check_run_id}")
+@router.get("/{check_run_id}", response_model=HistoryDetailResponse)
 def get_check_run_detail(check_run_id: str, repo=Depends(get_check_repository)):
     run = repo.get_check_run(check_run_id)
     if run is None:
@@ -94,7 +158,7 @@ def get_check_run_detail(check_run_id: str, repo=Depends(get_check_repository)):
     }
 
 
-@router.get("/{check_run_id}/report")
+@router.get("/{check_run_id}/report", response_model=HistoryReportResponse)
 def get_check_run_report(check_run_id: str, repo=Depends(get_check_repository)):
     """Regenerate consolidated report from stored history data.
 

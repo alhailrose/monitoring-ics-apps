@@ -9,7 +9,13 @@ import yaml
 from backend.config.loader import list_customers, load_customer_config
 from backend.config.schema.validator import validate_customer_config
 from backend.domain.runtime.utils import list_local_profiles
-from backend.domain.runtime.ui import console, ICONS
+from backend.domain.runtime.ui import (
+    console,
+    ICONS,
+    print_error,
+    print_info,
+    print_success,
+)
 
 
 def classify_profiles_by_mapping(
@@ -164,3 +170,62 @@ def customer_validate(customer_id: str) -> bool:
         console.print(f"[red]{ICONS['error']} Error validating {customer_id}:[/red]")
         console.print(f"  {str(e)}")
         return False
+
+
+def customer_init(customer_id: str) -> bool:
+    """Initialize a minimal customer YAML config file."""
+    if not customer_id.strip():
+        print_error("customer_id is required")
+        return False
+
+    target_path = Path("configs/customers") / f"{customer_id}.yaml"
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    if target_path.exists():
+        print_error(f"Customer config already exists: {target_path}")
+        return False
+
+    payload = {
+        "customer_id": customer_id,
+        "display_name": customer_id,
+        "check_mode": "summary",
+        "checks": ["health", "guardduty", "cloudwatch", "notifications"],
+        "accounts": [],
+        "slack": {"enabled": False},
+    }
+
+    with target_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(payload, handle, sort_keys=False)
+
+    print_success(f"Created customer config: {target_path}")
+    print_info("Edit the accounts list to add AWS profiles.")
+    return True
+
+
+def customer_assign(customer_id: str) -> bool:
+    """Assign profiles to a customer via YAML workflow guidance."""
+    try:
+        load_customer_config(customer_id)
+    except Exception as exc:
+        print_error(f"Customer config not found or invalid: {exc}")
+        return False
+
+    print_info(
+        f"Use configs/customers/{customer_id}.yaml to assign profiles under 'accounts'."
+    )
+    return True
+
+
+def customer_checks(customer_id: str) -> bool:
+    """Show guidance for configuring check list in customer YAML."""
+    try:
+        cfg = load_customer_config(customer_id)
+    except Exception as exc:
+        print_error(f"Customer config not found or invalid: {exc}")
+        return False
+
+    checks = cfg.get("checks", []) if isinstance(cfg, dict) else []
+    print_info(
+        f"Current checks for {customer_id}: {', '.join(checks) if checks else '-'}"
+    )
+    print_info(f"Update configs/customers/{customer_id}.yaml field 'checks' as needed.")
+    return True
