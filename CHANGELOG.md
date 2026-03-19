@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
   - `tests/unit/test_whatsapp_alarm_report.py` untuk validasi format WhatsApp klien.
 - Struktur target aplikasi `src/` untuk layer `app`, `core`, `providers`, `checks`, dan `configs`.
 - Modul runner core kanonik di `src/core/engine` + model di `src/core/models`.
-- Loader konfigurasi customer kanonik di `src/configs/loader.py`.
+- Loader konfigurasi customer kanonik di `backend/config/loader.py`.
 - Integrasi Slack command runner di `src/integrations/slack`.
 - Penataan test suite ke `tests/unit` dan `tests/integration`.
 - Runtime settings untuk mode `local` dan `api` (`src/app/settings.py`).
@@ -33,7 +33,7 @@ All notable changes to this project will be documented in this file.
 - Pesan WhatsApp alarm format klien diperjelas dengan penggabungan metrik yang naik dalam satu kalimat agar tidak membingungkan penerima.
 - Dokumentasi README diperbarui untuk mencakup semua fitur (single/all/arbel/nabati/cost report) beserta ringkasan command CLI.
 - Registry checks sekarang mengarah ke namespace `src.checks.*` sebagai jalur migrasi kanonik.
-- Entrypoint CLI legacy sekarang bertindak sebagai wrapper ke `src/app/cli/bootstrap.py`.
+- Entrypoint CLI legacy sekarang bertindak sebagai wrapper ke `backend/interfaces/cli/bootstrap.py`.
 - Requirement dependencies disejajarkan dengan `pyproject.toml` untuk runtime API/worker.
 - README diperbarui dengan status foundation Industrial Ops Glass UI dan langkah verifikasi web + backend lokal.
 

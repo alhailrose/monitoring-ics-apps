@@ -26,10 +26,10 @@ os.environ.setdefault(
     "postgresql+psycopg://monitor:monitor@localhost:5432/monitoring",
 )
 
-from src.db.session import build_session_factory
-from src.db.repositories.customer_repository import CustomerRepository
-from src.app.services.customer_service import CustomerService
-from src.configs.loader import list_customers, load_customer_config
+from backend.infra.database.session import build_session_factory
+from backend.infra.database.repositories.customer_repository import CustomerRepository
+from backend.domain.services.customer_service import CustomerService
+from backend.config.loader import list_customers, load_customer_config
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -78,10 +78,7 @@ def main() -> None:
                 result = service.import_from_yaml(config)
                 added = result["accounts_added"]
                 updated = result["accounts_updated"]
-                print(
-                    f"  [OK  ] {cid}"
-                    f"  (accounts: +{added} added, ~{updated} updated)"
-                )
+                print(f"  [OK  ] {cid}  (accounts: +{added} added, ~{updated} updated)")
                 ok += 1
             except Exception as exc:
                 print(f"  [ERR ] {cid} — import failed: {exc}")

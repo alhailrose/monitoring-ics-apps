@@ -14,34 +14,30 @@ This keeps existing execution paths stable while enabling path-based CI/CD separ
 
 ## Current high-level modules
 
-- `monitoring_hub/`: CLI, interactive flows, orchestration, reports
+- `backend/`: canonical API/CLI interfaces, domain runtime/services, infra, and config
 - `checks/`: checker implementations
 - `tests/`: test coverage for checks and report formatting
 
 ## Target structure
 
 ```text
-src/
-  app/
-    cli/
-    tui/
+backend/
+  interfaces/
     api/
-  core/
-    engine/
-    models/
-    formatting/
-  providers/
-    aws/
-      auth.py
-      clients.py
-      services/
-  checks/
-    generic/
-    customers/
-  configs/
+    cli/
+  domain/
+    runtime/
+    services/
+  infra/
+    cloud/
+    database/
+    notifications/
+  config/
     defaults/
       customers/
     schema/
+src/
+  ... compatibility wrappers only ...
 tests/
   unit/
   integration/
