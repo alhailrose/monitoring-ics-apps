@@ -46,6 +46,10 @@ class UpdateAccountRequest(BaseModel):
     alarm_names: list[str] | None = None
 
 
+class UpsertAccountCheckConfigRequest(BaseModel):
+    config: dict = Field(default_factory=dict)
+
+
 # -- Endpoints --
 
 
@@ -142,6 +146,44 @@ def update_account(
 def delete_account(account_id: str, service=Depends(get_customer_service)):
     if not service.delete_account(account_id):
         raise HTTPException(status_code=404, detail="Account not found")
+
+
+@router.get("/accounts/{account_id}/check-configs")
+def list_account_check_configs(account_id: str, service=Depends(get_customer_service)):
+    try:
+        return {"items": service.list_account_check_configs(account_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.put("/accounts/{account_id}/check-configs/{check_name}")
+def upsert_account_check_config(
+    account_id: str,
+    check_name: str,
+    payload: UpsertAccountCheckConfigRequest,
+    service=Depends(get_customer_service),
+):
+    try:
+        return service.set_account_check_config(
+            account_id=account_id,
+            check_name=check_name,
+            config=payload.config,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.delete("/accounts/{account_id}/check-configs/{check_name}", status_code=204)
+def delete_account_check_config(
+    account_id: str,
+    check_name: str,
+    service=Depends(get_customer_service),
+):
+    try:
+        if not service.delete_account_check_config(account_id, check_name):
+            raise HTTPException(status_code=404, detail="Check config not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.post("/{customer_id}/reimport")

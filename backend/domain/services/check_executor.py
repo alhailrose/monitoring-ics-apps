@@ -722,6 +722,19 @@ class CheckExecutor:
                     if account.config_extra and chk_name in account.config_extra:
                         check_kwargs = dict(account.config_extra[chk_name])
 
+                    # Merge per-account check configs from DB table
+                    account_check_configs = (
+                        getattr(account, "check_configs", None) or []
+                    )
+                    for row in account_check_configs:
+                        if getattr(row, "check_name", None) == chk_name and isinstance(
+                            getattr(row, "config", None), dict
+                        ):
+                            if check_kwargs is None:
+                                check_kwargs = {}
+                            check_kwargs.update(row.config)
+                            break
+
                     # Inject alarm_names from DB for cloudwatch and alarm_verification checks
                     if (
                         chk_name in ("cloudwatch", "alarm_verification")

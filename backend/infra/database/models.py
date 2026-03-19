@@ -107,6 +107,11 @@ class Account(Base):
         cascade="all, delete-orphan",
         lazy="noload",
     )
+    check_configs: Mapped[list[AccountCheckConfig]] = relationship(
+        back_populates="account",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
 
 class CheckRun(Base):
@@ -212,3 +217,27 @@ class FindingEvent(Base):
 
     check_run: Mapped[CheckRun] = relationship(back_populates="finding_events")
     account: Mapped[Account] = relationship(back_populates="finding_events")
+
+
+class AccountCheckConfig(Base):
+    __tablename__ = "account_check_configs"
+    __table_args__ = (
+        UniqueConstraint("account_id", "check_name", name="uq_account_check_config"),
+        Index("idx_account_check_config_account", "account_id"),
+        Index("idx_account_check_config_check", "check_name"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    check_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )
+
+    account: Mapped[Account] = relationship(back_populates="check_configs")

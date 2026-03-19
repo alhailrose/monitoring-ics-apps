@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from backend.infra.database.models import Account, Customer
+from backend.infra.database.models import Account, Customer, AccountCheckConfig
 
 
 class CustomerRepository:
@@ -108,7 +108,11 @@ class CustomerRepository:
         return account
 
     def get_account(self, account_id: str) -> Account | None:
-        stmt = select(Account).where(Account.id == account_id)
+        stmt = (
+            select(Account)
+            .options(selectinload(Account.check_configs))
+            .where(Account.id == account_id)
+        )
         return self.session.execute(stmt).scalar_one_or_none()
 
     def get_accounts_by_customer(
@@ -130,6 +134,51 @@ class CustomerRepository:
         account.updated_at = datetime.now(timezone.utc)
         self.session.flush()
         return account
+
+    # -- Account Check Config CRUD --
+
+    def list_account_check_configs(self, account_id: str) -> list[AccountCheckConfig]:
+        stmt = (
+            select(AccountCheckConfig)
+            .where(AccountCheckConfig.account_id == account_id)
+            .order_by(AccountCheckConfig.check_name)
+        )
+        return list(self.session.execute(stmt).scalars().all())
+
+    def upsert_account_check_config(
+        self, account_id: str, check_name: str, config: dict
+    ) -> AccountCheckConfig:
+        stmt = select(AccountCheckConfig).where(
+            AccountCheckConfig.account_id == account_id,
+            AccountCheckConfig.check_name == check_name,
+        )
+        existing = self.session.execute(stmt).scalar_one_or_none()
+        if existing:
+            existing.config = config
+            self.session.flush()
+            return existing
+
+        row = AccountCheckConfig(
+            account_id=account_id,
+            check_name=check_name,
+            config=config,
+        )
+        self.session.add(row)
+        self.session.flush()
+        self.session.refresh(row)
+        return row
+
+    def delete_account_check_config(self, account_id: str, check_name: str) -> bool:
+        stmt = select(AccountCheckConfig).where(
+            AccountCheckConfig.account_id == account_id,
+            AccountCheckConfig.check_name == check_name,
+        )
+        row = self.session.execute(stmt).scalar_one_or_none()
+        if row is None:
+            return False
+        self.session.delete(row)
+        self.session.flush()
+        return True
 
     def delete_account(self, account_id: str) -> bool:
         account = self.get_account(account_id)

@@ -28,7 +28,7 @@ This is the main living plan for backend evolution.
 | 0 | Enforce execution-mode policy (TUI non-persistent, API persistent) | completed |
 | 1 | Normalize security/alert findings | completed |
 | 2 | Normalize backup reliability events | completed |
-| 3 | Normalize utilization and globalize config-driven checks | planned |
+| 3 | Normalize utilization and globalize config-driven checks | in_progress |
 | 4 | Finalize remaining checks + frontend API contract | planned |
 
 ## Detailed checklist
@@ -63,8 +63,8 @@ This is the main living plan for backend evolution.
 
 - [ ] Add normalized `metric_samples` schema and migration
 - [ ] Map `daily-arbel` outputs into `metric_samples`
-- [ ] Add account-level check config model in DB (alarm names, budget names, backup filters, thresholds)
-- [ ] Implement API management endpoints for per-account check config
+- [x] Add account-level check config model in DB (alarm names, budget names, backup filters, thresholds)
+- [x] Implement API management endpoints for per-account check config
 - [ ] Enable global rollout path for:
   - [ ] `alarm_verification`
   - [ ] `daily-budget`
@@ -101,3 +101,4 @@ This is the main living plan for backend evolution.
 - 2026-03-19: Phase 1 started (finding_events schema + security mapper + API persistence write path).
 - 2026-03-19: Phase 1 completed (`/api/v1/findings` + frontend contract examples).
 - 2026-03-19: Phase 2 completed (backup normalized finding mapping + persistence and tests).
+- 2026-03-19: Phase 3 started (account check-config DB model + API CRUD + executor merge path).

@@ -137,6 +137,48 @@ class CustomerService:
             self.repo.commit()
         return result
 
+    def list_account_check_configs(self, account_id: str) -> list[dict]:
+        account = self.repo.get_account(account_id)
+        if account is None:
+            raise ValueError("Account not found")
+        rows = self.repo.list_account_check_configs(account_id)
+        return [
+            {
+                "account_id": row.account_id,
+                "check_name": row.check_name,
+                "config": row.config,
+            }
+            for row in rows
+        ]
+
+    def set_account_check_config(
+        self, account_id: str, check_name: str, config: dict
+    ) -> dict:
+        account = self.repo.get_account(account_id)
+        if account is None:
+            raise ValueError("Account not found")
+
+        row = self.repo.upsert_account_check_config(
+            account_id=account_id,
+            check_name=check_name,
+            config=config,
+        )
+        self.repo.commit()
+        return {
+            "account_id": row.account_id,
+            "check_name": row.check_name,
+            "config": row.config,
+        }
+
+    def delete_account_check_config(self, account_id: str, check_name: str) -> bool:
+        account = self.repo.get_account(account_id)
+        if account is None:
+            raise ValueError("Account not found")
+        deleted = self.repo.delete_account_check_config(account_id, check_name)
+        if deleted:
+            self.repo.commit()
+        return deleted
+
     def detect_profiles(self) -> dict:
         """Detect AWS profiles and compare with mapped ones."""
         all_profiles = detect_aws_profiles()
