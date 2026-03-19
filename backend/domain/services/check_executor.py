@@ -29,6 +29,7 @@ from backend.domain.runtime.reports import (
     build_whatsapp_rds,
     summarize_backup_whatsapp,
 )
+from backend.domain.services.finding_events_mapper import map_check_findings
 from src.checks.common.aws_errors import (
     is_credential_error,
     friendly_credential_message,
@@ -516,6 +517,18 @@ class CheckExecutor:
                             output=output,
                             details=details,
                         )
+
+                        finding_events = map_check_findings(
+                            check_name=chk_name,
+                            account_id=account.id,
+                            raw_result=raw_result,
+                        )
+                        if finding_events:
+                            self.check_repo.add_finding_events(
+                                check_run_id=check_run.id,
+                                account_id=account.id,
+                                events=finding_events,
+                            )
 
                     result_items.append(
                         {

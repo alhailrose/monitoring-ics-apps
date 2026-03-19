@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session, selectinload
 
-from backend.infra.database.models import CheckRun, CheckResult, Account
+from backend.infra.database.models import Account, CheckResult, CheckRun, FindingEvent
 
 
 class CheckRepository:
@@ -69,6 +69,33 @@ class CheckRepository:
         self.session.add(result)
         self.session.flush()
         return result
+
+    def add_finding_events(
+        self,
+        check_run_id: str,
+        account_id: str,
+        events: list[dict],
+    ) -> list[FindingEvent]:
+        if not events:
+            return []
+
+        rows: list[FindingEvent] = []
+        for event in events:
+            row = FindingEvent(
+                check_run_id=check_run_id,
+                account_id=account_id,
+                check_name=event["check_name"],
+                finding_key=event["finding_key"],
+                severity=event["severity"],
+                title=event["title"],
+                description=event.get("description"),
+                raw_payload=event.get("raw_payload"),
+            )
+            rows.append(row)
+
+        self.session.add_all(rows)
+        self.session.flush()
+        return rows
 
     # -- History queries --
 

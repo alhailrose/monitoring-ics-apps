@@ -26,7 +26,7 @@ This is the main living plan for backend evolution.
 | Phase | Goal | Status |
 |---|---|---|
 | 0 | Enforce execution-mode policy (TUI non-persistent, API persistent) | completed |
-| 1 | Normalize security/alert findings | planned |
+| 1 | Normalize security/alert findings | in_progress |
 | 2 | Normalize backup reliability events | planned |
 | 3 | Normalize utilization and globalize config-driven checks | planned |
 | 4 | Finalize remaining checks + frontend API contract | planned |
@@ -44,9 +44,9 @@ This is the main living plan for backend evolution.
 
 ### Phase 1 - Security/alert normalization
 
-- [ ] Add normalized `finding_events` schema and migration
-- [ ] Add mappers for `guardduty`, `cloudwatch`, `notifications`
-- [ ] Persist normalized findings from API runs
+- [x] Add normalized `finding_events` schema and migration
+- [x] Add mappers for `guardduty`, `cloudwatch`, `notifications`
+- [x] Persist normalized findings from API runs
 - [ ] Add query endpoint for findings (filter/pagination)
 - [ ] Add API contract examples for findings
 - [ ] Mark phase as done in this plan
@@ -98,3 +98,4 @@ This is the main living plan for backend evolution.
 
 - 2026-03-19: Initial living plan created from backend readiness assessment.
 - 2026-03-19: Phase 0 completed (execution policy split + persistence policy tests).
+- 2026-03-19: Phase 1 started (finding_events schema + security mapper + API persistence write path).
