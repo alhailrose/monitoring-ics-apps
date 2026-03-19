@@ -1,5 +1,7 @@
 import src.configs.loader as loader
-from src.configs.loader import list_customers, load_customer_config
+
+load_customer_config = getattr(loader, "load_customer_config")
+list_customers = getattr(loader, "list_customers")
 
 
 def test_load_customer_config_works_without_repo_configs(monkeypatch, tmp_path):
@@ -45,3 +47,12 @@ accounts:
     cfg = load_customer_config("asg")
     assert cfg["display_name"] == "ASG LOCAL"
     assert cfg["accounts"][0]["profile"] == "asg-local"
+
+
+def test_load_customer_config_falls_back_to_repo_configs(monkeypatch, tmp_path):
+    monkeypatch.setattr(loader, "_module_defaults_dir", lambda: tmp_path / "missing")
+
+    cfg = load_customer_config("aryanoble")
+
+    assert cfg["customer_id"] == "aryanoble"
+    assert len(cfg["accounts"]) > 0

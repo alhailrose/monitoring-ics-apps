@@ -15,6 +15,20 @@ This is the main living plan for backend evolution.
 - AWS direct SDK remains primary execution model.
 - Migration policy: forward-only (no mandatory backfill).
 
+### Authentication boundary
+
+- App auth and AWS auth are separate layers.
+- App auth: users log in to the app with roles `super_user` (admin) and `user` (readonly).
+- AWS auth is per customer (not per app user), using `access_key`, `assume_role`, or `sso`.
+- Recommendation: new customer onboarding should default to `assume_role` (`MonitoringReadOnlyRole`).
+- For expired customer `sso` sessions: send Slack notification and runbook command `aws sso login --profile <profile> --use-device-code --no-browser`.
+
+### Production note (short)
+
+- PostgreSQL: source of truth for persistent backend data (`check_runs`, normalized events/metrics, per-account check config).
+- Redis: operational cache/queue/session support where enabled by deployment profile.
+- AWS Secrets Manager: store customer AWS connection secrets and integration secrets.
+
 ## Current check inventory
 
 - Generic/core: `health`, `cost`, `guardduty`, `cloudwatch`, `notifications`, `backup`, `ec2list`, `aws-utilization-3core`
@@ -30,6 +44,8 @@ This is the main living plan for backend evolution.
 | 2 | Normalize backup reliability events | completed |
 | 3 | Normalize utilization and globalize config-driven checks | completed |
 | 4 | Finalize remaining checks + frontend API contract | completed |
+| 4.5 | Foldering and docs alignment (pre-Phase 5) | planned |
+| 5 | Authentication and AWS connection lifecycle hardening | planned |
 
 ## Detailed checklist
 
@@ -81,6 +97,31 @@ This is the main living plan for backend evolution.
 - [x] Update README and interface docs at phase completion
 - [x] Mark phase as done in this plan
 
+### Phase 4.5 - Foldering and docs alignment
+
+- [x] Freeze canonical boundary: `backend/*` canonical, `src/*` compatibility + active checks only
+- [x] Inventory `src/*` wrappers and mark safe-removal candidates (no runtime references)
+- [x] Update architecture docs to current-state foldering and wrapper lifecycle
+- [x] Remove/merge stale docs that still describe pre-migration layout as active runtime
+- [x] Align `README.md`, `docs/PROJECT.md`, and runbooks with current entrypoint/delegation model
+- [x] Add/update dedicated foldering explanation doc for handoff continuity
+- [x] Verify docs references (paths/commands) via grep sanity pass
+- [x] Mark phase as done in this plan
+
+### Phase 5 - Authentication and AWS connection layer
+
+- [ ] Enforce auth boundary in backend services (App Auth roles vs per-customer AWS Auth ownership)
+- [ ] Add/verify per-customer AWS auth mode model and API contract (`access_key`, `assume_role`, `sso`)
+- [ ] Implement AWS login method selection/validation per customer (`assume_role` default, `sso`, `access_key`)
+- [ ] Add explicit backend login-method resolver rules (priority, required fields, and invalid-combination errors)
+- [ ] Set onboarding default for new customers to `assume_role` (`MonitoringReadOnlyRole`)
+- [ ] Add runtime handling for expired `sso` sessions (detect expiry, classify error state)
+- [ ] Send Slack notification on `sso` expiry with actionable profile context
+- [ ] Document and expose admin runbook action: `aws sso login --profile <profile> --use-device-code --no-browser`
+- [ ] Add AWS CLI login method guidance in ops runbook (`aws login` vs `aws sso login`) and enforce supported command per auth mode
+- [ ] Add unit/integration tests for auth boundary, mode selection, and `sso` expiry notification path
+- [ ] Mark phase as done in this plan
+
 ## Commit and docs workflow
 
 ### Before every commit
@@ -106,3 +147,11 @@ This is the main living plan for backend evolution.
 - 2026-03-19: Phase 3 progress (globalized DB-config rollout for alarm verification, budget, backup, and utilization checks).
 - 2026-03-19: Phase 3 completed.
 - 2026-03-19: Phase 4 completed (stable contract for runs/findings/metrics/dashboard + integration contract test).
+- 2026-03-19: Clarified app-vs-AWS auth boundary, customer auth modes, SSO-expiry Slack+runbook handling, and production infra note.
+- 2026-03-19: Added Phase 5 checklist for authentication boundary and AWS connection lifecycle implementation tracking.
+- 2026-03-19: Added Phase 4.5 checklist for foldering/docs alignment before Phase 5 implementation.
+- 2026-03-19: Added `src/*` wrapper inventory doc and initial safe-removal candidate list for foldering cleanup.
+- 2026-03-19: Migrated customer TUI flow to canonical backend path and converted legacy src flow to compatibility alias.
+- 2026-03-19: Migrated runner engine/models (`src/core/engine`, `src/core/models`) to canonical backend paths with src compatibility aliases.
+- 2026-03-19: Migrated report formatting (`src/core/formatting/reports.py`) to canonical backend path with src compatibility alias.
+- 2026-03-19: Phase 4.5 completed (foldering/docs alignment, wrapper inventory, and canonical migration checkpoints).

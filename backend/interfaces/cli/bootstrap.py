@@ -33,6 +33,12 @@ def _run_interactive_mode():
         from backend.interfaces.cli.bootstrap_tui import run_interactive
 
         run_interactive()
+    except (EOFError, PermissionError):
+        print_error("Interactive TUI requires a real terminal (TTY).")
+        print_info("Run directly from terminal, or use non-interactive mode:")
+        print_info("  monitoring-hub --check <name> --profile <profile>")
+        print_info("  monitoring-hub --all --group <group>")
+        sys.exit(2)
     except ModuleNotFoundError as exc:
         if exc.name == "questionary" or "questionary" in str(exc):
             print_error("Install TUI dependencies before using interactive mode.")

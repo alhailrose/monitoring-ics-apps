@@ -76,3 +76,26 @@ def test_cli_help_mentions_huawei_sso_login_steps():
     assert "hcloud configure sso --cli-profile" in result.stdout
     assert "sync_sso_token.sh" in result.stdout
     assert "not bundled with monitoring-hub" in result.stdout
+
+
+def test_cli_default_mode_shows_helpful_error_without_tty():
+    script = """
+import sys
+sys.argv = ['monitoring-hub']
+
+import src.app.cli.bootstrap as cli
+
+cli.main()
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+    )
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 2
+    assert "requires a real terminal (TTY)" in combined_output
+    assert "--check <name> --profile <profile>" in combined_output
+    assert "Traceback" not in combined_output

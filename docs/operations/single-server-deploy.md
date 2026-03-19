@@ -107,9 +107,13 @@ Solusinya: mount `sso/cache` secara terpisah sebagai `:rw` — direktori lain te
 
 **Catatan untuk EC2 / server:**
 
-- Pastikan user yang menjalankan Docker sudah login SSO: `aws sso login --profile <profile>`
+- Pastikan user yang menjalankan Docker sudah login SSO: `aws sso login --profile <profile> --use-device-code --no-browser`
 - SSO token tersimpan di `~/.aws/sso/cache/` di host — container akan otomatis menggunakannya
-- Token SSO berlaku ~8 jam (tergantung konfigurasi IAM Identity Center). Jika expired, jalankan `aws sso login` ulang di host
+- Token SSO berlaku ~8 jam (tergantung konfigurasi IAM Identity Center). Jika expired, jalankan `aws sso login --profile <profile> --use-device-code --no-browser` ulang di host
+
+Catatan method:
+- Gunakan `aws sso login` untuk profile berbasis IAM Identity Center (`sso`).
+- `aws login` dipakai hanya untuk flow profile non-SSO yang memang mengandalkan login cache AWS CLI modern.
 - Jika server berjalan sebagai user non-root, sesuaikan path `${HOME}` dan pastikan direktori `~/.aws/sso/cache/` sudah ada sebelum container dijalankan:
 
 ```bash

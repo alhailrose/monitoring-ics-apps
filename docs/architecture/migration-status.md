@@ -4,13 +4,18 @@ Reference contract: `docs/architecture/target-structure-contract.md`
 
 ## Backend-interface runtime state (current)
 
-- Runtime entrypoint now targets backend interfaces:
-  - `monitoring-hub` console script -> `backend.interfaces.cli.main:main`
+- Runtime entrypoint now delegates to backend interfaces:
+  - `monitoring-hub` console script -> `src.app.cli.main:main` (compat wrapper)
+  - wrapper delegates to `backend.interfaces.cli.main:main`
 - Canonical interface/runtime modules live under `backend/`:
   - API: `backend/interfaces/api/*`
   - CLI/TUI: `backend/interfaces/cli/*`
+  - Runner engine: `backend/domain/engine/*`
+  - Runner models: `backend/domain/models/*`
+  - Report formatting: `backend/domain/formatting/reports.py`
   - Domain services: `backend/domain/services/*`
   - Config settings: `backend/config/settings.py`
+  - Customer flow canonical: `backend/interfaces/cli/flows/customer.py`
 - `src/` runtime code has no imports from `monitoring_hub.*` or `checks.*`.
 
 ## Compatibility posture
@@ -18,12 +23,12 @@ Reference contract: `docs/architecture/target-structure-contract.md`
 - Legacy top-level packages have been removed from repository runtime surface:
   - removed: `monitoring_hub/*`
   - removed: `checks/*`
-- Runtime code and packaging now point to `backend/*` interface paths, with `src/app/*` maintained as compatibility wrappers.
+- Runtime code points to `backend/*` canonical paths, with `src/app/*` maintained as compatibility wrappers.
 
 ## Validation coverage
 
 - Integration guardrail enforces no legacy imports in src runtime tree.
-- CLI entrypoint integration test enforces backend interface script target.
+- CLI entrypoint integration test enforces wrapper delegation to backend interface target.
 - Existing unit/integration suites remain in `tests/unit` and `tests/integration`.
 
 ## Remaining follow-up (non-blocking)

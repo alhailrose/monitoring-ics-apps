@@ -25,9 +25,13 @@ pipx reinstall "git+ssh://git@github.com/alhailrose/monitoring-ics-apps.git@main
 
 ```bash
 aws configure sso --profile <nama_profil>
-aws sso login --profile <nama_profil>
+aws sso login --profile <nama_profil> --use-device-code --no-browser
 aws sts get-caller-identity --profile <nama_profil> --region ap-southeast-1
 ```
+
+Catatan method:
+- Untuk profile `sso`, gunakan `aws sso login`.
+- Untuk profile non-SSO yang memakai login cache AWS CLI modern, gunakan `aws login` sesuai kebutuhan environment.
 
 Catatan: YAML customer/default hanya menyimpan mapping profile/check, bukan credential.
 

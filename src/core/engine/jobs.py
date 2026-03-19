@@ -1,6 +1,7 @@
-"""Runner job orchestration exports."""
+"""Compatibility module alias for legacy src.core.engine.jobs."""
 
-from src.core.engine.executor import JobExecutor
-from src.core.engine.job_store import JobStore
+import sys
 
-__all__ = ["JobExecutor", "JobStore"]
+import backend.domain.engine as _impl
+
+sys.modules[__name__] = _impl

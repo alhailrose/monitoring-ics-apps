@@ -27,6 +27,7 @@ include = ["src*", "backend*"]
 
 [tool.setuptools.package-data]
 "src.configs.defaults.customers" = ["*.yaml"]
+"backend.config.defaults.customers" = ["*.yaml"]
 
 [build-system]
 requires = ["setuptools>=61", "wheel"]

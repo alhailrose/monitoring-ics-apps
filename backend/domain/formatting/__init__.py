@@ -1,4 +1,4 @@
-"""Compatibility exports for legacy src.core.formatting package."""
+"""Shared report formatting helpers."""
 
 from backend.domain.formatting.reports import (
     build_huawei_legacy_consolidated_report,

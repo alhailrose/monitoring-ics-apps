@@ -23,6 +23,14 @@ def _module_defaults_dir():
     return Path(__file__).resolve().parent / "defaults" / "customers"
 
 
+def _legacy_module_defaults_dir():
+    return _repo_root() / "src" / "configs" / "defaults" / "customers"
+
+
+def _repo_configs_dir():
+    return _repo_root() / "configs" / "customers"
+
+
 def _user_config_dir():
     """Return explicit override config directory, if configured.
 
@@ -55,6 +63,8 @@ def _candidate_paths(customer_id):
     if override_dir is not None:
         candidates.append(override_dir / f"{customer_id}.yaml")
     candidates.append(_module_defaults_dir() / f"{customer_id}.yaml")
+    candidates.append(_legacy_module_defaults_dir() / f"{customer_id}.yaml")
+    candidates.append(_repo_configs_dir() / f"{customer_id}.yaml")
     return _dedupe_paths(candidates)
 
 
@@ -164,6 +174,8 @@ def list_customers() -> List[dict]:
     if override_dir is not None:
         customers_dirs.append(override_dir)
     customers_dirs.append(_module_defaults_dir())
+    customers_dirs.append(_legacy_module_defaults_dir())
+    customers_dirs.append(_repo_configs_dir())
     customers_dirs = _dedupe_paths(customers_dirs)
     results = []
 

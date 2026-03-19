@@ -32,7 +32,7 @@ from .reports import (
     build_whatsapp_budget,
     build_whatsapp_backup_aryanoble,
 )
-from src.core.formatting.reports import build_huawei_legacy_consolidated_report
+from backend.domain.formatting.reports import build_huawei_legacy_consolidated_report
 from .ui import (
     console,
     print_check_header,

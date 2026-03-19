@@ -1,5 +1,7 @@
-"""Job model exports."""
+"""Compatibility module alias for legacy src.core.models.jobs."""
 
-from src.core.models.job_models import JobRecord
+import sys
 
-__all__ = ["JobRecord"]
+import backend.domain.models as _impl
+
+sys.modules[__name__] = _impl

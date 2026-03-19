@@ -6,6 +6,8 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
 - Folder structure roadmap: `docs/architecture/folder-structure.md`
 - Migration status: `docs/architecture/migration-status.md`
 - Target structure contract: `docs/architecture/target-structure-contract.md`
+- Current foldering guide (canonical + compatibility): `docs/architecture/current-foldering-guide.md`
+- src wrapper inventory (Phase 4.5): `docs/architecture/src-wrapper-inventory.md`
 - Backend living development plan (main checklist): `docs/development/backend-development-plan.md`
 - Frontend API contract: `docs/api/frontend-contract-v1.md`
 - Deployment flow (approval + rollback notes): `docs/operations/deployment-flow.md`

@@ -7,9 +7,9 @@ Monitoring Hub adalah platform monitoring AWS terpusat untuk multiple customer. 
 1. **TUI (Terminal User Interface)** — interface interaktif berbasis terminal, dijalankan langsung di mesin operator
 2. **Web Platform** — REST API (FastAPI) + frontend React, dapat diakses via browser
 
-Keduanya menjalankan check yang sama dari modul `src/checks/`, hanya berbeda di layer presentasi dan cara eksekusi.
+Keduanya menjalankan check yang sama dari `src/checks/`, tetapi orchestration/interface kanonis ada di `backend/*`.
 
-## Status Operasional Phase 2 (sumber kebenaran harian)
+## Status Operasional (sumber kebenaran harian)
 
 - Runtime API kanonis di `backend/interfaces/api/`; `src/app/api/*` dan `apps/api/main.py` adalah compatibility wrapper.
 - Runtime TUI/CLI kanonis di `backend/interfaces/cli/`; `src/app/cli/*`, `src/app/tui/*`, dan `apps/tui/main.py` adalah compatibility wrapper.
@@ -23,128 +23,35 @@ Keduanya menjalankan check yang sama dari modul `src/checks/`, hanya berbeda di 
 
 ---
 
-## Struktur Folder
+## Struktur Folder (ringkas, current-state)
 
-```
+```text
 monitoring-ics-apps/
-├── src/                        # Seluruh kode Python (shared antara TUI dan Web)
-│   ├── app/                    # Layer aplikasi
-│   │   ├── api/                # FastAPI web backend
-│   │   │   ├── main.py         # App factory, CORS, router registration
-│   │   │   ├── dependencies.py # FastAPI dependency injection
-│   │   │   └── routes/
-│   │   │       ├── checks.py   # POST /checks/execute, GET /checks/available
-│   │   │       ├── customers.py# CRUD customer & account
-│   │   │       ├── history.py  # Riwayat check run + regenerasi report
-│   │   │       ├── profiles.py # Deteksi AWS profile dari ~/.aws/config
-│   │   │       └── sessions.py # Health check SSO session
-│   │   ├── cli/                # Entrypoint CLI (monitoring-hub command)
-│   │   ├── services/
-│   │   │   ├── check_executor.py   # Eksekusi check sinkron, simpan ke DB
-│   │   │   ├── customer_service.py # CRUD customer via service layer
-│   │   │   └── session_health.py   # Cek status SSO session, notif Slack
-│   │   ├── tui/                # Textual TUI app
-│   │   └── settings.py         # Konfigurasi app (env vars)
-│   ├── checks/                 # Modul check AWS
-│   │   ├── common/
-│   │   │   ├── base.py         # BaseChecker: count_issues(), render_section()
-│   │   │   └── aws_errors.py   # is_credential_error(), friendly_credential_message()
-│   │   ├── generic/            # Check yang berlaku untuk semua customer
-│   │   │   ├── backup_status.py
-│   │   │   ├── cloudwatch_alarms.py
-│   │   │   ├── cost_anomalies.py
-│   │   │   ├── ec2_list.py
-│   │   │   ├── guardduty.py
-│   │   │   ├── health_events.py
-│   │   │   └── notifications.py
-│   │   └── aryanoble/          # Check khusus Aryanoble
-│   │       ├── alarm_verification.py
-│   │       ├── daily_arbel.py
-│   │       └── daily_budget.py
-│   ├── core/                   # Core engine & runtime
-│   │   ├── engine/
-│   │   │   ├── executor.py     # Eksekutor check (dipakai TUI)
-│   │   │   ├── job_store.py    # In-memory job store (TUI)
-│   │   │   └── jobs.py         # Job model (TUI)
-│   │   ├── formatting/         # Helper formatting output
-│   │   ├── models/             # Pydantic models untuk check result
-│   │   └── runtime/
-│   │       ├── config.py       # AVAILABLE_CHECKS, ALL_MODE_CHECKS
-│   │       ├── config_loader.py# Load konfigurasi customer dari YAML
-│   │       ├── customer_runner.py # Runner per-customer (TUI)
-│   │       ├── reports.py      # Builder pesan WhatsApp/Slack
-│   │       ├── runners.py      # _print_consolidated_report() (TUI)
-│   │       ├── ui.py           # UI helpers TUI
-│   │       └── utils.py        # Utilities umum
-│   ├── db/                     # Database layer (Web platform)
-│   │   ├── models.py           # SQLAlchemy models: Customer, Account, CheckRun, CheckResult
-│   │   ├── session.py          # build_engine(), build_session_factory()
-│   │   └── repositories/
-│   │       ├── customer_repository.py  # CRUD Customer & Account
-│   │       └── check_repository.py     # CRUD CheckRun & CheckResult
+├── backend/                    # Canonical implementation (API/CLI/domain/infra/config)
+│   ├── interfaces/
+│   ├── domain/
+│   ├── infra/
+│   └── config/
+├── src/                        # Compatibility layer + checks
+│   ├── app/                    # Wrapper namespace legacy ke backend/*
+│   ├── checks/                 # Modul check AWS (masih aktif)
+│   ├── core/
+│   ├── db/
 │   ├── integrations/
-│   │   └── slack/
-│   │       └── notifier.py     # send_to_webhook(url, text, channel)
-│   └── providers/              # AWS provider/session helpers
-├── web/                        # Frontend React (Web platform)
-│   ├── src/
-│   │   ├── main.tsx            # Entry point React
-│   │   ├── app-shell.tsx       # Layout utama + client-side routing
-│   │   ├── app/                # Halaman-halaman
-│   │   │   ├── page.tsx        # Home / dashboard
-│   │   │   ├── checks/
-│   │   │   │   ├── single/page.tsx  # Single check (per akun)
-│   │   │   │   ├── all/page.tsx     # All check (semua akun customer)
-│   │   │   │   └── arbel/page.tsx   # Arbel check (preset Aryanoble)
-│   │   │   ├── customers/page.tsx   # Manajemen customer & akun
-│   │   │   ├── history/page.tsx     # Riwayat check run
-│   │   │   └── profiles/page.tsx    # Deteksi AWS profile
-│   │   ├── api/                # API client layer
-│   │   │   ├── client.ts       # Base fetch wrapper
-│   │   │   ├── checks.ts       # executeCheck(), listAvailableChecks()
-│   │   │   ├── customers.ts    # CRUD customer
-│   │   │   ├── history.ts      # listHistory(), getReport()
-│   │   │   └── profiles.ts     # listProfiles()
-│   │   ├── components/
-│   │   │   ├── common/
-│   │   │   │   ├── CopyableOutput.tsx  # Output teks yang bisa di-copy
-│   │   │   │   ├── LoadingState.tsx    # Loading spinner
-│   │   │   │   ├── StatusBadge.tsx     # Badge OK/WARN/ERROR
-│   │   │   │   └── ToastHost.tsx       # Notifikasi toast
-│   │   │   └── ui/
-│   │   │       ├── GlassPanel.tsx  # Panel dengan efek glass
-│   │   │       ├── OpsButton.tsx   # Tombol bergaya ops/terminal
-│   │   │       ├── OpsInput.tsx    # Input bergaya ops
-│   │   │       ├── OpsSelect.tsx   # Select bergaya ops
-│   │   │       └── StatusPill.tsx  # Pill status
-│   │   ├── styles/
-│   │   │   └── ops-theme.css   # CSS theme terminal/ops
-│   │   └── types/              # TypeScript type definitions
-│   ├── index.html
-│   ├── package.json            # React 18, Vite, Vitest, TypeScript
-│   ├── vite.config.ts
-│   └── tsconfig.json
+│   └── providers/
+├── apps/                       # App-level scaffold (api/tui/web)
+├── web/                        # Frontend React runtime (aktif)
+├── docs/
 ├── configs/
-│   └── customers/
-│       └── aryanoble.yaml      # Konfigurasi akun Aryanoble + config_extra
-├── alembic/                    # Database migrations
-│   ├── env.py
-│   └── versions/
-│       └── 18f6d0868678_initial_schema.py
-├── alembic.ini
+├── alembic/
 ├── scripts/
-│   ├── seed_database.py        # Seed DB dari ~/.aws/config
-│   └── seed_alarms.py          # Seed alarm_names ke config_extra akun Aryanoble
 ├── tests/
-│   ├── test_e2e_api.py         # 24 E2E tests API
-│   └── test_new_endpoints.py   # 25 tests endpoint baru
-├── infra/
-│   └── docker/
-│       ├── docker-compose.yml  # postgres + api + nginx
-│       ├── nginx.conf          # Reverse proxy: / → web, /api → backend
-│       └── .env.example
-└── pyproject.toml              # Python package config, dependencies
+└── infra/docker/
 ```
+
+Catatan:
+- Entrypoint package `monitoring-hub` masih lewat `src.app.cli.main` untuk kompatibilitas, lalu didelegasikan ke `backend.interfaces.cli.main`.
+- Target cleanup bertahap: kurangi wrapper `src/*` setelah semua import runtime pindah ke `backend/*`.
 
 ---
 
@@ -162,8 +69,9 @@ Terminal
   │
   ▼
 TUI (Textual) / CLI
-  └── src/core/engine/executor.py
-        └── src/checks/**
+  └── backend/interfaces/cli/main.py
+        └── backend/domain/runtime/*
+              └── src/checks/**
 ```
 
 ### Web Platform
@@ -499,7 +407,7 @@ Perilaku menu Huawei Check (TUI):
 
 ## Integrasi Slack
 
-Setiap customer dapat dikonfigurasi dengan `slack_webhook_url` dan `slack_channel`. Notifikasi dikirim via `send_to_webhook(url, text, channel)` di `src/integrations/slack/notifier.py`.
+Setiap customer dapat dikonfigurasi dengan `slack_webhook_url` dan `slack_channel`. Notifikasi dikirim via `send_to_webhook(url, text, channel)` di `backend/infra/notifications/slack/notifier.py` (dengan wrapper kompatibilitas di `src/integrations/slack/notifier.py`).
 
 Notifikasi dikirim:
 - Saat check dijalankan dengan `send_slack: true`
