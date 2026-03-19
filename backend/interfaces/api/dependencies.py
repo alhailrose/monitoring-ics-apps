@@ -8,9 +8,9 @@ from src.app.settings import get_settings
 from src.db.repositories.customer_repository import CustomerRepository
 from src.db.repositories.check_repository import CheckRepository
 from src.db.session import build_session_factory
-from src.app.services.customer_service import CustomerService
-from src.app.services.check_executor import CheckExecutor
-from src.app.services.session_health import SessionHealthService
+from backend.domain.services.customer_service import CustomerService
+from backend.domain.services.check_executor import CheckExecutor
+from backend.domain.services.session_health import SessionHealthService
 
 
 @lru_cache(maxsize=1)

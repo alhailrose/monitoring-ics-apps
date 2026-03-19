@@ -105,7 +105,7 @@ def get_check_run_report(check_run_id: str, repo=Depends(get_check_repository)):
     if run is None:
         raise HTTPException(status_code=404, detail="Check run not found")
 
-    from src.app.services.check_executor import _build_consolidated_report
+    from backend.domain.services.check_executor import _build_consolidated_report
 
     # Collect profiles and results from stored data
     profiles = []
