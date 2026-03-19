@@ -7,8 +7,8 @@ from rich import box
 from rich.table import Table
 
 from src.checks.nabati_analysis import run_nabati_analysis
-from src.core.runtime.config import PROFILE_GROUPS, CUSTOM_STYLE
-from src.core.runtime.ui import (
+from backend.domain.runtime.config import PROFILE_GROUPS, CUSTOM_STYLE
+from backend.domain.runtime.ui import (
     console,
     print_info,
     print_mini_banner,

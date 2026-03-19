@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.interfaces.api.dependencies import get_check_repository
-from src.core.runtime.config import AVAILABLE_CHECKS
+from backend.domain.runtime.config import AVAILABLE_CHECKS
 
 router = APIRouter(prefix="/history", tags=["history"])
 

@@ -8,15 +8,15 @@ import questionary
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 from prompt_toolkit.keys import Keys
 
-from src.core.runtime.config import (
+from backend.domain.runtime.config import (
     PROFILE_GROUPS,
     INTERRUPT_EXIT_WINDOW,
     CUSTOM_STYLE,
     get_last_interrupt_ts,
     set_last_interrupt_ts,
 )
-from src.core.runtime.ui import console, print_error, ICONS
-from src.core.runtime.utils import list_local_profiles, resolve_region
+from backend.domain.runtime.ui import console, print_error, ICONS
+from backend.domain.runtime.utils import list_local_profiles, resolve_region
 
 
 def _make_escape_bindings() -> KeyBindings:

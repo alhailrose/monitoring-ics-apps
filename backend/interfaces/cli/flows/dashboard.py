@@ -5,7 +5,7 @@ from rich.columns import Columns
 from rich.panel import Panel
 from rich.table import Table
 
-from src.core.runtime.ui import console, ICONS
+from backend.domain.runtime.ui import console, ICONS
 
 
 def render_main_dashboard(is_dense_mode, current_ui_mode, ui_modes):

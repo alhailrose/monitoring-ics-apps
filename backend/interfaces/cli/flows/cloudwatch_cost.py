@@ -10,7 +10,7 @@ from rich.panel import Panel
 
 from src.app.tui import common
 from src.checks import cloudwatch_cost_report as cw_cost_report
-from src.core.runtime.ui import (
+from backend.domain.runtime.ui import (
     console,
     print_error,
     print_info,

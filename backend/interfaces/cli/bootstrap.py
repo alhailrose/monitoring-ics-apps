@@ -4,21 +4,21 @@
 import argparse
 import sys
 
-from src.core.runtime.config import PROFILE_GROUPS, DEFAULT_WORKERS
-from src.core.runtime.config_loader import (
+from backend.domain.runtime.config import PROFILE_GROUPS, DEFAULT_WORKERS
+from backend.domain.runtime.config_loader import (
     create_sample_config,
     get_config,
     CONFIG_FILE,
     get_sample_config_content,
 )
-from src.configs.loader import get_customer_profiles
-from src.core.runtime.utils import resolve_region
-from src.core.runtime.runners import (
+from backend.config.loader import get_customer_profiles
+from backend.domain.runtime.utils import resolve_region
+from backend.domain.runtime.runners import (
     run_individual_check,
     run_all_checks,
     run_group_specific,
 )
-from src.core.runtime.ui import (
+from backend.domain.runtime.ui import (
     VERSION,
     console,
     print_success,
@@ -230,7 +230,7 @@ def main():
 
     # Customer mode
     if args.customer:
-        from src.core.runtime.customer_runner import (
+        from backend.domain.runtime.customer_runner import (
             run_customer_checks,
             prompt_and_send_slack,
         )

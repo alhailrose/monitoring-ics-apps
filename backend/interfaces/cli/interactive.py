@@ -4,18 +4,18 @@ import questionary
 
 from src.app.tui import common
 from src.app.tui.flows import cloudwatch_cost, customer, dashboard, settings
-from src.configs.loader import (
+from backend.config.loader import (
     collect_customer_profiles,
     get_alarm_names_for_profile,
     load_customer_config,
 )
-from src.core.runtime.config import AVAILABLE_CHECKS
-from src.core.runtime.runners import (
+from backend.domain.runtime.config import AVAILABLE_CHECKS
+from backend.domain.runtime.runners import (
     run_all_checks,
     run_group_specific,
     run_individual_check,
 )
-from src.core.runtime.ui import (
+from backend.domain.runtime.ui import (
     console,
     print_banner,
     print_error,
@@ -119,7 +119,7 @@ def _pick_profiles_from_customers():
 
     Escape at any step goes back to previous step (never exits app).
     """
-    from src.configs.loader import list_customers, load_customer_config
+    from backend.config.loader import list_customers, load_customer_config
 
     customers = list_customers()
     if not customers:

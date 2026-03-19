@@ -6,9 +6,13 @@ from rich.panel import Panel
 from rich.table import Table
 
 from src.app.tui import common
-from src.core.runtime.config import PROFILE_GROUPS
-from src.core.runtime.config_loader import get_config, create_sample_config, CONFIG_FILE
-from src.core.runtime.ui import (
+from backend.domain.runtime.config import PROFILE_GROUPS
+from backend.domain.runtime.config_loader import (
+    get_config,
+    create_sample_config,
+    CONFIG_FILE,
+)
+from backend.domain.runtime.ui import (
     VERSION,
     console,
     print_info,

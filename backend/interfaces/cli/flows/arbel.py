@@ -7,10 +7,10 @@ from rich.panel import Panel
 from rich.table import Table
 
 from src.app.tui import common
-from src.configs.loader import load_customer_config
-from src.core.runtime.config import PROFILE_GROUPS, CUSTOM_STYLE
-from src.core.runtime.runners import run_group_specific
-from src.core.runtime.ui import (
+from backend.config.loader import load_customer_config
+from backend.domain.runtime.config import PROFILE_GROUPS, CUSTOM_STYLE
+from backend.domain.runtime.runners import run_group_specific
+from backend.domain.runtime.ui import (
     console,
     print_error,
     print_mini_banner,

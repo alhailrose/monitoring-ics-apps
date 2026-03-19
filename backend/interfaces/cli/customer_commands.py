@@ -6,10 +6,10 @@ from pathlib import Path
 
 import yaml
 
-from src.configs.loader import list_customers, load_customer_config
-from src.configs.schema.validator import validate_customer_config
-from src.core.runtime.utils import list_local_profiles
-from src.core.runtime.ui import console, ICONS
+from backend.config.loader import list_customers, load_customer_config
+from backend.config.schema.validator import validate_customer_config
+from backend.domain.runtime.utils import list_local_profiles
+from backend.domain.runtime.ui import console, ICONS
 
 
 def classify_profiles_by_mapping(

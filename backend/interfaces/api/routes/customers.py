@@ -147,7 +147,7 @@ def delete_account(account_id: str, service=Depends(get_customer_service)):
 @router.post("/{customer_id}/reimport")
 def reimport_customer(customer_id: str, service=Depends(get_customer_service)):
     """Re-import customer config from YAML file and update DB."""
-    from src.configs.loader import load_customer_config
+    from backend.config.loader import load_customer_config
 
     try:
         config = load_customer_config(customer_id)

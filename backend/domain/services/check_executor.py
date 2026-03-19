@@ -18,13 +18,13 @@ from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional
 
-from src.core.runtime.config import (
+from backend.domain.runtime.config import (
     AVAILABLE_CHECKS,
     ALL_MODE_CHECKS,
     DEFAULT_WORKERS,
 )
-from src.core.runtime.utils import get_account_id as get_account_id_from_profile
-from src.core.runtime.reports import (
+from backend.domain.runtime.utils import get_account_id as get_account_id_from_profile
+from backend.domain.runtime.reports import (
     build_whatsapp_backup,
     build_whatsapp_rds,
     summarize_backup_whatsapp,

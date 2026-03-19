@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from urllib import error, request
 
-from src.core.runtime.config_loader import get_slack_report_config
+from backend.domain.runtime.config_loader import get_slack_report_config
 
 
 def send_report_to_slack(

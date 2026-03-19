@@ -127,7 +127,7 @@ def execute_check(payload: ExecuteCheckRequest, executor=Depends(get_check_execu
 @router.get("/available", response_model=AvailableChecksResponse)
 def list_available_checks():
     """Return list of available check types."""
-    from src.core.runtime.config import AVAILABLE_CHECKS
+    from backend.domain.runtime.config import AVAILABLE_CHECKS
 
     return {
         "checks": [

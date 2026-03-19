@@ -1,48 +1,7 @@
-"""
-Utility functions for AWS Monitoring Hub
-"""
+"""Compatibility module alias for legacy src.core.runtime.utils."""
 
-import boto3
+import sys
 
-from .config import PROFILE_GROUPS
+from backend.domain.runtime import utils as _impl
 
-
-def resolve_region(profile_list, override_region):
-    """Resolve region using CLI override, then profile config, then fallback."""
-    if override_region:
-        return override_region
-    for prof in profile_list:
-        try:
-            session = boto3.Session(profile_name=prof)
-            if session.region_name:
-                return session.region_name
-        except Exception:
-            continue
-    return "ap-southeast-3"
-
-
-def get_account_id(profile):
-    """Get account ID for a profile"""
-    for group in PROFILE_GROUPS.values():
-        if profile in group:
-            return group[profile]
-
-    try:
-        from src.configs.loader import get_profile_metadata
-
-        meta = get_profile_metadata(profile)
-        account_id = meta.get("account_id")
-        if account_id and account_id != "Unknown":
-            return account_id
-    except Exception:
-        pass
-
-    return "Unknown"
-
-
-def list_local_profiles():
-    """Return list of AWS CLI profiles available locally."""
-    try:
-        return boto3.Session().available_profiles
-    except Exception:
-        return []
+sys.modules[__name__] = _impl
