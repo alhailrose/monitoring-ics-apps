@@ -1,5 +1,5 @@
-"""Compatibility namespace for database infrastructure."""
+"""Database infrastructure package."""
 
-from src.db import models, session
+from backend.infra.database import models, session
 
 __all__ = ["models", "session"]

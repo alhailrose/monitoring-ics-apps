@@ -5,9 +5,9 @@ from functools import lru_cache
 from fastapi import HTTPException, Request, status
 
 from backend.config.settings import get_settings
-from src.db.repositories.customer_repository import CustomerRepository
-from src.db.repositories.check_repository import CheckRepository
-from src.db.session import build_session_factory
+from backend.infra.database.repositories.customer_repository import CustomerRepository
+from backend.infra.database.repositories.check_repository import CheckRepository
+from backend.infra.database.session import build_session_factory
 from backend.domain.services.customer_service import CustomerService
 from backend.domain.services.check_executor import CheckExecutor
 from backend.domain.services.session_health import SessionHealthService
