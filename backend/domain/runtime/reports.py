@@ -349,7 +349,7 @@ def build_whatsapp_rds_client(all_results):
         lines.extend([date_str, "", "Summary:"])
 
         # Delegate all rendering to checker's format_report for consistent output
-        from src.checks.aryanoble.daily_arbel import DailyArbelChecker
+        from backend.checks.aryanoble.daily_arbel import DailyArbelChecker
 
         checker = DailyArbelChecker()
         body = checker.format_report(res)

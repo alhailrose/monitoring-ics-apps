@@ -9,7 +9,7 @@ from rich import box
 from rich.panel import Panel
 
 from backend.interfaces.cli import common
-from src.checks import cloudwatch_cost_report as cw_cost_report
+from backend.checks import cloudwatch_cost_report as cw_cost_report
 from backend.domain.runtime.ui import (
     console,
     print_error,

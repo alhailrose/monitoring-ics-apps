@@ -155,3 +155,4 @@ This is the main living plan for backend evolution.
 - 2026-03-19: Migrated runner engine/models (`src/core/engine`, `src/core/models`) to canonical backend paths with src compatibility aliases.
 - 2026-03-19: Migrated report formatting (`src/core/formatting/reports.py`) to canonical backend path with src compatibility alias.
 - 2026-03-19: Phase 4.5 completed (foldering/docs alignment, wrapper inventory, and canonical migration checkpoints).
+- 2026-03-19: Added `backend/checks/*` bridge namespace and switched backend runtime imports away from direct `src.checks.*` dependencies.

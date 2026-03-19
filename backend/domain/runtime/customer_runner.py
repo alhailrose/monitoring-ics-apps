@@ -18,7 +18,7 @@ from rich.progress import (
     TaskProgressColumn,
 )
 
-from src.checks.common.aws_errors import (
+from backend.checks.common.aws_errors import (
     is_credential_error,
     friendly_credential_message,
 )

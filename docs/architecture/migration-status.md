@@ -10,6 +10,7 @@ Reference contract: `docs/architecture/target-structure-contract.md`
 - Canonical interface/runtime modules live under `backend/`:
   - API: `backend/interfaces/api/*`
   - CLI/TUI: `backend/interfaces/cli/*`
+  - Runtime checks import path: `backend/checks/*` (bridge layer)
   - Runner engine: `backend/domain/engine/*`
   - Runner models: `backend/domain/models/*`
   - Report formatting: `backend/domain/formatting/reports.py`

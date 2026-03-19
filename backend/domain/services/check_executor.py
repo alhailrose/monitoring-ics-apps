@@ -31,7 +31,7 @@ from backend.domain.runtime.reports import (
 )
 from backend.domain.services.finding_events_mapper import map_check_findings
 from backend.domain.services.metric_samples_mapper import map_check_metric_samples
-from src.checks.common.aws_errors import (
+from backend.checks.common.aws_errors import (
     is_credential_error,
     friendly_credential_message,
 )

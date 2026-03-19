@@ -40,7 +40,7 @@ from .ui import (
     ICONS,
 )
 from backend.infra.notifications.slack.notifier import send_report_to_slack
-from src.checks.common.aws_errors import (
+from backend.checks.common.aws_errors import (
     is_credential_error,
     friendly_credential_message,
 )

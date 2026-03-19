@@ -6,7 +6,7 @@ import questionary
 from rich import box
 from rich.table import Table
 
-from src.checks.nabati_analysis import run_nabati_analysis
+from backend.checks.nabati_analysis import run_nabati_analysis
 from backend.domain.runtime.config import PROFILE_GROUPS, CUSTOM_STYLE
 from backend.domain.runtime.ui import (
     console,

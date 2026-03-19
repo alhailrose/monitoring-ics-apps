@@ -13,18 +13,18 @@ except ModuleNotFoundError:
         return style_rules
 
 
-from src.checks.generic.health_events import HealthChecker
-from src.checks.generic.cost_anomalies import CostAnomalyChecker
-from src.checks.generic.guardduty import GuardDutyChecker
-from src.checks.generic.cloudwatch_alarms import CloudWatchAlarmChecker
-from src.checks.generic.notifications import NotificationChecker
-from src.checks.generic.backup_status import BackupStatusChecker
-from src.checks.generic.aws_utilization_3core import AWSUtilization3CoreChecker
-from src.checks.aryanoble.daily_arbel import DailyArbelChecker
-from src.checks.generic.ec2_list import EC2ListChecker
-from src.checks.aryanoble.alarm_verification import AlarmVerificationChecker
-from src.checks.aryanoble.daily_budget import DailyBudgetChecker
-from src.checks.huawei.ecs_utilization import HuaweiECSUtilizationChecker
+from backend.checks.generic.health_events import HealthChecker
+from backend.checks.generic.cost_anomalies import CostAnomalyChecker
+from backend.checks.generic.guardduty import GuardDutyChecker
+from backend.checks.generic.cloudwatch_alarms import CloudWatchAlarmChecker
+from backend.checks.generic.notifications import NotificationChecker
+from backend.checks.generic.backup_status import BackupStatusChecker
+from backend.checks.generic.aws_utilization_3core import AWSUtilization3CoreChecker
+from backend.checks.aryanoble.daily_arbel import DailyArbelChecker
+from backend.checks.generic.ec2_list import EC2ListChecker
+from backend.checks.aryanoble.alarm_verification import AlarmVerificationChecker
+from backend.checks.aryanoble.daily_budget import DailyBudgetChecker
+from backend.checks.huawei.ecs_utilization import HuaweiECSUtilizationChecker
 
 from .config_loader import (
     get_profile_groups,
