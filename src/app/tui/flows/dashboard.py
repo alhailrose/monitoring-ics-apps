@@ -1,3 +1,7 @@
-"""Compatibility wrapper for legacy src TUI dashboard flow."""
+"""Compatibility module alias for legacy src TUI dashboard flow."""
 
-from backend.interfaces.cli.flows.dashboard import *  # noqa: F403
+import sys
+
+from backend.interfaces.cli.flows import dashboard as _impl
+
+sys.modules[__name__] = _impl

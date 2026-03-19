@@ -1,3 +1,7 @@
-"""Compatibility wrapper for legacy src TUI cloudwatch/cost flow."""
+"""Compatibility module alias for legacy src TUI cloudwatch/cost flow."""
 
-from backend.interfaces.cli.flows.cloudwatch_cost import *  # noqa: F403
+import sys
+
+from backend.interfaces.cli.flows import cloudwatch_cost as _impl
+
+sys.modules[__name__] = _impl

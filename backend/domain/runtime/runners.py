@@ -39,7 +39,7 @@ from .ui import (
     print_group_header,
     ICONS,
 )
-from src.integrations.slack.notifier import send_report_to_slack
+from backend.infra.notifications.slack.notifier import send_report_to_slack
 from src.checks.common.aws_errors import (
     is_credential_error,
     friendly_credential_message,
@@ -594,7 +594,7 @@ def _print_consolidated_report(
     if output_mode == "summary":
         lines = []
 
-        from src.configs.loader import get_profile_metadata
+        from backend.config.loader import get_profile_metadata
 
         profile_meta_cache = {}
 

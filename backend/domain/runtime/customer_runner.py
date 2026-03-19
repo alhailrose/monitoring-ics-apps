@@ -26,7 +26,7 @@ from backend.config.loader import load_customer_config
 from backend.domain.runtime.config import AVAILABLE_CHECKS, DEFAULT_WORKERS
 from backend.domain.runtime.ui import console, ICONS
 from backend.domain.runtime.utils import get_account_id
-from src.integrations.slack.notifier import send_to_webhook
+from backend.infra.notifications.slack.notifier import send_to_webhook
 
 logger = logging.getLogger(__name__)
 

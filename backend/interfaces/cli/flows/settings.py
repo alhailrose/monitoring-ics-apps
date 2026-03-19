@@ -5,7 +5,7 @@ from rich import box
 from rich.panel import Panel
 from rich.table import Table
 
-from src.app.tui import common
+from backend.interfaces.cli import common
 from backend.domain.runtime.config import PROFILE_GROUPS
 from backend.domain.runtime.config_loader import (
     get_config,

@@ -12,6 +12,6 @@ def test_src_tui_bootstrap_exposes_entrypoints():
     assert callable(src_tui_bootstrap.run_interactive_v2)
 
 
-def test_pyproject_script_points_to_src_runtime():
+def test_pyproject_script_points_to_backend_runtime():
     pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
-    assert 'monitoring-hub = "src.app.cli.main:main"' in pyproject
+    assert 'monitoring-hub = "backend.interfaces.cli.main:main"' in pyproject

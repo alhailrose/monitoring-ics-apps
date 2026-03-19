@@ -8,7 +8,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from rich import box
 from rich.panel import Panel
 
-from src.app.tui import common
+from backend.interfaces.cli import common
 from src.checks import cloudwatch_cost_report as cw_cost_report
 from backend.domain.runtime.ui import (
     console,

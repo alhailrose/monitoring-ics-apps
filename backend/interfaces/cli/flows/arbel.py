@@ -6,7 +6,7 @@ from rich.columns import Columns
 from rich.panel import Panel
 from rich.table import Table
 
-from src.app.tui import common
+from backend.interfaces.cli import common
 from backend.config.loader import load_customer_config
 from backend.domain.runtime.config import PROFILE_GROUPS, CUSTOM_STYLE
 from backend.domain.runtime.runners import run_group_specific

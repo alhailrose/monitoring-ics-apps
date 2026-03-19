@@ -2,8 +2,8 @@
 
 import questionary
 
-from src.app.tui import common
-from src.app.tui.flows import cloudwatch_cost, customer, dashboard, settings
+from backend.interfaces.cli import common
+from backend.interfaces.cli.flows import cloudwatch_cost, customer, dashboard, settings
 from backend.config.loader import (
     collect_customer_profiles,
     get_alarm_names_for_profile,
