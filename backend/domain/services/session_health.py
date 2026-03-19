@@ -16,7 +16,7 @@ from pathlib import Path
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from src.integrations.slack.notifier import send_to_webhook
+from backend.infra.notifications.slack.notifier import send_to_webhook
 
 logger = logging.getLogger(__name__)
 

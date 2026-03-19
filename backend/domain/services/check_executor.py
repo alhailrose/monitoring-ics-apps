@@ -33,7 +33,7 @@ from src.checks.common.aws_errors import (
     is_credential_error,
     friendly_credential_message,
 )
-from src.integrations.slack.notifier import send_to_webhook
+from backend.infra.notifications.slack.notifier import send_to_webhook
 
 logger = logging.getLogger(__name__)
 

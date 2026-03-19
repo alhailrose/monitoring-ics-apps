@@ -1,5 +1,5 @@
-"""Compatibility namespace for cloud provider infrastructure."""
+"""Cloud provider infrastructure package."""
 
-from src.providers import aws
+from backend.infra.cloud import aws
 
 __all__ = ["aws"]

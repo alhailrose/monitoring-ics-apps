@@ -1,17 +1,7 @@
-"""Slack adapter facade for centralized runner commands."""
+"""Compatibility module alias for legacy src.integrations.slack.app."""
 
-from src.integrations.slack.commands import dispatch_slack_command
+import sys
 
+from backend.infra.notifications.slack import app as _impl
 
-class SlackCommandService:
-    def __init__(self, submit_job, get_job_status):
-        self.submit_job = submit_job
-        self.get_job_status = get_job_status
-
-    def handle_text(self, text, requested_by=None):
-        return dispatch_slack_command(
-            text,
-            submit_job=self.submit_job,
-            get_job_status=self.get_job_status,
-            requested_by=requested_by,
-        )
+sys.modules[__name__] = _impl

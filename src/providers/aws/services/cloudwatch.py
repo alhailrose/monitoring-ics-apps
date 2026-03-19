@@ -1,7 +1,7 @@
-"""CloudWatch service wrapper."""
+"""Compatibility module alias for legacy src.providers.aws.services.cloudwatch."""
 
-from src.providers.aws.clients import get_client
+import sys
 
+from backend.infra.cloud.aws.services import cloudwatch as _impl
 
-def client(profile_name=None, region_name=None):
-    return get_client("cloudwatch", profile_name=profile_name, region_name=region_name)
+sys.modules[__name__] = _impl

@@ -1,0 +1,7 @@
+"""CloudWatch service wrapper."""
+
+from backend.infra.cloud.aws.clients import get_client
+
+
+def client(profile_name=None, region_name=None):
+    return get_client("cloudwatch", profile_name=profile_name, region_name=region_name)

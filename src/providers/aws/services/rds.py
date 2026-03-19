@@ -1,7 +1,7 @@
-"""RDS service wrapper."""
+"""Compatibility module alias for legacy src.providers.aws.services.rds."""
 
-from src.providers.aws.clients import get_client
+import sys
 
+from backend.infra.cloud.aws.services import rds as _impl
 
-def client(profile_name=None, region_name=None):
-    return get_client("rds", profile_name=profile_name, region_name=region_name)
+sys.modules[__name__] = _impl
