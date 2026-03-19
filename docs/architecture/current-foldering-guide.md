@@ -29,8 +29,8 @@ src/
 
 ## Entry point model
 
-- Packaging script tetap: `monitoring-hub -> src.app.cli.main:main`.
-- Entrypoint tersebut mendelegasikan eksekusi ke `backend.interfaces.cli.main:main`.
+- Packaging script: `monitoring-hub -> backend.interfaces.cli.main:main`.
+- Wrapper `src.app.cli.main` tetap tersedia hanya untuk kompatibilitas import legacy.
 - API canonical berada di `backend.interfaces.api.main:app`.
 
 ## Cleanup policy (bertahap)

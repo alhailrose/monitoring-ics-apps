@@ -4,9 +4,9 @@ Reference contract: `docs/architecture/target-structure-contract.md`
 
 ## Backend-interface runtime state (current)
 
-- Runtime entrypoint now delegates to backend interfaces:
-  - `monitoring-hub` console script -> `src.app.cli.main:main` (compat wrapper)
-  - wrapper delegates to `backend.interfaces.cli.main:main`
+- Runtime entrypoint now uses backend interfaces directly:
+  - `monitoring-hub` console script -> `backend.interfaces.cli.main:main`
+  - `src.app.cli.main` remains compatibility wrapper only
 - Canonical interface/runtime modules live under `backend/`:
   - API: `backend/interfaces/api/*`
   - CLI/TUI: `backend/interfaces/cli/*`

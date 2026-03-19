@@ -50,7 +50,8 @@ monitoring-ics-apps/
 ```
 
 Catatan:
-- Entrypoint package `monitoring-hub` masih lewat `src.app.cli.main` untuk kompatibilitas, lalu didelegasikan ke `backend.interfaces.cli.main`.
+- Entrypoint package `monitoring-hub` kini langsung ke `backend.interfaces.cli.main`.
+- `src.app.cli.main` dan wrapper `src/*` tetap tersedia sementara untuk kompatibilitas import legacy.
 - Target cleanup bertahap: kurangi wrapper `src/*` setelah semua import runtime pindah ke `backend/*`.
 
 ---
