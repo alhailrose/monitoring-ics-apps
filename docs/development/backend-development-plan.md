@@ -25,7 +25,7 @@ This is the main living plan for backend evolution.
 
 | Phase | Goal | Status |
 |---|---|---|
-| 0 | Enforce execution-mode policy (TUI non-persistent, API persistent) | planned |
+| 0 | Enforce execution-mode policy (TUI non-persistent, API persistent) | completed |
 | 1 | Normalize security/alert findings | planned |
 | 2 | Normalize backup reliability events | planned |
 | 3 | Normalize utilization and globalize config-driven checks | planned |
@@ -35,12 +35,12 @@ This is the main living plan for backend evolution.
 
 ### Phase 0 - Execution policy guardrails
 
-- [ ] Add explicit execution context fields (`run_source`, `persist_mode`)
-- [ ] Enforce `persist_mode=none` for TUI orchestration path
-- [ ] Enforce `persist_mode=normalized` for API orchestration path
-- [ ] Add unit tests proving TUI does not call repositories
-- [ ] Add unit tests proving API does persist
-- [ ] Mark phase as done in this plan
+- [x] Add explicit execution context fields (`run_source`, `persist_mode`)
+- [x] Enforce `persist_mode=none` for TUI orchestration path
+- [x] Enforce `persist_mode=normalized` for API orchestration path
+- [x] Add unit tests proving TUI does not call repositories
+- [x] Add unit tests proving API does persist
+- [x] Mark phase as done in this plan
 
 ### Phase 1 - Security/alert normalization
 
@@ -97,3 +97,4 @@ This is the main living plan for backend evolution.
 ## Change log
 
 - 2026-03-19: Initial living plan created from backend readiness assessment.
+- 2026-03-19: Phase 0 completed (execution policy split + persistence policy tests).

@@ -374,6 +374,8 @@ class CheckExecutor:
         send_slack: bool = False,
         region: str | None = None,
         check_params: dict | None = None,
+        run_source: str = "api",
+        persist_mode: str = "auto",
     ) -> dict:
         """Execute checks for one or more customers and return combined results.
 
@@ -385,12 +387,16 @@ class CheckExecutor:
             send_slack: Whether to send results to Slack
             region: AWS region override; falls back to executor's default region
             check_params: Extra params passed to checker constructor
+            run_source: Execution source tag (e.g. "api" or "tui")
+            persist_mode: Persistence policy ("auto", "normalized", "none")
 
         Returns:
             Dict with check_runs list, execution_time, results (flat),
             consolidated_outputs (dict keyed by customer_id)
         """
         start_time = time.time()
+        persist_mode_normalized = self._resolve_persist_mode(run_source, persist_mode)
+        persist_enabled = persist_mode_normalized == "normalized"
         effective_region = region if region else self.region
 
         check_runs_list = []
@@ -398,6 +404,7 @@ class CheckExecutor:
         consolidated_outputs = {}
         backup_overviews = {}
         warnings = []
+        processed_customers = 0
 
         for customer_id in customer_ids:
             # Resolve customer
@@ -424,15 +431,19 @@ class CheckExecutor:
                 warnings.append(f"No active accounts: {customer_id}")
                 continue
 
+            processed_customers += 1
+
             # Resolve checks to run
             checks_to_run = self._resolve_checks(mode, check_name, customer)
 
             # Create check run record
-            check_run = self.check_repo.create_check_run(
-                customer_id=customer_id,
-                check_mode=mode,
-                check_name=check_name if mode == "single" else None,
-            )
+            check_run = None
+            if persist_enabled:
+                check_run = self.check_repo.create_check_run(
+                    customer_id=customer_id,
+                    check_mode=mode,
+                    check_name=check_name if mode == "single" else None,
+                )
 
             # Execute checks in parallel
             raw_results = self._execute_parallel(
@@ -495,15 +506,16 @@ class CheckExecutor:
                         {k: v for k, v in raw_result.items() if not k.startswith("_")}
                     )
 
-                    self.check_repo.add_result(
-                        check_run_id=check_run.id,
-                        account_id=account.id,
-                        check_name=chk_name,
-                        status=status,
-                        summary=summary,
-                        output=output,
-                        details=details,
-                    )
+                    if persist_enabled and check_run is not None:
+                        self.check_repo.add_result(
+                            check_run_id=check_run.id,
+                            account_id=account.id,
+                            check_name=chk_name,
+                            status=status,
+                            summary=summary,
+                            output=output,
+                            details=details,
+                        )
 
                     result_items.append(
                         {
@@ -583,26 +595,28 @@ class CheckExecutor:
                 slack_sent = self._send_slack(customer, consolidated, mode, check_name)
 
             # Finalize check run
-            self.check_repo.finish_check_run(
-                check_run_id=check_run.id,
-                execution_time_seconds=round(time.time() - start_time, 2),
-                slack_sent=slack_sent,
-            )
+            if persist_enabled and check_run is not None:
+                self.check_repo.finish_check_run(
+                    check_run_id=check_run.id,
+                    execution_time_seconds=round(time.time() - start_time, 2),
+                    slack_sent=slack_sent,
+                )
 
-            check_runs_list.append(
-                {
-                    "customer_id": customer_id,
-                    "check_run_id": check_run.id,
-                    "slack_sent": slack_sent,
-                }
-            )
+                check_runs_list.append(
+                    {
+                        "customer_id": customer_id,
+                        "check_run_id": check_run.id,
+                        "slack_sent": slack_sent,
+                    }
+                )
 
-        if not check_runs_list:
+        if processed_customers == 0:
             raise ValueError(
                 f"No valid customers processed. Warnings: {'; '.join(warnings)}"
             )
 
-        self.check_repo.commit()
+        if persist_enabled:
+            self.check_repo.commit()
 
         return {
             "check_runs": check_runs_list,
@@ -611,6 +625,19 @@ class CheckExecutor:
             "consolidated_outputs": consolidated_outputs,
             "backup_overviews": backup_overviews,
         }
+
+    @staticmethod
+    def _resolve_persist_mode(run_source: str, persist_mode: str) -> str:
+        mode = (persist_mode or "auto").lower()
+        source = (run_source or "api").lower()
+
+        if mode not in {"auto", "normalized", "none"}:
+            raise ValueError(f"Invalid persist_mode: {persist_mode}")
+
+        if mode == "auto":
+            return "none" if source == "tui" else "normalized"
+
+        return mode
 
     def _resolve_checks(self, mode: str, check_name: str | None, customer=None) -> dict:
         """Resolve which checks to run based on mode.

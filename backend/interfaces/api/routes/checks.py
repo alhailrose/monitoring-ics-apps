@@ -115,6 +115,8 @@ def execute_check(payload: ExecuteCheckRequest, executor=Depends(get_check_execu
             send_slack=payload.send_slack,
             region=payload.region,
             check_params=payload.check_params,
+            run_source="api",
+            persist_mode="normalized",
         )
         return ExecuteCheckResponse.model_validate(result)
     except ValueError as exc:

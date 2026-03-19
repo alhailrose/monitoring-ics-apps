@@ -26,6 +26,7 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
 Platform sekarang mendukung fondasi dual-interface:
 - TUI existing tetap dipakai untuk operasional harian.
 - API FastAPI tersedia di `backend/interfaces/api/main.py`.
+- Execution policy split: TUI runs are non-persistent, API runs are persistent.
 - Tidak ada worker terpisah pada runtime compose saat ini (eksekusi lewat API service layer).
 - Web runtime tetap di folder `web/` (Vite), scaffold migrasi ada di `apps/web/`.
 - Stack single server aktif: `postgres + api + nginx` di `infra/docker/docker-compose.yml`.
