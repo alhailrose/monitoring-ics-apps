@@ -11,8 +11,8 @@ Keduanya menjalankan check yang sama dari modul `src/checks/`, hanya berbeda di 
 
 ## Status Operasional Phase 2 (sumber kebenaran harian)
 
-- Runtime API kanonis tetap di `src/app/api/`; `apps/api/main.py` hanya compatibility wrapper.
-- Runtime TUI kanonis tetap di `src/app/cli/` + `src/app/tui/`; `apps/tui/main.py` hanya wrapper.
+- Runtime API kanonis di `backend/interfaces/api/`; `src/app/api/*` dan `apps/api/main.py` adalah compatibility wrapper.
+- Runtime TUI/CLI kanonis di `backend/interfaces/cli/`; `src/app/cli/*`, `src/app/tui/*`, dan `apps/tui/main.py` adalah compatibility wrapper.
 - Runtime web aktif tetap di `web/`; `apps/web/` masih scaffold migrasi bertahap.
 - Deploy single server saat ini menggunakan `postgres + api + nginx` (tanpa worker/redis terpisah).
 - Rilis dipisah per target dengan workflow gate `deploy-manual` + checklist bukti di `docs/operations/release-checklist.md`.
@@ -171,7 +171,7 @@ TUI (Textual) / CLI
 
 ### TUI
 
-- Dijalankan langsung: `monitoring-hub` atau `python -m src.app.cli.main`
+- Dijalankan langsung: `monitoring-hub` atau `python -m backend.interfaces.cli.main`
 - Menggunakan Textual untuk UI terminal interaktif
 - Tidak memerlukan database atau Docker
 
@@ -399,7 +399,7 @@ python -m scripts.seed_database
 **4. Jalankan backend API:**
 ```bash
 DATABASE_URL=postgresql+psycopg://monitor:monitor@localhost:5432/monitoring \
-  uvicorn src.app.api.main:app --reload --port 8000
+  uvicorn backend.interfaces.api.main:app --reload --port 8000
 ```
 
 **5. Jalankan frontend:**
@@ -462,11 +462,11 @@ Notifikasi dikirim:
 # Jalankan semua tests
 pytest tests/
 
-# E2E API tests (24 tests)
-pytest tests/test_e2e_api.py
+# E2E API tests
+pytest tests/integration/test_e2e_api.py
 
-# Endpoint tests (25 tests)
-pytest tests/test_new_endpoints.py
+# Endpoint integration tests
+pytest tests/integration/test_new_endpoints.py
 
 # Frontend tests
 cd web && npm test

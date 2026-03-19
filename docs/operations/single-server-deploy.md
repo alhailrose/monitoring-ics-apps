@@ -5,7 +5,7 @@ Dokumen ini menjelaskan stack minimum untuk menjalankan web + API di satu server
 ## Services aktif di `infra/docker/docker-compose.yml`
 
 - `postgres`: database utama.
-- `api`: FastAPI (`src.app.api.main:app`) di port internal `8000`.
+- `api`: FastAPI (`backend.interfaces.api.main:app`) di port internal `8000`.
 - `nginx`: reverse proxy + static hosting `web/dist` di `http://localhost:8080`.
 
 Catatan: saat ini **tidak ada service `redis`/`worker`** di compose file.

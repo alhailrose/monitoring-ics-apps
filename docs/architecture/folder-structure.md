@@ -7,8 +7,8 @@ This document defines the migration direction from the current CLI-first layout 
 To keep migration safe, app-level scaffold is introduced without moving runtime in one step:
 
 - `apps/web/` exists as migration anchor (Vite runtime still in `web/`)
-- `apps/api/main.py` wraps `src.app.api.main`
-- `apps/tui/main.py` wraps `src.app.cli.main`
+- `apps/api/main.py` wraps `backend.interfaces.api.main`
+- `apps/tui/main.py` wraps `backend.interfaces.cli.main`
 
 This keeps existing execution paths stable while enabling path-based CI/CD separation per app target.
 
