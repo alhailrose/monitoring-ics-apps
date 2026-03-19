@@ -15,7 +15,7 @@ from backend.interfaces.api.routes.customers import router as customers_router
 from backend.interfaces.api.routes.history import router as history_router
 from backend.interfaces.api.routes.profiles import router as profiles_router
 from backend.interfaces.api.routes.sessions import router as sessions_router
-from src.app.settings import get_settings
+from backend.config.settings import get_settings
 
 
 def _configure_logging(level: str) -> None:

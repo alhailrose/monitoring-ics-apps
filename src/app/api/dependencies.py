@@ -1,3 +1,7 @@
-"""Compatibility wrapper for legacy src API dependencies."""
+"""Compatibility module alias for legacy src API dependencies."""
 
-from backend.interfaces.api.dependencies import *  # noqa: F403
+import sys
+
+from backend.interfaces.api import dependencies as _impl
+
+sys.modules[__name__] = _impl

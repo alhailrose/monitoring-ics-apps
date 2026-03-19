@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from fastapi import HTTPException, Request, status
 
-from src.app.settings import get_settings
+from backend.config.settings import get_settings
 from src.db.repositories.customer_repository import CustomerRepository
 from src.db.repositories.check_repository import CheckRepository
 from src.db.session import build_session_factory
