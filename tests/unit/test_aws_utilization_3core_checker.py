@@ -39,6 +39,140 @@ def test_collect_instance_metrics_returns_partial_data_when_memory_missing(monke
     assert row["status"] == "PARTIAL_DATA"
 
 
+def test_get_memory_from_available_bytes_computes_used_pct():
+    checker = AWSUtilization3CoreChecker()
+    # 16 GB total RAM (from EC2 describe_instance_types)
+    total_bytes = 16 * 1024**3
+
+    class _CloudWatch:
+        def list_metrics(self, Namespace, MetricName, Dimensions):
+            if Namespace == "CWAgent" and MetricName == "Memory Available Bytes":
+                return {
+                    "Metrics": [
+                        {
+                            "Dimensions": [
+                                {"Name": "InstanceId", "Value": Dimensions[0]["Value"]},
+                                {"Name": "objectname", "Value": "Memory"},
+                            ]
+                        }
+                    ]
+                }
+            return {"Metrics": []}
+
+        def get_metric_statistics(
+            self,
+            Namespace,
+            MetricName,
+            Dimensions,
+            StartTime,
+            EndTime,
+            Period,
+            Statistics,
+        ):
+            # 4 GB and 3 GB available at two time points
+            return {
+                "Datapoints": [
+                    {
+                        "Average": 4 * 1024**3,
+                        "Timestamp": datetime(2026, 3, 19, 8, 0, tzinfo=timezone.utc),
+                    },
+                    {
+                        "Average": 3 * 1024**3,
+                        "Timestamp": datetime(2026, 3, 19, 8, 5, tzinfo=timezone.utc),
+                    },
+                ]
+            }
+
+    avg_val, peak_val, metric_name, peak_at = checker._get_memory_from_available_bytes(
+        _CloudWatch(),
+        instance_id="i-win",
+        start_time=datetime.now(timezone.utc) - timedelta(hours=12),
+        end_time=datetime.now(timezone.utc),
+        total_memory_bytes=total_bytes,
+    )
+
+    # avg available = 3.5 GB / 16 GB → used = 12.5/16 = 78.125%
+    assert abs(avg_val - 78.125) < 0.01
+    # peak usage when 3 GB available: (16-3)/16 = 81.25%
+    assert abs(peak_val - 81.25) < 0.01
+    assert metric_name == "Memory Available Bytes"
+    assert peak_at == datetime(2026, 3, 19, 8, 5, tzinfo=timezone.utc)
+
+
+def test_get_memory_from_available_bytes_returns_none_without_total():
+    checker = AWSUtilization3CoreChecker()
+
+    class _CloudWatch:
+        def list_metrics(self, **_kwargs):
+            return {"Metrics": [{"Dimensions": []}]}
+
+        def get_metric_statistics(self, **_kwargs):
+            return {"Datapoints": [{"Average": 4 * 1024**3}]}
+
+    result = checker._get_memory_from_available_bytes(
+        _CloudWatch(),
+        instance_id="i-win",
+        start_time=datetime.now(timezone.utc) - timedelta(hours=12),
+        end_time=datetime.now(timezone.utc),
+        total_memory_bytes=None,
+    )
+
+    assert result == (None, None, None, None)
+
+
+def test_get_memory_usage_prefers_available_bytes_for_windows():
+    checker = AWSUtilization3CoreChecker()
+    # 8 GB total RAM passed in (from EC2)
+    total_bytes = 8 * 1024**3
+
+    class _CloudWatch:
+        def list_metrics(self, Namespace, MetricName, Dimensions):
+            if Namespace == "CWAgent" and MetricName == "Memory Available Bytes":
+                return {
+                    "Metrics": [
+                        {
+                            "Dimensions": [
+                                {"Name": "InstanceId", "Value": Dimensions[0]["Value"]},
+                            ]
+                        }
+                    ]
+                }
+            return {"Metrics": []}
+
+        def get_metric_statistics(
+            self,
+            Namespace,
+            MetricName,
+            Dimensions,
+            StartTime,
+            EndTime,
+            Period,
+            Statistics,
+        ):
+            return {
+                "Datapoints": [
+                    {
+                        "Average": 2 * 1024**3,
+                        "Timestamp": datetime(2026, 3, 19, 8, 0, tzinfo=timezone.utc),
+                    }
+                ]
+            }
+
+    _avg, _peak, metric_name, _peak_at = checker._get_memory_usage(
+        _CloudWatch(),
+        instance_id="i-win",
+        os_type="windows",
+        start_time=datetime.now(timezone.utc) - timedelta(hours=12),
+        end_time=datetime.now(timezone.utc),
+        total_memory_bytes=total_bytes,
+    )
+
+    # Should use Memory Available Bytes, not fall back to committed bytes
+    assert metric_name == "Memory Available Bytes"
+    # 2 GB available out of 8 GB total = 75% used
+    assert abs(_avg - 75.0) < 0.01
+
+
 def test_get_memory_usage_uses_windows_metric_name():
     checker = AWSUtilization3CoreChecker()
 
