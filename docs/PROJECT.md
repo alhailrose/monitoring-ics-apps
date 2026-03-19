@@ -14,6 +14,7 @@ Keduanya menjalankan check yang sama dari modul `src/checks/`, hanya berbeda di 
 - Runtime API kanonis di `backend/interfaces/api/`; `src/app/api/*` dan `apps/api/main.py` adalah compatibility wrapper.
 - Runtime TUI/CLI kanonis di `backend/interfaces/cli/`; `src/app/cli/*`, `src/app/tui/*`, dan `apps/tui/main.py` adalah compatibility wrapper.
 - Execution policy saat ini: TUI non-persistent (tidak menulis DB), API persistent (menulis DB).
+- Endpoint findings normalisasi tersedia: `GET /api/v1/findings`.
 - Runtime web aktif tetap di `web/`; `apps/web/` masih scaffold migrasi bertahap.
 - Deploy single server saat ini menggunakan `postgres + api + nginx` (tanpa worker/redis terpisah).
 - Rilis dipisah per target dengan workflow gate `deploy-manual` + checklist bukti di `docs/operations/release-checklist.md`.

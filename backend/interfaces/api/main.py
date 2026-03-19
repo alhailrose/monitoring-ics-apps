@@ -12,6 +12,7 @@ from sqlalchemy import text
 import backend.interfaces.api.dependencies as deps
 from backend.interfaces.api.routes.checks import router as checks_router
 from backend.interfaces.api.routes.customers import router as customers_router
+from backend.interfaces.api.routes.findings import router as findings_router
 from backend.interfaces.api.routes.history import router as history_router
 from backend.interfaces.api.routes.profiles import router as profiles_router
 from backend.interfaces.api.routes.sessions import router as sessions_router
@@ -79,6 +80,11 @@ def create_app() -> FastAPI:
     )
     application.include_router(
         history_router,
+        prefix="/api/v1",
+        dependencies=api_dependencies,
+    )
+    application.include_router(
+        findings_router,
         prefix="/api/v1",
         dependencies=api_dependencies,
     )

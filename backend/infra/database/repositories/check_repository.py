@@ -146,6 +146,40 @@ class CheckRepository:
         runs = list(self.session.execute(stmt).scalars().all())
         return runs, total
 
+    def list_findings(
+        self,
+        customer_id: str,
+        check_name: str | None = None,
+        severity: str | None = None,
+        account_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[FindingEvent], int]:
+        base = (
+            select(FindingEvent)
+            .join(CheckRun, FindingEvent.check_run_id == CheckRun.id)
+            .where(CheckRun.customer_id == customer_id)
+        )
+
+        if check_name:
+            base = base.where(FindingEvent.check_name == check_name)
+        if severity:
+            base = base.where(FindingEvent.severity == severity)
+        if account_id:
+            base = base.where(FindingEvent.account_id == account_id)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        total = self.session.execute(count_stmt).scalar_one()
+
+        stmt = (
+            base.options(selectinload(FindingEvent.account))
+            .order_by(FindingEvent.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        findings = list(self.session.execute(stmt).scalars().all())
+        return findings, total
+
     # -- Internal --
 
     def _get_run(self, check_run_id: str) -> CheckRun | None:
