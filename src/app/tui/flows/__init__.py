@@ -1,1 +1,1 @@
-"""Flow modules for interactive TUI actions."""
+"""Compatibility namespace for legacy src TUI flows."""

@@ -1,1 +1,1 @@
-"""AWS service wrappers."""
+"""Compatibility package for legacy src.providers.aws.services imports."""

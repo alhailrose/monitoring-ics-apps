@@ -89,6 +89,43 @@ def test_daily_budget_checker_marks_over_budget(monkeypatch):
     assert result["over_budget_count"] == 1
 
 
+def test_daily_budget_checker_respects_budget_filter_and_warn_percent(monkeypatch):
+    budgets = [
+        {
+            "BudgetName": "Budget-RDS-Only-CIS-Erha",
+            "TimeUnit": "DAILY",
+            "BudgetLimit": {"Amount": "100", "Unit": "USD"},
+            "CalculatedSpend": {"ActualSpend": {"Amount": "90", "Unit": "USD"}},
+        },
+        {
+            "BudgetName": "Ignore-This-Budget",
+            "TimeUnit": "DAILY",
+            "BudgetLimit": {"Amount": "100", "Unit": "USD"},
+            "CalculatedSpend": {"ActualSpend": {"Amount": "99", "Unit": "USD"}},
+        },
+    ]
+    client = _BudgetsClientStub(budgets, notifications_by_name={})
+
+    monkeypatch.setattr(
+        daily_budget.boto3,
+        "Session",
+        lambda profile_name, region_name=None: _SessionStub(client),
+        raising=False,
+    )
+
+    checker = DailyBudgetChecker(
+        region="ap-southeast-3",
+        budget_names=["Budget-RDS-Only-CIS-Erha"],
+        warn_percent=85,
+    )
+    result = checker.check("cis-erha", "451916275465")
+
+    assert len(result["items"]) == 1
+    assert result["items"][0]["budget_name"] == "Budget-RDS-Only-CIS-Erha"
+    assert result["threshold_exceeded_count"] == 1
+    assert result["items"][0]["threshold_hits"] == [85.0]
+
+
 def test_build_whatsapp_budget_formats_grouped_output():
     all_results = {
         "connect-prod": {

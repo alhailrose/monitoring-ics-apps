@@ -1,1 +1,1 @@
-"""Integration modules."""
+"""Compatibility package for legacy integrations imports."""

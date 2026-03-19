@@ -1,1 +1,1 @@
-"""Src-first runtime modules for CLI/TUI."""
+"""Compatibility package for legacy src.core.runtime imports."""

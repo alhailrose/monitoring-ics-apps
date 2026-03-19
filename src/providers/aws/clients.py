@@ -1,14 +1,7 @@
-"""AWS client factory helpers."""
+"""Compatibility module alias for legacy src.providers.aws.clients."""
 
-import boto3
+import sys
 
+from backend.infra.cloud.aws import clients as _impl
 
-def get_session(profile_name=None, region_name=None):
-    if profile_name:
-        return boto3.Session(profile_name=profile_name, region_name=region_name)
-    return boto3.Session(region_name=region_name)
-
-
-def get_client(service_name, profile_name=None, region_name=None):
-    session = get_session(profile_name=profile_name, region_name=region_name)
-    return session.client(service_name, region_name=region_name)
+sys.modules[__name__] = _impl

@@ -6,7 +6,7 @@ This is a development helper script to validate parser + job plumbing.
 
 from pathlib import Path
 
-from src.integrations.slack.app import SlackCommandService
+from backend.infra.notifications.slack.app import SlackCommandService
 from src.core.engine.job_store import JobStore
 
 

@@ -15,8 +15,8 @@ os.environ.setdefault(
     "postgresql+psycopg://monitor:monitor@localhost:5432/monitoring",
 )
 
-from src.db.session import build_session_factory
-from src.db.repositories.customer_repository import CustomerRepository
+from backend.infra.database.session import build_session_factory
+from backend.infra.database.repositories.customer_repository import CustomerRepository
 
 
 YAML_PATH = "configs/customers/aryanoble.yaml"
@@ -28,7 +28,14 @@ DEFAULT_CHECKS = ["cost", "guardduty", "cloudwatch", "notifications"]
 SKIP_PROFILES = {"sandbox", "prod-sandbox", "sandbox-ms-lebaran", "sandbox-ics"}
 
 CHECKS_OVERRIDE = {
-    "aryanoble": ["cost", "guardduty", "cloudwatch", "notifications", "backup", "daily-arbel"],
+    "aryanoble": [
+        "cost",
+        "guardduty",
+        "cloudwatch",
+        "notifications",
+        "backup",
+        "daily-arbel",
+    ],
 }
 
 CUSTOMER_NAME_MAP = {
@@ -104,7 +111,7 @@ def parse_aws_config_customers() -> dict:
         # Detect #Customer comment
         if stripped.lower().startswith("#customer "):
             flush_profile()
-            comment_name = stripped[len("#customer "):].strip().lower()
+            comment_name = stripped[len("#customer ") :].strip().lower()
             db_name = CUSTOMER_NAME_MAP.get(comment_name)
             if db_name:
                 display_name = CUSTOMER_DISPLAY_MAP.get(db_name, db_name)
@@ -118,7 +125,7 @@ def parse_aws_config_customers() -> dict:
         # Detect profile section header
         if stripped.startswith("[profile ") and stripped.endswith("]"):
             flush_profile()
-            current_profile = stripped[len("[profile "):-1].strip()
+            current_profile = stripped[len("[profile ") : -1].strip()
             current_account_id = None
             continue
 
@@ -183,7 +190,8 @@ def upsert_customer(
             for ya in yaml_accounts:
                 if ya.get("profile") == profile_name or ya.get("name") == profile_name:
                     config_extra = {
-                        k: v for k, v in ya.items()
+                        k: v
+                        for k, v in ya.items()
                         if k not in ("profile", "name", "account_id")
                     }
                     if not config_extra:
@@ -192,8 +200,12 @@ def upsert_customer(
 
         if profile_name in existing_accounts:
             acct = existing_accounts[profile_name]
-            repo.update_account(acct.id, account_id=account_id, config_extra=config_extra)
-            print(f"      [~] Account: {profile_name} ({account_id or 'no account_id'})")
+            repo.update_account(
+                acct.id, account_id=account_id, config_extra=config_extra
+            )
+            print(
+                f"      [~] Account: {profile_name} ({account_id or 'no account_id'})"
+            )
         else:
             repo.add_account(
                 customer_id=customer.id,
@@ -202,7 +214,9 @@ def upsert_customer(
                 account_id=account_id,
                 config_extra=config_extra,
             )
-            print(f"      [+] Account: {profile_name} ({account_id or 'no account_id'})")
+            print(
+                f"      [+] Account: {profile_name} ({account_id or 'no account_id'})"
+            )
 
 
 def main():
@@ -230,7 +244,7 @@ def main():
         ksni = repo.get_customer_by_name("ksni")
         if ksni:
             existing = {
-              a.profile_name
+                a.profile_name
                 for a in repo.get_accounts_by_customer(ksni.id, active_only=False)
             }
             for ep in KSNI_EXTRA_PROFILES:
@@ -241,7 +255,9 @@ def main():
                         display_name=ep["profile_name"],
                         account_id=ep["account_id"],
                     )
-                    print(f"  [+] KSNI account: {ep['profile_name']} ({ep['account_id']})")
+                    print(
+                        f"  [+] KSNI account: {ep['profile_name']} ({ep['account_id']})"
+                    )
                 else:
                     print(f"  [~] KSNI account already exists: {ep['profile_name']}")
         else:

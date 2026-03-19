@@ -1,1 +1,1 @@
-"""Schema validators for configuration."""
+"""Compatibility package for legacy src.configs.schema imports."""

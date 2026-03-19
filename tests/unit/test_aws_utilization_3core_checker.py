@@ -400,6 +400,17 @@ def test_discover_regions_prefers_profile_regions_configured():
     assert regions == ["ap-southeast-1", "eu-central-1"]
 
 
+def test_checker_accepts_threshold_overrides_from_config():
+    checker = AWSUtilization3CoreChecker(
+        thresholds={"cpu_warning": 60, "cpu_critical": 80},
+        memory_warning=70,
+    )
+
+    assert checker.thresholds["cpu_warning"] == 60.0
+    assert checker.thresholds["cpu_critical"] == 80.0
+    assert checker.thresholds["memory_warning"] == 70.0
+
+
 def test_list_instances_only_includes_running_instances():
     checker = AWSUtilization3CoreChecker()
 

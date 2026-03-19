@@ -1,1 +1,1 @@
-"""Route modules for API v1."""
+"""Compatibility namespace for legacy src API routes."""

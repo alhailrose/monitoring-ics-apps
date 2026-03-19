@@ -1,4 +1,4 @@
-"""Canonical TUI bootstrap exports."""
+"""Compatibility TUI bootstrap that delegates via src namespace."""
 
 
 def run_interactive():

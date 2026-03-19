@@ -1,4 +1,5 @@
 """AWS Backup status checker (jobs + vault activity + optional RDS snapshots)."""
+
 import logging
 import boto3
 from datetime import datetime, timedelta, timezone
@@ -20,9 +21,18 @@ RDS_ACCOUNTS: List[str] = ["iris-prod"]
 # Vaults to monitor per profile (subset from standalone script)
 VAULT_CONFIGS: List[Dict[str, str]] = [
     {"profile": "centralized-s3", "vault_name": "central-vault"},
-    {"profile": "backup-hris", "vault_name": "central-aws-backup-restricted-account-Feedoctor"},
-    {"profile": "backup-hris", "vault_name": "central-aws-backup-restricted-account-IRIS"},
-    {"profile": "backup-hris", "vault_name": "central-aws-backup-restricted-account-SFA"},
+    {
+        "profile": "backup-hris",
+        "vault_name": "central-aws-backup-restricted-account-Feedoctor",
+    },
+    {
+        "profile": "backup-hris",
+        "vault_name": "central-aws-backup-restricted-account-IRIS",
+    },
+    {
+        "profile": "backup-hris",
+        "vault_name": "central-aws-backup-restricted-account-SFA",
+    },
 ]
 
 
@@ -33,15 +43,35 @@ class BackupStatusChecker(BaseChecker):
     issue_label = "backup issues"
     recommendation_text = "BACKUP REVIEW: Investigate failed backup jobs"
 
-    def __init__(self, region: str = "ap-southeast-3"):
-        super().__init__(region)
+    def __init__(
+        self,
+        region: str = "ap-southeast-3",
+        vault_names=None,
+        monitor_rds_snapshots: bool | None = None,
+        max_job_details: int = 50,
+        **kwargs,
+    ):
+        super().__init__(region=region, **kwargs)
+        if isinstance(vault_names, str):
+            parsed = [x.strip() for x in vault_names.split(",")]
+            self.vault_names = [x for x in parsed if x]
+        elif isinstance(vault_names, list):
+            self.vault_names = [str(x).strip() for x in vault_names if str(x).strip()]
+        else:
+            self.vault_names = []
+        self.monitor_rds_snapshots = monitor_rds_snapshots
+        self.max_job_details = max(1, int(max_job_details))
 
     def _list_backup_jobs(self, session, since_utc: datetime) -> List[dict]:
         client = session.client("backup", region_name=self.region)
         jobs: List[dict] = []
         token: Optional[str] = None
         while True:
-            resp = client.list_backup_jobs(ByCreatedAfter=since_utc, NextToken=token) if token else client.list_backup_jobs(ByCreatedAfter=since_utc)
+            resp = (
+                client.list_backup_jobs(ByCreatedAfter=since_utc, NextToken=token)
+                if token
+                else client.list_backup_jobs(ByCreatedAfter=since_utc)
+            )
             jobs.extend(resp.get("BackupJobs", []))
             token = resp.get("NextToken")
             if not token:
@@ -72,7 +102,12 @@ class BackupStatusChecker(BaseChecker):
 
     def _vault_activity(self, session, profile: str) -> List[dict]:
         """Check configured vaults for recovery point activity in last 24h."""
-        vaults = [v for v in VAULT_CONFIGS if v["profile"] == profile]
+        if self.vault_names:
+            vaults = [
+                {"profile": profile, "vault_name": name} for name in self.vault_names
+            ]
+        else:
+            vaults = [v for v in VAULT_CONFIGS if v["profile"] == profile]
         results: List[dict] = []
         if not vaults:
             return results
@@ -103,12 +138,20 @@ class BackupStatusChecker(BaseChecker):
                     resp = client.list_recovery_points_by_backup_vault(**kwargs)
                     rps = resp.get("RecoveryPoints", [])
                     rp_24h += len(rps)
-                    resources_24h.extend([r.get("ResourceArn", "") for r in rps if r.get("ResourceArn")])
+                    resources_24h.extend(
+                        [r.get("ResourceArn", "") for r in rps if r.get("ResourceArn")]
+                    )
                     token = resp.get("NextToken")
                     if not token:
                         break
             except Exception as e:  # pragma: no cover
-                results.append({"vault_name": name, "error": str(e), "total_recovery_points": total_points})
+                results.append(
+                    {
+                        "vault_name": name,
+                        "error": str(e),
+                        "total_recovery_points": total_points,
+                    }
+                )
                 continue
 
             results.append(
@@ -129,7 +172,11 @@ class BackupStatusChecker(BaseChecker):
         count = 0
         token: Optional[str] = None
         while True:
-            resp = client.describe_db_snapshots(Marker=token) if token else client.describe_db_snapshots()
+            resp = (
+                client.describe_db_snapshots(Marker=token)
+                if token
+                else client.describe_db_snapshots()
+            )
             snaps = resp.get("DBSnapshots", [])
             for s in snaps:
                 ts = s.get("SnapshotCreateTime")
@@ -145,7 +192,9 @@ class BackupStatusChecker(BaseChecker):
             session = boto3.Session(profile_name=profile, region_name=self.region)
             # Use full previous day window in WIB (00:00–23:59 yesterday) for daily run
             now_jkt = datetime.now(JAKARTA_TZ)
-            start_jkt = (now_jkt - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start_jkt = (now_jkt - timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             since_utc = start_jkt.astimezone(timezone.utc)
             now_utc = now_jkt.astimezone(timezone.utc)
 
@@ -158,7 +207,12 @@ class BackupStatusChecker(BaseChecker):
             vaults = self._vault_activity(session, profile)
 
             rds_24h = 0
-            if profile in RDS_ACCOUNTS:
+            should_monitor_rds = (
+                self.monitor_rds_snapshots
+                if self.monitor_rds_snapshots is not None
+                else profile in RDS_ACCOUNTS
+            )
+            if should_monitor_rds:
                 rds_24h = self._rds_snapshots_24h(session)
 
             issues = []
@@ -167,30 +221,43 @@ class BackupStatusChecker(BaseChecker):
             if expired:
                 issues.append(f"{len(expired)} expired job(s)")
             if vaults:
-                no_activity = [v for v in vaults if v.get("recovery_points_24h", 0) == 0 and not v.get("error")]
+                no_activity = [
+                    v
+                    for v in vaults
+                    if v.get("recovery_points_24h", 0) == 0 and not v.get("error")
+                ]
                 if no_activity:
-                    issues.append(f"{len(no_activity)} vault(s) no recovery points in 24h")
+                    issues.append(
+                        f"{len(no_activity)} vault(s) no recovery points in 24h"
+                    )
                 vault_errors = [v for v in vaults if v.get("error")]
                 if vault_errors:
                     issues.append(f"{len(vault_errors)} vault error(s)")
-            if profile in RDS_ACCOUNTS and rds_24h == 0:
+            if should_monitor_rds and rds_24h == 0:
                 issues.append("No RDS snapshots in 24h")
 
             status = "ATTENTION REQUIRED" if issues else "OK"
 
             job_details = []
-            for j in jobs[:50]:  # capture more for per-account table (will slice later)
+            for j in jobs[: self.max_job_details]:
                 created = j.get("CreationDate")
+                created_wib = created
+                if isinstance(created, datetime):
+                    created_wib = created.astimezone(JAKARTA_TZ)
                 job_details.append(
                     {
                         "job_id": j.get("BackupJobId", ""),
                         "state": j.get("State", ""),
                         "resource": j.get("ResourceArn", ""),
-                        "resource_label": self._resource_label(j.get("ResourceArn", "")),
+                        "resource_label": self._resource_label(
+                            j.get("ResourceArn", "")
+                        ),
                         "type": j.get("ResourceType", ""),
-                        "reason": j.get("StatusMessage") or j.get("FailureMessage") or "",
+                        "reason": j.get("StatusMessage")
+                        or j.get("FailureMessage")
+                        or "",
                         "created": created,
-                        "created_wib": created.astimezone(JAKARTA_TZ) if hasattr(created, "astimezone") else created,
+                        "created_wib": created_wib,
                     }
                 )
 
@@ -207,6 +274,7 @@ class BackupStatusChecker(BaseChecker):
                 "expired_jobs": len(expired),
                 "vaults": vaults,
                 "rds_snapshots_24h": rds_24h,
+                "monitor_rds_snapshots": should_monitor_rds,
                 "issues": issues,
                 "job_details": job_details,
                 "backup_plans": plans,
@@ -230,12 +298,14 @@ class BackupStatusChecker(BaseChecker):
         lines = []
         lines.append("AWS BACKUP STATUS")
         lines.append(f"Region: {results.get('region')}")
-        if results.get("checked_at_utc"):
-            checked_wib = results['checked_at_utc'].astimezone(JAKARTA_TZ)
-            window_wib = results['window_start_utc'].astimezone(JAKARTA_TZ)
-            lines.append(
-                f"Checked at: {checked_wib.strftime('%Y-%m-%d %H:%M WIB')}"
-            )
+        checked_at_utc = results.get("checked_at_utc")
+        window_start_utc = results.get("window_start_utc")
+        if isinstance(checked_at_utc, datetime) and isinstance(
+            window_start_utc, datetime
+        ):
+            checked_wib = checked_at_utc.astimezone(JAKARTA_TZ)
+            window_wib = window_start_utc.astimezone(JAKARTA_TZ)
+            lines.append(f"Checked at: {checked_wib.strftime('%Y-%m-%d %H:%M WIB')}")
             lines.append(
                 f"Window: {window_wib.strftime('%Y-%m-%d %H:%M')} - {checked_wib.strftime('%Y-%m-%d %H:%M WIB')}"
             )
@@ -245,27 +315,35 @@ class BackupStatusChecker(BaseChecker):
 
         # Show failed/expired jobs first with details
         details = results.get("job_details", [])
-        failed_jobs = [j for j in details if j.get('state') in ['FAILED', 'EXPIRED']]
+        failed_jobs = [j for j in details if j.get("state") in ["FAILED", "EXPIRED"]]
         if failed_jobs:
             lines.append("")
             lines.append(f"⚠️ FAILED/EXPIRED JOBS ({len(failed_jobs)}):")
             for j in failed_jobs:
                 ts_wib = j.get("created_wib")
-                ts_str = ts_wib.strftime('%Y-%m-%d %H:%M WIB') if hasattr(ts_wib, 'strftime') else str(ts_wib)
-                reason = j.get('reason', 'No reason provided')
+                ts_str = (
+                    ts_wib.strftime("%Y-%m-%d %H:%M WIB")
+                    if hasattr(ts_wib, "strftime")
+                    else str(ts_wib)
+                )
+                reason = j.get("reason", "No reason provided")
                 lines.append(f"- {j.get('state')}: {j.get('resource_label', 'N/A')}")
                 lines.append(f"  Time: {ts_str}")
                 lines.append(f"  Reason: {reason}")
 
         # List sample successful jobs (up to 3)
         if details:
-            success_jobs = [j for j in details if j.get('state') == 'COMPLETED'][:3]
+            success_jobs = [j for j in details if j.get("state") == "COMPLETED"][:3]
             if success_jobs:
                 lines.append("")
                 lines.append("Recent successful jobs (up to 3):")
                 for j in success_jobs:
                     ts_wib = j.get("created_wib")
-                    ts_str = ts_wib.strftime('%Y-%m-%d %H:%M WIB') if hasattr(ts_wib, 'strftime') else str(ts_wib)
+                    ts_str = (
+                        ts_wib.strftime("%Y-%m-%d %H:%M WIB")
+                        if hasattr(ts_wib, "strftime")
+                        else str(ts_wib)
+                    )
                     lines.append(f"- {j.get('resource_label', 'N/A')} at {ts_str}")
 
         # Backup plans listing
@@ -288,7 +366,7 @@ class BackupStatusChecker(BaseChecker):
                     f"- {v['vault_name']}: {v.get('recovery_points_24h', 0)} new recovery point(s); total {v.get('total_recovery_points', 0)}"
                 )
 
-        if results.get("profile") in RDS_ACCOUNTS:
+        if results.get("monitor_rds_snapshots"):
             lines.append("")
             lines.append(f"RDS snapshots (24h): {results.get('rds_snapshots_24h', 0)}")
 
@@ -335,6 +413,8 @@ class BackupStatusChecker(BaseChecker):
                 account_id = result.get("account_id", "Unknown")
                 failed = result.get("failed_jobs", 0)
                 total = result.get("total_jobs", 0)
-                lines.append(f"  * {profile} ({account_id}): {failed} failed / {total} total jobs")
+                lines.append(
+                    f"  * {profile} ({account_id}): {failed} failed / {total} total jobs"
+                )
 
         return lines

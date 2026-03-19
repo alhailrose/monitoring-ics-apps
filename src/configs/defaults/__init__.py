@@ -1,1 +1,1 @@
-"""Built-in default configuration resources."""
+"""Compatibility package for legacy src.configs.defaults imports."""

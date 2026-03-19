@@ -6,6 +6,8 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
 - Folder structure roadmap: `docs/architecture/folder-structure.md`
 - Migration status: `docs/architecture/migration-status.md`
 - Target structure contract: `docs/architecture/target-structure-contract.md`
+- Backend living development plan (main checklist): `docs/development/backend-development-plan.md`
+- Frontend API contract: `docs/api/frontend-contract-v1.md`
 - Deployment flow (approval + rollback notes): `docs/operations/deployment-flow.md`
 - Single server runbook (web + api): `docs/operations/single-server-deploy.md`
 - Release evidence checklist per target: `docs/operations/release-checklist.md`
@@ -24,7 +26,8 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
 
 Platform sekarang mendukung fondasi dual-interface:
 - TUI existing tetap dipakai untuk operasional harian.
-- API FastAPI tersedia di `src/app/api/main.py`.
+- API FastAPI tersedia di `backend/interfaces/api/main.py`.
+- Execution policy split: TUI runs are non-persistent, API runs are persistent.
 - Tidak ada worker terpisah pada runtime compose saat ini (eksekusi lewat API service layer).
 - Web runtime tetap di folder `web/` (Vite), scaffold migrasi ada di `apps/web/`.
 - Stack single server aktif: `postgres + api + nginx` di `infra/docker/docker-compose.yml`.
@@ -84,6 +87,13 @@ docker compose -f infra/docker/docker-compose.yml config
 - Health probes diperjelas: `GET /health`, `GET /health/liveness`, `GET /health/readiness` (DB readiness).
 - API menambahkan baseline observability: request ID (`x-request-id`) dan request duration logging.
 - API sekarang mendukung guard API key opsional (`API_AUTH_ENABLED`, `API_KEYS`, `API_KEY_HEADER`) untuk seluruh route `/api/v1/*`.
+
+### Frontend contract hardening (Phase 4)
+
+- Kontrak frontend v1 distabilkan untuk endpoint `runs/findings/metrics/dashboard` di `docs/api/frontend-contract-v1.md`.
+- Endpoint agregasi dashboard tersedia di `GET /api/v1/dashboard/summary`.
+- Endpoint metrik ter-normalisasi tersedia di `GET /api/v1/metrics`.
+- Ditambahkan integration test stabilitas kontrak API: `tests/integration/test_api_contract_stability.py`.
 
 ## Quick Start (3 langkah)
 1) Install aplikasi via pipx:
@@ -218,7 +228,7 @@ Catatan:
 
 ### B) Untuk update default tim di repository
 Jika akun baru harus jadi default untuk semua user tim:
-- Edit `src/core/runtime/config_loader.py`:
+- Edit `backend/domain/runtime/config_loader.py`:
   - `DEFAULT_PROFILE_GROUPS`
   - `DEFAULT_DISPLAY_NAMES`
 - Untuk akun customer Aryanoble (supaya report backup/daily konsisten), update juga:

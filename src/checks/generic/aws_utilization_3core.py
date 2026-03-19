@@ -27,6 +27,17 @@ class AWSUtilization3CoreChecker(BaseChecker):
         self.util_hours = int(kwargs.get("util_hours", 12))
         self.period_seconds = int(kwargs.get("period_seconds", 300))
         self.thresholds = dict(DEFAULT_THRESHOLDS)
+        threshold_overrides = kwargs.get("thresholds")
+        if isinstance(threshold_overrides, dict):
+            for key, value in threshold_overrides.items():
+                if key in self.thresholds and isinstance(value, (int, float)):
+                    self.thresholds[key] = float(value)
+
+        for key in self.thresholds:
+            override = kwargs.get(key)
+            if isinstance(override, (int, float)):
+                self.thresholds[key] = float(override)
+
         self.profile_regions = dict(kwargs.get("profile_regions", {}) or {})
 
     @staticmethod

@@ -1,5 +1,6 @@
 """Daily Arbel checker (ACU/CPU/FreeableMemory/Connections) with thresholds per account."""
 
+from copy import deepcopy
 import logging
 import re
 import boto3
@@ -339,6 +340,80 @@ class DailyArbelChecker(BaseChecker):
             normalized_scope = "both"
         self.section_scope = normalized_scope
 
+        override_source = {}
+        nested_override = kwargs.get("daily_arbel")
+        if isinstance(nested_override, dict):
+            override_source.update(nested_override)
+
+        for key in (
+            "account_name",
+            "cluster_id",
+            "service_type",
+            "instances",
+            "instance_names",
+            "metrics",
+            "thresholds",
+            "role_thresholds",
+            "alarm_thresholds",
+            "extra_sections",
+        ):
+            if key in kwargs:
+                override_source[key] = kwargs[key]
+
+        self.account_config_override = (
+            override_source if isinstance(override_source, dict) else {}
+        )
+
+    def _apply_account_config_override(self, cfg, profile):
+        override = self.account_config_override
+        if not override:
+            return cfg
+
+        if cfg is None:
+            cfg_map: dict[str, object] = {
+                "account_name": profile,
+                "cluster_id": None,
+                "service_type": "rds",
+                "instances": {},
+                "instance_names": {},
+                "metrics": [],
+                "thresholds": {},
+                "role_thresholds": {},
+                "alarm_thresholds": {},
+                "extra_sections": [],
+            }
+        else:
+            cfg_map = deepcopy(cfg)
+            if not isinstance(cfg_map, dict):
+                cfg_map = {}
+
+        for key in ("account_name", "cluster_id", "service_type"):
+            value = override.get(key)
+            if value is not None:
+                cfg_map[key] = value
+
+        for key in (
+            "instances",
+            "instance_names",
+            "thresholds",
+            "role_thresholds",
+            "alarm_thresholds",
+        ):
+            value = override.get(key)
+            if isinstance(value, dict):
+                current = cfg_map.get(key)
+                if not isinstance(current, dict):
+                    current = {}
+                current.update(deepcopy(value))
+                cfg_map[key] = current
+
+        for key in ("metrics", "extra_sections"):
+            value = override.get(key)
+            if isinstance(value, list):
+                cfg_map[key] = deepcopy(value)
+
+        return cfg_map
+
     def _fetch_metrics(
         self, cw_client, instance_id, metric_names, profile=None, service_type="rds"
     ):
@@ -400,7 +475,7 @@ class DailyArbelChecker(BaseChecker):
         if customer_account:
             daily = customer_account.get("daily_arbel") or {}
             extra_sections = customer_account.get("daily_arbel_extra") or []
-            return {
+            base_cfg = {
                 "account_name": customer_account.get("display_name", profile),
                 "cluster_id": daily.get("cluster_id"),
                 "service_type": daily.get("service_type", "rds"),
@@ -412,13 +487,14 @@ class DailyArbelChecker(BaseChecker):
                 "alarm_thresholds": daily.get("alarm_thresholds", {}),
                 "extra_sections": extra_sections,
             }
+            return self._apply_account_config_override(base_cfg, profile)
 
         legacy = ACCOUNT_CONFIG.get(profile)
         if not legacy:
-            return None
+            return self._apply_account_config_override(None, profile)
         cfg = dict(legacy)
         cfg.setdefault("extra_sections", [])
-        return cfg
+        return self._apply_account_config_override(cfg, profile)
 
     def _alarm_threshold_for_role(
         self, cw_client, profile, role, metric_name, cfg=None

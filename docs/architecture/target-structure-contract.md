@@ -4,11 +4,11 @@ This contract defines mandatory architecture rules during migration to a scalabl
 
 ## Canonical target layout
 
-- `src/app/` for delivery channels (`cli`, `tui`, `api`)
-- `src/core/` for orchestration, models, and formatting
-- `src/providers/` for external services integration (AWS)
-- `src/checks/` split by domain and customer
-- `src/configs/` for defaults and schema
+- `backend/interfaces/` for delivery channels (`cli`, `api`)
+- `backend/domain/` for orchestration/runtime/services
+- `backend/infra/` for external integrations (AWS, DB, Slack)
+- `src/checks/` split by domain and customer (until checks layer migration)
+- `backend/config/` for defaults and schema
 - `tests/unit` and `tests/integration`
 
 ## Non-negotiable migration rules
@@ -21,7 +21,7 @@ This contract defines mandatory architecture rules during migration to a scalabl
 
 ## Compatibility wrapper lifecycle
 
-1. Create canonical implementation under `src/`.
+1. Create canonical implementation under `backend/`.
 2. Convert legacy module into thin re-export wrapper.
 3. Switch imports progressively to canonical paths.
 4. Remove wrapper after no runtime references remain.

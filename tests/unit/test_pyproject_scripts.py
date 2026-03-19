@@ -1,0 +1,12 @@
+from pathlib import Path
+
+
+def test_pyproject_scripts_point_to_compatible_entrypoint():
+    content = Path("pyproject.toml").read_text(encoding="utf-8")
+    assert 'monitoring-hub = "src.app.cli.main:main"' in content
+    assert 'monitoring-hub-dev = "src.app.cli.main:main"' in content
+
+
+def test_setuptools_includes_new_namespace_package():
+    content = Path("pyproject.toml").read_text(encoding="utf-8")
+    assert 'include = ["src*", "backend*"]' in content

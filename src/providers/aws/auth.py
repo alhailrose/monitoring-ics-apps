@@ -1,10 +1,7 @@
-"""AWS auth helper placeholders for AssumeRole workflow."""
+"""Compatibility module alias for legacy src.providers.aws.auth."""
 
+import sys
 
-def resolve_execution_identity(profile_name=None, role_arn=None):
-    execution_mode = "assume-role" if role_arn else "profile"
-    return {
-        "execution_mode": execution_mode,
-        "profile_name": profile_name,
-        "role_arn": role_arn,
-    }
+from backend.infra.cloud.aws import auth as _impl
+
+sys.modules[__name__] = _impl

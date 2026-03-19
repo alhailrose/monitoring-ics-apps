@@ -78,3 +78,36 @@ def test_cis_erha_daily_arbel_extra_contains_ec2_memory_alarm():
     assert rabbitmq.get("alarm_thresholds", {}).get("rabbitmq") == [
         "CIS RabbitMQ - Memory Alarm"
     ]
+
+
+def test_resolve_account_config_applies_runtime_overrides_from_check_config(
+    monkeypatch,
+):
+    checker = DailyArbelChecker(
+        region="ap-southeast-3",
+        window_hours=3,
+        daily_arbel={
+            "instances": {"writer": "override-instance"},
+            "thresholds": {"CPUUtilization": 65},
+            "metrics": ["CPUUtilization"],
+        },
+    )
+
+    monkeypatch.setattr(
+        "src.checks.aryanoble.daily_arbel.find_customer_account",
+        lambda customer_id, account_id: {
+            "account_id": account_id,
+            "display_name": "Custom Alias",
+            "daily_arbel": {
+                "instances": {"writer": "base-instance"},
+                "metrics": ["CPUUtilization"],
+                "thresholds": {"CPUUtilization": 75},
+            },
+        },
+    )
+
+    cfg = checker._resolve_account_config("connect-prod", "620463044477")
+
+    assert cfg is not None
+    assert cfg["instances"]["writer"] == "override-instance"
+    assert cfg["thresholds"]["CPUUtilization"] == 65

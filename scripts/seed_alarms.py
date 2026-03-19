@@ -13,8 +13,8 @@ os.environ.setdefault(
     "postgresql+psycopg://monitor:monitor@localhost:5432/monitoring",
 )
 
-from src.db.session import build_session_factory
-from src.db.repositories.customer_repository import CustomerRepository
+from backend.infra.database.session import build_session_factory
+from backend.infra.database.repositories.customer_repository import CustomerRepository
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
