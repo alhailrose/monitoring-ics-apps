@@ -44,7 +44,7 @@ This is the main living plan for backend evolution.
 | 2 | Normalize backup reliability events | completed |
 | 3 | Normalize utilization and globalize config-driven checks | completed |
 | 4 | Finalize remaining checks + frontend API contract | completed |
-| 4.5 | Foldering and docs alignment (pre-Phase 5) | planned |
+| 4.5 | Foldering and docs alignment (pre-Phase 5) | completed |
 | 5 | Authentication and AWS connection lifecycle hardening | planned |
 
 ## Detailed checklist
@@ -166,3 +166,4 @@ This is the main living plan for backend evolution.
 - 2026-03-19: Added `backend/checks/*` bridge namespace and switched backend runtime imports away from direct `src.checks.*` dependencies.
 - 2026-03-19: Migrated checker implementations to `backend/checks/*` and converted `src/checks/*` to compatibility aliases.
 - 2026-03-19: Finalized checks cutover by removing `src/checks/*` package and updating imports/tests to `backend/checks/*`.
+- 2026-03-19: Updated Phase overview status to completed for Phase 4.5 after cutover verification.
