@@ -1,6 +1,7 @@
-"""Aryanoble-specific checks."""
+"""Compatibility module alias for legacy src.checks path."""
 
-from src.checks.aryanoble.alarm_verification import AlarmVerificationChecker
-from src.checks.aryanoble.daily_arbel import DailyArbelChecker
+import sys
 
-__all__ = ["DailyArbelChecker", "AlarmVerificationChecker"]
+import backend.checks.aryanoble as _impl
+
+sys.modules[__name__] = _impl

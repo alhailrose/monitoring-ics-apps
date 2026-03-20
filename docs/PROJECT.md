@@ -7,7 +7,7 @@ Monitoring Hub adalah platform monitoring AWS terpusat untuk multiple customer. 
 1. **TUI (Terminal User Interface)** — interface interaktif berbasis terminal, dijalankan langsung di mesin operator
 2. **Web Platform** — REST API (FastAPI) + frontend React, dapat diakses via browser
 
-Keduanya menjalankan check yang sama dari `src/checks/`, tetapi orchestration/interface kanonis ada di `backend/*`.
+Keduanya menjalankan check yang sama dari `backend/checks/`, dengan `src/checks/` sebagai compatibility wrapper.
 
 ## Status Operasional (sumber kebenaran harian)
 
@@ -72,7 +72,7 @@ Terminal
 TUI (Textual) / CLI
   └── backend/interfaces/cli/main.py
         └── backend/domain/runtime/*
-              └── src/checks/**
+              └── backend/checks/**
 ```
 
 ### Web Platform

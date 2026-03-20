@@ -1,1 +1,1 @@
-"""Shared check primitives (backend canonical namespace)."""
+"""Shared check primitives."""

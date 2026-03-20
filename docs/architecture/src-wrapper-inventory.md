@@ -6,7 +6,7 @@ Dokumen ini memetakan status `src/*` untuk cleanup foldering bertahap tanpa brea
 
 - Wrapper terdeteksi: 51 file (`src/*` non-checks, re-export/delegation ke `backend/*`).
 - Non-wrapper terdeteksi: 25 file (`__init__`, formatting/check runtime legacy, dan modul transisi lain).
-- `src/checks/*` tetap aktif dan belum masuk batch removal.
+- `src/checks/*` telah dikonversi menjadi compatibility wrapper ke `backend/checks/*`.
 
 ## Wrapper yang aman dipertahankan sementara
 
@@ -42,6 +42,6 @@ Kriteria hapus:
 
 ## Guardrail eksekusi
 
-- Jangan hapus `src/checks/*` di batch foldering ini.
+- Jangan hapus `src/checks/*` sebelum seluruh consumer eksternal sudah pindah ke `backend/checks/*`.
 - Jangan ubah entrypoint publik `monitoring-hub` sebelum migration gate disetujui.
 - Setiap batch removal wajib verifikasi `pytest -q`.

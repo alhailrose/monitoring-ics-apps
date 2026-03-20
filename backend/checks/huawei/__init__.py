@@ -1,5 +1,5 @@
-"""Huawei cloud checks (backend canonical namespace)."""
+"""Huawei cloud checks."""
 
-from backend.checks.huawei.ecs_utilization import HuaweiECSUtilizationChecker
+from .ecs_utilization import HuaweiECSUtilizationChecker
 
 __all__ = ["HuaweiECSUtilizationChecker"]

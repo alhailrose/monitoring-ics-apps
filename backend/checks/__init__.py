@@ -1,1 +1,1 @@
-"""Canonical checks namespace (migrating from src.checks)."""
+"""Checks package split by domain/customer."""

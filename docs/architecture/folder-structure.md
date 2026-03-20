@@ -15,7 +15,8 @@ This keeps existing execution paths stable while enabling path-based CI/CD separ
 ## Current high-level modules
 
 - `backend/`: canonical API/CLI interfaces, domain runtime/services, infra, and config
-- `src/checks/`: checker implementations (current active location)
+- `backend/checks/`: checker implementations (canonical)
+- `src/checks/`: compatibility wrappers for legacy imports
 - `tests/`: test coverage for checks and report formatting
 
 ## Target structure

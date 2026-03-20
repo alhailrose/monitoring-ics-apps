@@ -1,5 +1,7 @@
-"""Huawei cloud checks."""
+"""Compatibility module alias for legacy src.checks path."""
 
-from .ecs_utilization import HuaweiECSUtilizationChecker
+import sys
 
-__all__ = ["HuaweiECSUtilizationChecker"]
+import backend.checks.huawei as _impl
+
+sys.modules[__name__] = _impl

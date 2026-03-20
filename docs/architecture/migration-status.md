@@ -10,7 +10,7 @@ Reference contract: `docs/architecture/target-structure-contract.md`
 - Canonical interface/runtime modules live under `backend/`:
   - API: `backend/interfaces/api/*`
   - CLI/TUI: `backend/interfaces/cli/*`
-  - Runtime checks import path: `backend/checks/*` (bridge layer)
+  - Checks implementation: `backend/checks/*`
   - Runner engine: `backend/domain/engine/*`
   - Runner models: `backend/domain/models/*`
   - Report formatting: `backend/domain/formatting/reports.py`
@@ -25,6 +25,7 @@ Reference contract: `docs/architecture/target-structure-contract.md`
   - removed: `monitoring_hub/*`
   - removed: `checks/*`
 - Runtime code points to `backend/*` canonical paths, with `src/app/*` maintained as compatibility wrappers.
+- Runtime checks now point to `backend/checks/*`; `src/checks/*` remains compatibility wrappers.
 
 ## Validation coverage
 

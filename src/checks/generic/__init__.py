@@ -1,21 +1,7 @@
-"""Generic reusable checks across customers."""
+"""Compatibility module alias for legacy src.checks path."""
 
-from src.checks.generic.backup_status import BackupStatusChecker
-from src.checks.generic.aws_utilization_3core import AWSUtilization3CoreChecker
-from src.checks.generic.cloudwatch_alarms import CloudWatchAlarmChecker
-from src.checks.generic.cost_anomalies import CostAnomalyChecker
-from src.checks.generic.ec2_list import EC2ListChecker
-from src.checks.generic.guardduty import GuardDutyChecker
-from src.checks.generic.health_events import HealthChecker
-from src.checks.generic.notifications import NotificationChecker
+import sys
 
-__all__ = [
-    "HealthChecker",
-    "CostAnomalyChecker",
-    "GuardDutyChecker",
-    "CloudWatchAlarmChecker",
-    "NotificationChecker",
-    "BackupStatusChecker",
-    "EC2ListChecker",
-    "AWSUtilization3CoreChecker",
-]
+import backend.checks.generic as _impl
+
+sys.modules[__name__] = _impl

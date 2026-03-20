@@ -6,7 +6,8 @@ Dokumen ini menjelaskan struktur folder yang berlaku saat ini agar sesi lanjutan
 
 - `backend/*` adalah implementasi kanonis (source of truth runtime).
 - `src/*` dipertahankan sebagai compatibility layer bertahap.
-- `src/checks/*` masih aktif sebagai lokasi checker saat ini.
+- `backend/checks/*` adalah lokasi checker kanonis.
+- `src/checks/*` hanya compatibility wrapper untuk import legacy.
 - Wrapper di `src/*` hanya boleh mendelegasikan ke `backend/*` (tanpa logika baru).
 
 ## Struktur operasional saat ini
@@ -23,7 +24,7 @@ backend/
 
 src/
   app/          # compatibility wrappers ke backend/interfaces + backend/domain
-  checks/       # active check implementations
+  checks/       # compatibility wrappers ke backend/checks
   core|db|integrations|providers  # legacy paths (wrapper/compat bertahap)
 ```
 
