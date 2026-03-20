@@ -1,3 +1,5 @@
+import pytest
+
 from src.app.tui import interactive
 from src.app.tui import bootstrap
 
@@ -181,7 +183,7 @@ def test_customer_report_dispatches_flow(monkeypatch):
 
 
 def test_customer_report_cancelled_does_not_pause(monkeypatch):
-    """Jika user cancel/back dari Customer Report, jangan tampilkan pause."""
+    """Jika user cancel/back dari Customer Report, tetap tampilkan pause sebelum kembali ke menu."""
     from src.app.tui import common
 
     selections = iter(["customer", "exit"])
@@ -206,7 +208,44 @@ def test_customer_report_cancelled_does_not_pause(monkeypatch):
     interactive.run_interactive()
 
     assert calls["customer"] == 1
-    assert calls["pause"] == 0
+    assert calls["pause"] == 1
+
+
+@pytest.mark.parametrize(
+    "main_choice,action_attr,counter_key",
+    [
+        ("quick", "_run_quick_check", "quick"),
+        ("huawei_check", "_run_huawei_menu", "huawei"),
+        ("aryanoble", "run_aryanoble", "aryanoble"),
+    ],
+)
+def test_main_action_menus_pause_before_return(
+    monkeypatch, main_choice, action_attr, counter_key
+):
+    from src.app.tui import common
+
+    selections = iter([main_choice, "exit"])
+    calls = {counter_key: 0, "pause": 0}
+
+    monkeypatch.setattr(
+        common, "_select_prompt", lambda *args, **kwargs: next(selections)
+    )
+    monkeypatch.setattr(
+        common, "_pause", lambda: calls.__setitem__("pause", calls["pause"] + 1)
+    )
+    monkeypatch.setattr(interactive.console, "clear", lambda: None)
+    monkeypatch.setattr(interactive, "print_banner", lambda **kwargs: None)
+    monkeypatch.setattr(interactive, "_render_main_dashboard", lambda: None)
+    monkeypatch.setattr(
+        interactive,
+        action_attr,
+        lambda: calls.__setitem__(counter_key, calls[counter_key] + 1),
+    )
+
+    interactive.run_interactive()
+
+    assert calls[counter_key] == 1
+    assert calls["pause"] == 1
 
 
 def test_main_menu_shows_huawei_check_label(monkeypatch):

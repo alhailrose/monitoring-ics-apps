@@ -460,9 +460,8 @@ def run_interactive():
             continue
 
         if main_choice == "customer":
-            did_run = run_customer_report()
-            if did_run:
-                common._pause()
+            run_customer_report()
+            common._pause()
             clear_before_menu = False
             continue
 
