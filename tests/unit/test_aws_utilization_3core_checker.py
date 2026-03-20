@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from src.checks.generic.aws_utilization_3core import AWSUtilization3CoreChecker
+from backend.checks.generic.aws_utilization_3core import AWSUtilization3CoreChecker
 
 
 def test_collect_instance_metrics_returns_partial_data_when_memory_missing(monkeypatch):

@@ -1,4 +1,4 @@
-from src.checks.aryanoble.daily_arbel import ACCOUNT_CONFIG, DailyArbelChecker
+from backend.checks.aryanoble.daily_arbel import ACCOUNT_CONFIG, DailyArbelChecker
 from datetime import datetime, timedelta, timezone
 
 
@@ -419,7 +419,7 @@ def test_check_rds_scope_skips_extra_ec2_section(monkeypatch):
             return object()
 
     monkeypatch.setattr(
-        "src.checks.aryanoble.daily_arbel.boto3.Session",
+        "backend.checks.aryanoble.daily_arbel.boto3.Session",
         lambda *args, **kwargs: _SessionStub(),
     )
 
@@ -472,7 +472,7 @@ def test_check_ec2_scope_skips_rds_section(monkeypatch):
             return object()
 
     monkeypatch.setattr(
-        "src.checks.aryanoble.daily_arbel.boto3.Session",
+        "backend.checks.aryanoble.daily_arbel.boto3.Session",
         lambda *args, **kwargs: _SessionStub(),
     )
 
@@ -515,7 +515,7 @@ def test_check_rds_scope_skips_primary_ec2_account(monkeypatch):
             return object()
 
     monkeypatch.setattr(
-        "src.checks.aryanoble.daily_arbel.boto3.Session",
+        "backend.checks.aryanoble.daily_arbel.boto3.Session",
         lambda *args, **kwargs: _SessionStub(),
     )
 

@@ -1,6 +1,6 @@
 import pytest
 
-from src.checks.huawei.ecs_utilization import HuaweiECSUtilizationChecker
+from backend.checks.huawei.ecs_utilization import HuaweiECSUtilizationChecker
 
 
 def _first_non_empty_line(lines):

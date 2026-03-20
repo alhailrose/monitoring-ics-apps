@@ -1,4 +1,4 @@
-from src.checks.generic.aws_utilization_3core import AWSUtilization3CoreChecker
+from backend.checks.generic.aws_utilization_3core import AWSUtilization3CoreChecker
 
 
 def _first_non_empty_line(lines):

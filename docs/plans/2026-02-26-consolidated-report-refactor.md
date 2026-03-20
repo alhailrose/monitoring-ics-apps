@@ -89,12 +89,12 @@ Identical to current. No visible change.
 
 ## Files to modify
 
-1. `src/checks/common/base.py` — add default methods/properties
-2. `src/checks/generic/cost_anomalies.py` — implement 3 methods
-3. `src/checks/generic/guardduty.py` — implement 3 methods
-4. `src/checks/generic/cloudwatch_alarms.py` — implement 3 methods
-5. `src/checks/generic/notifications.py` — implement 3 methods
-6. `src/checks/generic/backup_status.py` — implement 3 methods
-7. `src/checks/aryanoble/daily_arbel.py` — implement 3 methods
+1. `backend/checks/common/base.py` — add default methods/properties
+2. `backend/checks/generic/cost_anomalies.py` — implement 3 methods
+3. `backend/checks/generic/guardduty.py` — implement 3 methods
+4. `backend/checks/generic/cloudwatch_alarms.py` — implement 3 methods
+5. `backend/checks/generic/notifications.py` — implement 3 methods
+6. `backend/checks/generic/backup_status.py` — implement 3 methods
+7. `backend/checks/aryanoble/daily_arbel.py` — implement 3 methods
 8. `src/core/runtime/runners.py` — genericize run_all_checks, _print_simple_report, _print_detailed_report
 9. `src/app/tui/flowomer.py` — remove CONSOLIDATED_CHECKS, use supports_consolidated

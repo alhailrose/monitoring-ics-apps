@@ -1,4 +1,4 @@
-from src.checks.generic.cost_anomalies import CostAnomalyChecker
+from backend.checks.generic.cost_anomalies import CostAnomalyChecker
 
 
 def test_cost_anomaly_report_shows_latest_and_previous_day_context():

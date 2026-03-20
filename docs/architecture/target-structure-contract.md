@@ -8,7 +8,7 @@ This contract defines mandatory architecture rules during migration to a scalabl
 - `backend/domain/` for orchestration/runtime/services
 - `backend/infra/` for external integrations (AWS, DB, Slack)
 - `backend/checks/` split by domain and customer (canonical)
-- `src/checks/` kept only as temporary compatibility wrappers
+- `backend/checks/` kept only as temporary compatibility wrappers
 - `backend/config/` for defaults and schema
 - `tests/unit` and `tests/integration`
 

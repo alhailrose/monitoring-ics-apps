@@ -25,7 +25,7 @@ Reference contract: `docs/architecture/target-structure-contract.md`
   - removed: `monitoring_hub/*`
   - removed: `checks/*`
 - Runtime code points to `backend/*` canonical paths, with `src/app/*` maintained as compatibility wrappers.
-- Runtime checks now point to `backend/checks/*`; `src/checks/*` remains compatibility wrappers.
+- Runtime checks now point to `backend/checks/*`; `backend/checks/*` remains compatibility wrappers.
 
 ## Validation coverage
 

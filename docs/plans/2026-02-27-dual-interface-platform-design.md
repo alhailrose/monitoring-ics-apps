@@ -28,7 +28,7 @@ The check engine remains shared, with no duplicated business logic between TUI a
 Recommended architecture: Shared Core + Dual Interface
 
 1. Core Engine (existing)
-   - `src/checks/*`
+   - `backend/checks/*`
    - `src/core/runtime/*`
    - Source of truth for check logic and evaluation
 
@@ -98,7 +98,7 @@ Persistent volumes:
 Keep existing engine structure and add clear app/runtime boundaries:
 
 - `src/core/` (engine/shared runtime)
-- `src/checks/` (domain checks)
+- `backend/checks/` (domain checks)
 - `src/app/tui/` (existing interface)
 - `src/app/api/` (new API)
 - `src/app/worker/` (new worker)

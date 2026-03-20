@@ -1,4 +1,4 @@
-from src.checks.generic.guardduty import GuardDutyChecker
+from backend.checks.generic.guardduty import GuardDutyChecker
 
 
 def test_count_issues_ignores_low_severity_details():

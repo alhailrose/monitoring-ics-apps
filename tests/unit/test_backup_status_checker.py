@@ -1,4 +1,4 @@
-from src.checks.generic.backup_status import BackupStatusChecker
+from backend.checks.generic.backup_status import BackupStatusChecker
 
 
 def test_vault_activity_uses_configured_vault_names_override():
@@ -35,7 +35,7 @@ def test_check_skips_rds_snapshot_check_when_disabled(monkeypatch):
     checker = BackupStatusChecker(monitor_rds_snapshots=False)
 
     monkeypatch.setattr(
-        "src.checks.generic.backup_status.boto3.Session",
+        "backend.checks.generic.backup_status.boto3.Session",
         lambda profile_name, region_name=None: object(),
     )
     monkeypatch.setattr(checker, "_list_backup_jobs", lambda *_args, **_kwargs: [])

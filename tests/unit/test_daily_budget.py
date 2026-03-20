@@ -1,5 +1,5 @@
-import src.checks.aryanoble.daily_budget as daily_budget
-from src.checks.aryanoble.daily_budget import DailyBudgetChecker
+import backend.checks.aryanoble.daily_budget as daily_budget
+from backend.checks.aryanoble.daily_budget import DailyBudgetChecker
 from src.core.runtime.reports import build_whatsapp_budget
 
 

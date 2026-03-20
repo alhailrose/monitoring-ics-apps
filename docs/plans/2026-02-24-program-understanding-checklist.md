@@ -25,9 +25,9 @@ Goal: establish shared understanding of the current codebase before new feature 
   - `src/core/runtime/runners.py` parallel execution + report assembly
   - `src/core/runtime/reports.py` WA-ready message builders
 - Checks:
-  - generic checks: `src/checks/generic/*`
-  - customer-specific checks: `src/checks/aryanoble/*`
-  - checker pattern via `BaseChecker` in `src/checks/common/base.py`
+  - generic checks: `backend/checks/generic/*`
+  - customer-specific checks: `backend/checks/aryanoble/*`
+  - checker pattern via `BaseChecker` in `backend/checks/common/base.py`
 - Integrations:
   - Slack notifier via webhook routes in `src/integrations/slack/notifier.py`
 - Runner-ready foundation:
@@ -54,7 +54,7 @@ Goal: establish shared understanding of the current codebase before new feature 
 ## 5) Risk/hotspot map (before changing code)
 
 - `src/core/runtime/runners.py` is large and mixes orchestration + output formatting.
-- `src/checks/aryanoble/daily_arbel.py` is large and contains complex threshold + alarm period logic.
+- `backend/checks/aryanoble/daily_arbel.py` is large and contains complex threshold + alarm period logic.
 - Many checks return free-form dict payloads; schema drift risk between `check()` and `format_report()`.
 - Some logic depends on static account/profile mappings; customer config consistency is critical.
 
@@ -95,7 +95,7 @@ Use this before implementing any new feature/changes:
 4. Strengthen config validation to catch bad customer/slack config early.
    - files: `src/configs/schema/validator.py`, `src/configs/schema/customer-config.schema.yaml`
 5. Replace silent `except: pass` patterns with structured warning/error handling.
-   - files: `src/checks/generic/cost_anomalies.py`, `src/checks/generic/backup_status.py`, `src/checks/aryanoble/daily_arbel.py`
+   - files: `backend/checks/generic/cost_anomalies.py`, `backend/checks/generic/backup_status.py`, `backend/checks/aryanoble/daily_arbel.py`
 
 ### High-risk refactors (plan carefully)
 
@@ -132,7 +132,7 @@ Use this before implementing any new feature/changes:
 
 ### Runtime/check flow
 
-- `src/core/runtime/config.py` imports concrete check classes from `src/checks/*` and builds registry.
+- `src/core/runtime/config.py` imports concrete check classes from `backend/checks/*` and builds registry.
 - `src/core/runtime/runners.py` resolves checker class -> calls `check()` -> calls `format_report()`.
 - `src/core/runtime/runners.py` also imports `src/integrations/slack/notifier.py` for optional outbound delivery.
 - `src/integrations/slack/notifier.py` reads routes via `src/core/runtime/config_loader.py`.

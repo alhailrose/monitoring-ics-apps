@@ -1,4 +1,4 @@
-from src.checks.generic.aws_utilization_status import classify_instance_status
+from backend.checks.generic.aws_utilization_status import classify_instance_status
 
 
 def test_classify_instance_status_critical_cpu():

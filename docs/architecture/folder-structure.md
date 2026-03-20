@@ -16,7 +16,7 @@ This keeps existing execution paths stable while enabling path-based CI/CD separ
 
 - `backend/`: canonical API/CLI interfaces, domain runtime/services, infra, and config
 - `backend/checks/`: checker implementations (canonical)
-- `src/checks/`: compatibility wrappers for legacy imports
+- `backend/checks/`: compatibility wrappers for legacy imports
 - `tests/`: test coverage for checks and report formatting
 
 ## Target structure

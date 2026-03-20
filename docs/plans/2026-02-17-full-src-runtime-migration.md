@@ -26,9 +26,9 @@
 - Modify: `src/app/cli/main.py`
 - Modify: `src/app/cli/bootstrap.py`
 - Modify: `src/app/tui/interactive.py`
-- Modify: `src/checks/common/base.py`
-- Modify: `src/checks/generic/*.py`
-- Modify: `src/checks/aryanoble/*.py`
+- Modify: `backend/checks/common/base.py`
+- Modify: `backend/checks/generic/*.py`
+- Modify: `backend/checks/aryanoble/*.py`
 - Modify: `src/core/formatting/reports.py`
 - Create: `src/core/runtime/config.py`, `src/core/runtime/config_loader.py`, `src/core/runtime/utils.py`, `src/core/runtime/ui.py`, `src/core/runtime/runners.py`, `src/core/runtime/reports.py` (or equivalent src runtime module set)
 

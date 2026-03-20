@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime, timedelta, timezone
-from src.checks.aryanoble.alarm_verification import AlarmVerificationChecker
+from backend.checks.aryanoble.alarm_verification import AlarmVerificationChecker
 
 
 class AlarmVerificationCheckerTests(unittest.TestCase):

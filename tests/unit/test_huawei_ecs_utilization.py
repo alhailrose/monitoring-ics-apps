@@ -1,6 +1,6 @@
 import subprocess
 
-from src.checks.huawei.ecs_utilization import (
+from backend.checks.huawei.ecs_utilization import (
     HuaweiECSUtilizationChecker,
     HcloudCli,
     classify_memory_behavior,
@@ -63,7 +63,7 @@ def test_hcloud_cli_injects_timeout_and_retry_flags(monkeypatch):
         captured["cmd"] = cmd
         return _Proc()
 
-    monkeypatch.setattr("src.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
+    monkeypatch.setattr("backend.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
 
     cli = HcloudCli()
     data, err = cli.run_json(["CES", "ListMetrics", "--cli-profile=demo"])
@@ -94,7 +94,7 @@ def test_hcloud_cli_retries_once_on_timeout_error(monkeypatch):
             return _ErrProc()
         return _OkProc()
 
-    monkeypatch.setattr("src.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
+    monkeypatch.setattr("backend.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
 
     cli = HcloudCli()
     data, err = cli.run_json(["ECS", "ListServersDetails", "--cli-profile=demo"])
@@ -123,7 +123,7 @@ def test_hcloud_cli_falls_back_without_transport_flags_when_unsupported(monkeypa
             return _InvalidParamProc()
         return _OkProc()
 
-    monkeypatch.setattr("src.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
+    monkeypatch.setattr("backend.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
 
     cli = HcloudCli()
     data, err = cli.run_json(["ECS", "ListServersDetails", "--cli-profile=demo"])
@@ -146,7 +146,7 @@ def test_hcloud_cli_returns_timeout_error_when_subprocess_hangs(monkeypatch):
         calls["count"] += 1
         raise subprocess.TimeoutExpired(cmd="hcloud", timeout=45)
 
-    monkeypatch.setattr("src.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
+    monkeypatch.setattr("backend.checks.huawei.ecs_utilization.subprocess.run", _fake_run)
 
     cli = HcloudCli(max_attempts=2)
     data, err = cli.run_json(["ECS", "ListServersDetails", "--cli-profile=demo"])

@@ -1,5 +1,5 @@
-from src.checks.generic.notifications import NotificationChecker
-from src.checks.generic.cloudwatch_alarms import CloudWatchAlarmChecker
+from backend.checks.generic.notifications import NotificationChecker
+from backend.checks.generic.cloudwatch_alarms import CloudWatchAlarmChecker
 
 
 def test_notifications_render_section_hides_all_notifications_detail():

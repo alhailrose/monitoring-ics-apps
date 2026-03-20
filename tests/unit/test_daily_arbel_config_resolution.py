@@ -1,4 +1,4 @@
-from src.checks.aryanoble.daily_arbel import DailyArbelChecker
+from backend.checks.aryanoble.daily_arbel import DailyArbelChecker
 from src.configs.loader import load_customer_config
 
 
@@ -6,7 +6,7 @@ def test_resolve_account_config_uses_customer_mapping_by_account_id(monkeypatch)
     checker = DailyArbelChecker(region="ap-southeast-3", window_hours=3)
 
     monkeypatch.setattr(
-        "src.checks.aryanoble.daily_arbel.find_customer_account",
+        "backend.checks.aryanoble.daily_arbel.find_customer_account",
         lambda customer_id, account_id: {
             "account_id": account_id,
             "display_name": "Custom Alias",
@@ -38,7 +38,7 @@ def test_resolve_account_config_loads_extra_sections_from_customer_mapping(monke
     checker = DailyArbelChecker(region="ap-southeast-3", window_hours=3)
 
     monkeypatch.setattr(
-        "src.checks.aryanoble.daily_arbel.find_customer_account",
+        "backend.checks.aryanoble.daily_arbel.find_customer_account",
         lambda customer_id, account_id: {
             "account_id": account_id,
             "display_name": "CIS ERHA",
@@ -94,7 +94,7 @@ def test_resolve_account_config_applies_runtime_overrides_from_check_config(
     )
 
     monkeypatch.setattr(
-        "src.checks.aryanoble.daily_arbel.find_customer_account",
+        "backend.checks.aryanoble.daily_arbel.find_customer_account",
         lambda customer_id, account_id: {
             "account_id": account_id,
             "display_name": "Custom Alias",

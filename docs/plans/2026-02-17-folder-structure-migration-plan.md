@@ -154,12 +154,12 @@ git commit -m "refactor: canonicalize customer config loading under src.configs"
 ```
 
 
-### Task 5: Split checks by domain into `src/checks/*`
+### Task 5: Split checks by domain into `backend/checks/*`
 
 **Files:**
-- Create: `src/checks/aryanoble/daily_arbel.py`
-- Create: `src/checks/aryanoble/alarm_verification.py`
-- Create: `src/checks/generic/{health,cost,guardduty,cloudwatch,notifications,backup,ec2}.py`
+- Create: `backend/checks/aryanoble/daily_arbel.py`
+- Create: `backend/checks/aryanoble/alarm_verification.py`
+- Create: `backend/checks/generic/{health,cost,guardduty,cloudwatch,notifications,backup,ec2}.py`
 - Modify: `checks/*.py` (shim re-exports)
 - Modify: `monitoring_hub/config.py`
 - Test: `tests/integration/test_checks_registry.py`

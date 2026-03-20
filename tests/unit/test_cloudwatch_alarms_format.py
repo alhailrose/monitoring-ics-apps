@@ -1,4 +1,4 @@
-from src.checks.generic.cloudwatch_alarms import CloudWatchAlarmChecker
+from backend.checks.generic.cloudwatch_alarms import CloudWatchAlarmChecker
 
 
 def test_format_report_shows_alarm_count_and_names_when_active():
