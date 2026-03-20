@@ -177,7 +177,7 @@ def test_customer_report_dispatches_flow(monkeypatch):
     interactive.run_interactive()
 
     assert calls["customer"] == 1
-    assert calls["pause"] == 0
+    assert calls["pause"] == 1
 
 
 def test_customer_report_cancelled_does_not_pause(monkeypatch):

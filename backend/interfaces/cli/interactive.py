@@ -460,22 +460,27 @@ def run_interactive():
             continue
 
         if main_choice == "customer":
-            run_customer_report()
+            did_run = run_customer_report()
+            if did_run:
+                common._pause()
             clear_before_menu = False
             continue
 
         if main_choice == "aryanoble":
             run_aryanoble()
+            common._pause()
             clear_before_menu = False
             continue
 
         if main_choice == "huawei_check":
             _run_huawei_menu()
+            common._pause()
             clear_before_menu = False
             continue
 
         if main_choice == "quick":
             _run_quick_check()
+            common._pause()
             clear_before_menu = False
             continue
 
