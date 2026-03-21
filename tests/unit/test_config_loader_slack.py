@@ -1,4 +1,4 @@
-from src.core.runtime import config_loader
+from backend.domain.runtime import config_loader
 
 
 def test_get_slack_report_config_returns_empty_when_disabled(monkeypatch):

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from src.core.runtime.reports import build_whatsapp_backup, summarize_backup_whatsapp
+from backend.domain.runtime.reports import build_whatsapp_backup, summarize_backup_whatsapp
 
 
 def test_backup_report_has_success_headline_when_all_accounts_healthy():

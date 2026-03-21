@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Canonical CLI bootstrap entrypoint under src/app."""
+"""Canonical CLI bootstrap entrypoint."""
 
 import argparse
 import sys

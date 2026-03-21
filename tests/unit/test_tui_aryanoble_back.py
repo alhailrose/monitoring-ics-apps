@@ -1,5 +1,5 @@
-from src.app.tui.flows import customer
-from src.app.tui import common
+from backend.interfaces.cli.flows import customer
+from backend.interfaces.cli import common
 
 
 def test_aryanoble_back_from_account_to_mode(monkeypatch):

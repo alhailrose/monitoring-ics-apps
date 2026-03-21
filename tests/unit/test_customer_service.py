@@ -43,7 +43,7 @@ def _make_service(existing_customer=None, existing_accounts=None):
 
     repo.get_accounts_by_customer.return_value = existing_accounts or []
 
-    from src.app.services.customer_service import CustomerService
+    from backend.domain.services.customer_service import CustomerService
     svc = CustomerService(repo)
     return svc, repo, fake_customer
 

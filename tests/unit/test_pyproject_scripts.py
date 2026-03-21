@@ -7,6 +7,6 @@ def test_pyproject_scripts_point_to_backend_entrypoint():
     assert 'monitoring-hub-dev = "backend.interfaces.cli.main:main"' in content
 
 
-def test_setuptools_includes_new_namespace_package():
+def test_setuptools_includes_backend_namespace_package_only():
     content = Path("pyproject.toml").read_text(encoding="utf-8")
-    assert 'include = ["src*", "backend*"]' in content
+    assert 'include = ["backend*"]' in content

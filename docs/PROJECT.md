@@ -7,12 +7,12 @@ Monitoring Hub adalah platform monitoring AWS terpusat untuk multiple customer. 
 1. **TUI (Terminal User Interface)** — interface interaktif berbasis terminal, dijalankan langsung di mesin operator
 2. **Web Platform** — REST API (FastAPI) + frontend React, dapat diakses via browser
 
-Keduanya menjalankan check yang sama dari `backend/checks/`, dengan `backend/checks/` sebagai compatibility wrapper.
+Keduanya menjalankan check yang sama dari `backend/checks/` sebagai lokasi kanonis.
 
 ## Status Operasional (sumber kebenaran harian)
 
-- Runtime API kanonis di `backend/interfaces/api/`; `src/app/api/*` dan `apps/api/main.py` adalah compatibility wrapper.
-- Runtime TUI/CLI kanonis di `backend/interfaces/cli/`; `src/app/cli/*`, `src/app/tui/*`, dan `apps/tui/main.py` adalah compatibility wrapper.
+- Runtime API kanonis di `backend/interfaces/api/`; `apps/api/main.py` adalah wrapper tipis app entrypoint.
+- Runtime TUI/CLI kanonis di `backend/interfaces/cli/`; `apps/tui/main.py` adalah wrapper tipis app entrypoint.
 - Execution policy saat ini: TUI non-persistent (tidak menulis DB), API persistent (menulis DB).
 - Endpoint findings normalisasi tersedia: `GET /api/v1/findings` (termasuk `backup` via filter `check_name=backup`).
 - Endpoint metrics normalisasi tersedia: `GET /api/v1/metrics`.
@@ -32,13 +32,6 @@ monitoring-ics-apps/
 │   ├── domain/
 │   ├── infra/
 │   └── config/
-├── src/                        # Compatibility layer + checks
-│   ├── app/                    # Wrapper namespace legacy ke backend/*
-│   ├── checks/                 # Modul check AWS (masih aktif)
-│   ├── core/
-│   ├── db/
-│   ├── integrations/
-│   └── providers/
 ├── apps/                       # App-level scaffold (api/tui/web)
 ├── web/                        # Frontend React runtime (aktif)
 ├── docs/
@@ -51,8 +44,7 @@ monitoring-ics-apps/
 
 Catatan:
 - Entrypoint package `monitoring-hub` kini langsung ke `backend.interfaces.cli.main`.
-- `src.app.cli.main` dan wrapper `src/*` tetap tersedia sementara untuk kompatibilitas import legacy.
-- Target cleanup bertahap: kurangi wrapper `src/*` setelah semua import runtime pindah ke `backend/*`.
+- Namespace runtime python `src/*` sudah dicutover penuh.
 
 ---
 
@@ -408,7 +400,7 @@ Perilaku menu Huawei Check (TUI):
 
 ## Integrasi Slack
 
-Setiap customer dapat dikonfigurasi dengan `slack_webhook_url` dan `slack_channel`. Notifikasi dikirim via `send_to_webhook(url, text, channel)` di `backend/infra/notifications/slack/notifier.py` (dengan wrapper kompatibilitas di `src/integrations/slack/notifier.py`).
+Setiap customer dapat dikonfigurasi dengan `slack_webhook_url` dan `slack_channel`. Notifikasi dikirim via `send_to_webhook(url, text, channel)` di `backend/infra/notifications/slack/notifier.py`.
 
 Notifikasi dikirim:
 - Saat check dijalankan dengan `send_slack: true`

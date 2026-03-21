@@ -1,6 +1,6 @@
 # Target Folder Structure
 
-This document defines the migration direction from the current CLI-first layout to a runner-first and web-app-ready architecture.
+This document defines the runtime layout after backend cutover and the app-level scaffold direction.
 
 ## Incremental scaffold (current migration step)
 
@@ -16,7 +16,6 @@ This keeps existing execution paths stable while enabling path-based CI/CD separ
 
 - `backend/`: canonical API/CLI interfaces, domain runtime/services, infra, and config
 - `backend/checks/`: checker implementations (canonical)
-- `backend/checks/`: compatibility wrappers for legacy imports
 - `tests/`: test coverage for checks and report formatting
 
 ## Target structure
@@ -37,8 +36,6 @@ backend/
     defaults/
       customers/
     schema/
-src/
-  ... compatibility wrappers only ...
 tests/
   unit/
   integration/

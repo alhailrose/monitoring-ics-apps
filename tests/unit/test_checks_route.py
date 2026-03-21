@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 def _make_app(executor_mock):
     from fastapi import FastAPI
-    from src.app.api.routes.checks import router
-    import src.app.api.dependencies as deps
+    from backend.interfaces.api.routes.checks import router
+    import backend.interfaces.api.dependencies as deps
 
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")

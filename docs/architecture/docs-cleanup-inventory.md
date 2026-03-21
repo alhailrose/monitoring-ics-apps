@@ -35,7 +35,7 @@ Snapshot untuk merapikan dokumentasi pasca migrasi foldering/backend canonical.
 
 - Entry-point docs updated: `monitoring-hub -> backend.interfaces.cli.main:main`
 - Canonical runtime docs aligned: `backend/*` as source of truth
-- Compatibility posture retained: `src/*` wrappers, including `backend/checks/*` wrappers to `backend/checks/*`
+- Runtime namespace cutover completed: `src/*` python wrappers removed from tracked code
 
 ## Remaining docs cleanup candidates
 

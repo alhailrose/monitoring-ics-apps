@@ -1,5 +1,5 @@
-import src.app.cli.bootstrap as src_cli_bootstrap
-import src.app.tui.bootstrap as src_tui_bootstrap
+import backend.interfaces.cli.bootstrap as src_cli_bootstrap
+import backend.interfaces.cli.bootstrap_tui as src_tui_bootstrap
 from pathlib import Path
 
 

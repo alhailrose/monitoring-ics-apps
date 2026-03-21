@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from src.core.runtime.runners import run_group_specific
+from backend.domain.runtime.runners import run_group_specific
 
 
 def test_aryanoble_uses_custom_backup_formatter():
@@ -20,15 +20,15 @@ def test_aryanoble_uses_custom_backup_formatter():
     }
 
     with (
-        patch("src.core.runtime.runners._check_single_profile") as mock_check,
+        patch("backend.domain.runtime.runners._check_single_profile") as mock_check,
         patch(
-            "src.core.runtime.runners.build_whatsapp_backup_aryanoble"
+            "backend.domain.runtime.runners.build_whatsapp_backup_aryanoble"
         ) as mock_aryanoble_formatter,
         patch(
-            "src.core.runtime.runners.build_whatsapp_backup"
+            "backend.domain.runtime.runners.build_whatsapp_backup"
         ) as mock_default_formatter,
-        patch("src.core.runtime.runners.print_group_header"),
-        patch("src.core.runtime.runners.console"),
+        patch("backend.domain.runtime.runners.print_group_header"),
+        patch("backend.domain.runtime.runners.console"),
         patch("builtins.print"),
     ):
         # Setup mocks
@@ -61,15 +61,15 @@ def test_non_aryanoble_uses_default_backup_formatter():
     }
 
     with (
-        patch("src.core.runtime.runners._check_single_profile") as mock_check,
+        patch("backend.domain.runtime.runners._check_single_profile") as mock_check,
         patch(
-            "src.core.runtime.runners.build_whatsapp_backup_aryanoble"
+            "backend.domain.runtime.runners.build_whatsapp_backup_aryanoble"
         ) as mock_aryanoble_formatter,
         patch(
-            "src.core.runtime.runners.build_whatsapp_backup"
+            "backend.domain.runtime.runners.build_whatsapp_backup"
         ) as mock_default_formatter,
-        patch("src.core.runtime.runners.print_group_header"),
-        patch("src.core.runtime.runners.console"),
+        patch("backend.domain.runtime.runners.print_group_header"),
+        patch("backend.domain.runtime.runners.console"),
         patch("builtins.print"),
     ):
         # Setup mocks

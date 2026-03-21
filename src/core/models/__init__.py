@@ -1,5 +1,0 @@
-"""Compatibility exports for legacy src.core.models package."""
-
-from backend.domain.models.job_models import JobRecord
-
-__all__ = ["JobRecord"]

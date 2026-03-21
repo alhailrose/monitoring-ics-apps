@@ -1,4 +1,4 @@
-from src.core.runtime import customer_runner
+from backend.domain.runtime import customer_runner
 
 
 class _FakeChecker:

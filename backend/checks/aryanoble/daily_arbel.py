@@ -656,7 +656,15 @@ class DailyArbelChecker(BaseChecker):
 
         return out
 
-    def _breach_detail(self, info, thresholds, metric, comparator, profile=None):
+    def _breach_detail(
+        self,
+        info,
+        thresholds,
+        metric,
+        comparator,
+        profile=None,
+        duration_mode="span",
+    ):
         """Return list of breach periods with (start_time, end_time, peak_val)."""
         vals = info.get("values", [])
         timestamps = info.get("timestamps", [])
@@ -697,8 +705,16 @@ class DailyArbelChecker(BaseChecker):
             end_time = period[-1][0].astimezone(JKT).strftime("%H:%M")
             peak_val = peak[1]
 
-            # Hitung durasi dalam menit
-            duration = int((period[-1][0] - period[0][0]).total_seconds() / 60)
+            # Hitung durasi dalam menit.
+            # mode=span: durasi berdasarkan rentang waktu (legacy behavior)
+            # mode=samples: durasi berdasarkan jumlah titik sample (untuk EC2 CPU spike)
+            if duration_mode == "samples":
+                duration = max(1, len(period))
+            else:
+                duration = max(
+                    1,
+                    int((period[-1][0] - period[0][0]).total_seconds() / 60),
+                )
 
             result.append((peak_val, start_time, end_time, duration))
 
@@ -830,13 +846,20 @@ class DailyArbelChecker(BaseChecker):
 
         return results
 
-    def _evaluate_metric(self, metric, info, thresholds, profile=None):
+    def _evaluate_metric(
+        self,
+        metric,
+        info,
+        thresholds,
+        profile=None,
+        service_type="rds",
+    ):
         vals = info.get("values") or []
         if not vals:
             return "no-data", "Data tidak tersedia"
 
-        # Gunakan nilai terbaru (real-time)
-        last = info.get("last")
+        # Default basis evaluasi adalah nilai terbaru; metrik tertentu bisa override.
+        last = info.get("last", vals[-1])
         thr = thresholds.get(metric)
 
         # Network metrics: display-only, no threshold
@@ -876,15 +899,43 @@ class DailyArbelChecker(BaseChecker):
                 "ACU Utilization" if metric == "ACUUtilization" else "CPU Utilization"
             )
             alarm_periods = info.get("alarm_periods") or []
+            is_ec2_cpu = service_type == "ec2" and metric == "CPUUtilization"
             bd = alarm_periods or self._breach_detail(
-                info, thresholds, metric, "above", profile
+                info,
+                thresholds,
+                metric,
+                "above",
+                profile,
+                duration_mode="samples" if is_ec2_cpu else "span",
             )
-            # Filter: hanya tampilkan breach >= 10 menit
+            # RDS: tampilkan breach >= 10 menit; EC2 CPU: hanya > 5 menit.
+            min_duration = 5 if is_ec2_cpu else 10
             if bd:
-                bd = [p for p in bd if p[3] >= 10]
+                if is_ec2_cpu:
+                    bd = [p for p in bd if p[3] > min_duration]
+                else:
+                    bd = [p for p in bd if p[3] >= min_duration]
 
-            if last > thr:
-                msg = f"{label}: {last:.0f}% (di atas {int(thr)}%)"
+            current_value = last
+            if is_ec2_cpu:
+                current_value = info.get("avg", last)
+
+            def _append_longest_spike_note(message: str) -> str:
+                if not (is_ec2_cpu and bd):
+                    return message
+                longest = max(bd, key=lambda p: p[3])
+                return (
+                    message
+                    + f" | spike terlama {longest[3]} menit (peak {longest[0]:.0f}%)"
+                )
+
+            if current_value > thr:
+                if is_ec2_cpu:
+                    msg = (
+                        f"{label}: {current_value:.0f}% (rata-rata di atas {int(thr)}%)"
+                    )
+                else:
+                    msg = f"{label}: {current_value:.0f}% (di atas {int(thr)}%)"
                 if bd:
                     if alarm_periods:
                         breach_info = ", ".join(
@@ -901,6 +952,7 @@ class DailyArbelChecker(BaseChecker):
                             ]
                         )
                     msg += f" | {breach_info}"
+                    msg = _append_longest_spike_note(msg)
                 return "warn", msg
             if bd:
                 if alarm_periods:
@@ -914,11 +966,19 @@ class DailyArbelChecker(BaseChecker):
                             for p in bd
                         ]
                     )
+                if is_ec2_cpu:
+                    msg = (
+                        f"{label}: {current_value:.0f}% "
+                        f"(rata-rata sekarang normal, sempat > {int(thr)}% | {breach_info})"
+                    )
+                    return "past-warn", _append_longest_spike_note(msg)
                 return (
                     "past-warn",
-                    f"{label}: {last:.0f}% (sekarang normal, sempat > {int(thr)}% | {breach_info})",
+                    f"{label}: {current_value:.0f}% (sekarang normal, sempat > {int(thr)}% | {breach_info})",
                 )
-            return "ok", f"{label}: {last:.0f}% (normal)"
+            if is_ec2_cpu:
+                return "ok", f"{label}: {current_value:.0f}% (rata-rata normal)"
+            return "ok", f"{label}: {current_value:.0f}% (normal)"
 
         if metric == "FreeableMemory":
             label = "Freeable Memory"
@@ -1195,6 +1255,10 @@ class DailyArbelChecker(BaseChecker):
                     )
                 live_threshold = threshold_cache[cache_key]
                 if live_threshold is not None:
+                    # EC2 CPU untuk Daily Arbel mengikuti threshold konfigurasi account,
+                    # bukan override alarm discovery, agar baseline SFA tetap konsisten.
+                    if service_type == "ec2" and metric_name == "CPUUtilization":
+                        continue
                     role_thresholds[metric_name] = live_threshold
 
             if service_type == "rds":
@@ -1212,6 +1276,7 @@ class DailyArbelChecker(BaseChecker):
                     metrics_info.get(metric_name, {}),
                     role_thresholds,
                     profile,
+                    service_type=service_type,
                 )
                 if metric_name in ("NetworkIn", "NetworkOut"):
                     evaluations[metric_name] = {

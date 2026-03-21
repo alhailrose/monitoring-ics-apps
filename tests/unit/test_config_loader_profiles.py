@@ -1,4 +1,4 @@
-from src.configs import loader
+from backend.config import loader
 
 
 def test_collect_customer_profiles_filters_by_sso_and_dedupes(monkeypatch):

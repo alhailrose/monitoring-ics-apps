@@ -17,7 +17,7 @@ def blocked_import(name, *args, **kwargs):
 builtins.__import__ = blocked_import
 sys.argv = ['monitoring-hub', '--version']
 
-import src.app.cli.bootstrap as cli
+import backend.interfaces.cli.bootstrap as cli
 
 cli.main()
 """
@@ -48,7 +48,7 @@ def blocked_import(name, *args, **kwargs):
 builtins.__import__ = blocked_import
 sys.argv = ['monitoring-hub']
 
-import src.app.cli.bootstrap as cli
+import backend.interfaces.cli.bootstrap as cli
 
 cli.main()
 """
@@ -67,7 +67,7 @@ cli.main()
 
 def test_cli_help_mentions_huawei_sso_login_steps():
     result = subprocess.run(
-        [sys.executable, "-m", "src.app.cli.bootstrap", "--help"],
+        [sys.executable, "-m", "backend.interfaces.cli.bootstrap", "--help"],
         capture_output=True,
         text=True,
     )
@@ -83,7 +83,7 @@ def test_cli_default_mode_shows_helpful_error_without_tty():
 import sys
 sys.argv = ['monitoring-hub']
 
-import src.app.cli.bootstrap as cli
+import backend.interfaces.cli.bootstrap as cli
 
 cli.main()
 """

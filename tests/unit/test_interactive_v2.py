@@ -1,7 +1,7 @@
 import pytest
 
-from src.app.tui import interactive
-from src.app.tui import bootstrap
+from backend.interfaces.cli import interactive
+from backend.interfaces.cli import bootstrap_tui as bootstrap
 
 
 def test_run_interactive_v2_delegates_to_run_interactive(monkeypatch):
@@ -48,14 +48,14 @@ def test_bootstrap_run_interactive_v2_delegates_to_interactive(monkeypatch):
 
 
 def test_interactive_reexports_common_helpers():
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     assert interactive._select_prompt is common._select_prompt
     assert interactive._pause is common._pause
 
 
 def test_run_interactive_uses_common_prompt_and_pause(monkeypatch):
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     selections = iter(["settings", "exit"])
     calls = {"settings": 0, "pause": 0}
@@ -82,8 +82,8 @@ def test_run_interactive_uses_common_prompt_and_pause(monkeypatch):
 
 
 def test_run_interactive_dispatches_settings_flow_module(monkeypatch):
-    from src.app.tui import common
-    from src.app.tui.flows import settings as settings_flow
+    from backend.interfaces.cli import common
+    from backend.interfaces.cli.flows import settings as settings_flow
 
     selections = iter(["settings", "exit"])
     calls = {"settings": 0, "pause": 0}
@@ -110,7 +110,7 @@ def test_run_interactive_dispatches_settings_flow_module(monkeypatch):
 
 
 def test_main_menu_hides_cw_cost(monkeypatch):
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     captured = {"values": []}
 
@@ -130,7 +130,7 @@ def test_main_menu_hides_cw_cost(monkeypatch):
 
 def test_quick_check_runs_individual_check(monkeypatch):
     """Quick Check with 1 check + 1 profile should call run_individual_check."""
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     selections = iter(["quick", "exit"])
     calls = {"individual": 0}
@@ -155,7 +155,7 @@ def test_quick_check_runs_individual_check(monkeypatch):
 
 def test_customer_report_dispatches_flow(monkeypatch):
     """Customer Report menu should dispatch to customer flow."""
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     selections = iter(["customer", "exit"])
     calls = {"customer": 0, "pause": 0}
@@ -184,7 +184,7 @@ def test_customer_report_dispatches_flow(monkeypatch):
 
 def test_customer_report_cancelled_does_not_pause(monkeypatch):
     """Jika user cancel/back dari Customer Report, tetap tampilkan pause sebelum kembali ke menu."""
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     selections = iter(["customer", "exit"])
     calls = {"customer": 0, "pause": 0}
@@ -222,7 +222,7 @@ def test_customer_report_cancelled_does_not_pause(monkeypatch):
 def test_main_action_menus_pause_before_return(
     monkeypatch, main_choice, action_attr, counter_key
 ):
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     selections = iter([main_choice, "exit"])
     calls = {counter_key: 0, "pause": 0}
@@ -249,7 +249,7 @@ def test_main_action_menus_pause_before_return(
 
 
 def test_main_menu_shows_huawei_check_label(monkeypatch):
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     captured = {"values": []}
 
@@ -269,7 +269,7 @@ def test_main_menu_shows_huawei_check_label(monkeypatch):
 
 
 def test_selecting_huawei_menu_opens_utilization_submenu(monkeypatch):
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     prompt_values = []
     selections = iter(["huawei_check", "utilization", "exit"])
@@ -293,7 +293,7 @@ def test_selecting_huawei_menu_opens_utilization_submenu(monkeypatch):
 
 
 def test_huawei_utilization_runs_consolidated_over_fixed_profiles(monkeypatch):
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     expected_profiles = interactive.HUAWEI_FIXED_PROFILES
     selections = iter(["huawei_check", "utilization", "exit"])
@@ -339,7 +339,7 @@ def test_huawei_utilization_runs_consolidated_over_fixed_profiles(monkeypatch):
 
 
 def test_selecting_huawei_submenu_back_does_not_run_checks(monkeypatch):
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     selections = iter(["huawei_check", "back", "exit"])
     prompt_values = []
@@ -400,8 +400,8 @@ def test_check_choices_do_not_include_daily_arbel():
 
 def test_pick_profiles_all_accounts_returns_all_profiles(monkeypatch):
     """All Accounts mode should return every profile from every customer."""
-    from src.app.tui import common
-    from src.configs import loader
+    from backend.interfaces.cli import common
+    from backend.config import loader
 
     monkeypatch.setattr(
         loader,
@@ -433,8 +433,8 @@ def test_pick_profiles_all_accounts_returns_all_profiles(monkeypatch):
 
 def test_pick_profiles_per_customer_all_accounts(monkeypatch):
     """Per Customer mode with 'pilih semua' should return all profiles of selected customer."""
-    from src.app.tui import common
-    from src.configs import loader
+    from backend.interfaces.cli import common
+    from backend.config import loader
 
     monkeypatch.setattr(
         loader,
@@ -470,8 +470,8 @@ def test_pick_profiles_per_customer_all_accounts(monkeypatch):
 
 def test_pick_profiles_per_customer_partial_selection(monkeypatch):
     """Per Customer mode with manual select should return only checked profiles."""
-    from src.app.tui import common
-    from src.configs import loader
+    from backend.interfaces.cli import common
+    from backend.config import loader
 
     monkeypatch.setattr(
         loader,
@@ -509,8 +509,8 @@ def test_pick_profiles_per_customer_partial_selection(monkeypatch):
 
 def test_pick_profiles_per_customer_back_from_customer_to_mode(monkeypatch):
     """Escape di 'pilih customer' harus kembali ke mode selector, bukan keluar."""
-    from src.app.tui import common
-    from src.configs import loader
+    from backend.interfaces.cli import common
+    from backend.config import loader
 
     monkeypatch.setattr(
         loader,
@@ -544,7 +544,7 @@ def test_quick_check_back_from_profile_to_check_picker(monkeypatch):
     monkeypatch.setattr(interactive, "print_mini_banner", lambda: None)
     monkeypatch.setattr(interactive, "print_section_header", lambda *a, **kw: None)
 
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     pick_calls = {"count": 0}
     check_calls = []
@@ -586,7 +586,7 @@ def test_check_choices_include_aws_utilization_3core():
 
 
 def test_main_menu_hides_aws_utilization_label(monkeypatch):
-    from src.app.tui import common
+    from backend.interfaces.cli import common
 
     captured = {"values": []}
 

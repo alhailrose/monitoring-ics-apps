@@ -1,4 +1,4 @@
-from src.integrations.slack.commands import (
+from backend.infra.notifications.slack.commands import (
     dispatch_slack_command,
     parse_slack_command,
 )

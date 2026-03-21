@@ -1,4 +1,4 @@
-from src.core.runtime import runners
+from backend.domain.runtime import runners
 
 
 class _FakeChecker:

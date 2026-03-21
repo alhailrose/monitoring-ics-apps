@@ -1,8 +1,8 @@
-from src.app.api.main import create_app
-from src.app.cli import main as cli_main
-from src.app.tui.interactive import run_interactive
-from src.core.engine.jobs import JobExecutor, JobStore
-from src.core.models.jobs import JobRecord
+from backend.interfaces.api.main import create_app
+from backend.interfaces.cli import main as cli_main
+from backend.interfaces.cli.interactive import run_interactive
+from backend.domain.engine import JobExecutor, JobStore
+from backend.domain.models import JobRecord
 
 
 def test_src_cli_exposes_run_cli_alias():

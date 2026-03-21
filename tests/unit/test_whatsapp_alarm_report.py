@@ -1,4 +1,4 @@
-from src.core.runtime.reports import build_whatsapp_alarm
+from backend.domain.runtime.reports import build_whatsapp_alarm
 
 
 def test_alarm_whatsapp_contains_only_report_lines():

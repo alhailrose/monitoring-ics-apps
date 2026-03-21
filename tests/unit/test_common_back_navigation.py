@@ -1,5 +1,5 @@
 import pytest
-from src.app.tui import common
+from backend.interfaces.cli import common
 
 
 def test_select_prompt_returns_none_on_keyboard_interrupt_with_allow_back(monkeypatch):

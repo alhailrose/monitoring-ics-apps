@@ -1,6 +1,6 @@
 import json
 
-from src.integrations.slack import notifier
+from backend.infra.notifications.slack import notifier
 
 
 def test_send_report_to_slack_skips_when_route_missing(monkeypatch):

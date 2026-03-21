@@ -1,5 +1,5 @@
 from backend.checks.aryanoble.daily_arbel import DailyArbelChecker
-from src.configs.loader import load_customer_config
+from backend.config.loader import load_customer_config
 
 
 def test_resolve_account_config_uses_customer_mapping_by_account_id(monkeypatch):

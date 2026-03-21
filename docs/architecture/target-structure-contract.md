@@ -8,7 +8,6 @@ This contract defines mandatory architecture rules during migration to a scalabl
 - `backend/domain/` for orchestration/runtime/services
 - `backend/infra/` for external integrations (AWS, DB, Slack)
 - `backend/checks/` split by domain and customer (canonical)
-- `backend/checks/` kept only as temporary compatibility wrappers
 - `backend/config/` for defaults and schema
 - `tests/unit` and `tests/integration`
 
@@ -17,15 +16,8 @@ This contract defines mandatory architecture rules during migration to a scalabl
 1. No new product feature work until migration checkpoint is marked ready.
 2. Every migration batch must keep runtime behavior stable.
 3. Every migration batch must include tests and pass full test suite.
-4. Legacy modules may remain only as compatibility wrappers.
-5. Wrapper removal is allowed only after import switch and green verification.
-
-## Compatibility wrapper lifecycle
-
-1. Create canonical implementation under `backend/`.
-2. Convert legacy module into thin re-export wrapper.
-3. Switch imports progressively to canonical paths.
-4. Remove wrapper after no runtime references remain.
+4. Do not reintroduce `src.*` runtime namespaces.
+5. Any namespace/foldering change must be verified with green tests.
 
 ## Quality gates
 

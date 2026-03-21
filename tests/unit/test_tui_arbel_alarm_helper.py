@@ -1,5 +1,5 @@
-from src.app.tui.flows import arbel
-from src.app.tui import common
+from backend.interfaces.cli.flows import arbel
+from backend.interfaces.cli import common
 
 
 def test_parse_alarm_input_supports_newline_and_comma_and_dedup():

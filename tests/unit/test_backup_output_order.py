@@ -1,4 +1,4 @@
-import src.core.runtime.runners as runners
+import backend.domain.runtime.runners as runners
 
 
 class _DummyProgress:

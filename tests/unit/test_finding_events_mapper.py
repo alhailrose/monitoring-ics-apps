@@ -1,4 +1,4 @@
-from src.app.services.finding_events_mapper import map_check_findings
+from backend.domain.services.finding_events_mapper import map_check_findings
 
 
 def test_map_guardduty_details_to_finding_events():

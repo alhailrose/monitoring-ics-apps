@@ -1,5 +1,5 @@
-from src.core.engine.executor import JobExecutor
-from src.core.engine.job_store import JobStore
+from backend.domain.engine.executor import JobExecutor
+from backend.domain.engine.job_store import JobStore
 
 
 def test_job_store_persists_created_job(tmp_path):

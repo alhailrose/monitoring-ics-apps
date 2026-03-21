@@ -1,4 +1,4 @@
-from src.core.formatting.reports import (
+from backend.domain.formatting.reports import (
     build_huawei_legacy_consolidated_report,
     build_huawei_legacy_whatsapp_report,
     build_huawei_utilization_customer_report,

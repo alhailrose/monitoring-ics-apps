@@ -7,7 +7,7 @@ os.environ["DATABASE_URL"] = (
 )
 
 from fastapi.testclient import TestClient
-from src.app.api.main import app
+from backend.interfaces.api.main import app
 
 c = TestClient(app)
 PASS = 0

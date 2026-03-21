@@ -51,7 +51,7 @@ def _make_finding():
 
 def test_findings_endpoint_returns_contract_shape():
     import backend.interfaces.api.dependencies as deps
-    from src.app.api.main import create_app
+    from backend.interfaces.api.main import create_app
 
     repo = _FakeCheckRepository(findings=[_make_finding()], total=1)
 
@@ -73,7 +73,7 @@ def test_findings_endpoint_returns_contract_shape():
 
 def test_findings_endpoint_forwards_filters_to_repository():
     import backend.interfaces.api.dependencies as deps
-    from src.app.api.main import create_app
+    from backend.interfaces.api.main import create_app
 
     repo = _FakeCheckRepository(findings=[], total=0)
 

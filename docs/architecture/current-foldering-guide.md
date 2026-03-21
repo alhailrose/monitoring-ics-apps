@@ -1,14 +1,12 @@
-# Current Foldering Guide (Canonical + Compatibility)
+# Current Foldering Guide (Canonical Runtime)
 
 Dokumen ini menjelaskan struktur folder yang berlaku saat ini agar sesi lanjutan tidak salah interpretasi.
 
 ## Prinsip utama
 
 - `backend/*` adalah implementasi kanonis (source of truth runtime).
-- `src/*` dipertahankan sebagai compatibility layer bertahap.
 - `backend/checks/*` adalah lokasi checker kanonis.
-- `backend/checks/*` hanya compatibility wrapper untuk import legacy.
-- Wrapper di `src/*` hanya boleh mendelegasikan ke `backend/*` (tanpa logika baru).
+- Namespace `src/*` sudah dicutover dari runtime python.
 
 ## Struktur operasional saat ini
 
@@ -21,25 +19,18 @@ backend/
     formatting/ # reusable report formatting builders
   infra/        # AWS/DB/Slack integrations
   config/       # settings + defaults + schema
-
-src/
-  app/          # compatibility wrappers ke backend/interfaces + backend/domain
-  checks/       # compatibility wrappers ke backend/checks
-  core|db|integrations|providers  # legacy paths (wrapper/compat bertahap)
 ```
 
 ## Entry point model
 
 - Packaging script: `monitoring-hub -> backend.interfaces.cli.main:main`.
-- Wrapper `src.app.cli.main` tetap tersedia hanya untuk kompatibilitas import legacy.
 - API canonical berada di `backend.interfaces.api.main:app`.
 
-## Cleanup policy (bertahap)
+## Cutover policy
 
-1. Pindahkan konsumsi import runtime ke `backend/*`.
-2. Pertahankan wrapper tipis di `src/*` selama masih ada pemakai.
-3. Hapus wrapper hanya jika tidak ada referensi runtime/test yang tersisa.
-4. Setiap batch cleanup wajib green test.
+1. Semua import runtime/test mengarah ke `backend/*`.
+2. Jangan menambahkan kembali namespace python `src/*`.
+3. Setiap perubahan struktur wajib diikuti verifikasi test.
 
 ## Referensi wajib
 

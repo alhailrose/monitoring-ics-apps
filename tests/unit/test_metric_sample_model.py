@@ -1,4 +1,4 @@
-from src.db.models import MetricSample
+from backend.infra.database.models import MetricSample
 
 from backend.domain.metric_samples import METRIC_SAMPLE_CHECK_NAMES
 

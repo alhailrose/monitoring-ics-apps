@@ -1,6 +1,6 @@
-import src.providers.aws.auth as auth
-import src.providers.aws.clients as clients
-import src.providers.aws.services.cloudwatch as cw_service
+import backend.infra.cloud.aws.auth as auth
+import backend.infra.cloud.aws.clients as clients
+import backend.infra.cloud.aws.services.cloudwatch as cw_service
 
 
 def test_resolve_execution_identity_includes_execution_mode():

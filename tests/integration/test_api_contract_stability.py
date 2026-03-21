@@ -150,7 +150,7 @@ class _FakeCheckRepository:
 
 def test_api_contract_stability_for_runs_findings_metrics_dashboard():
     import backend.interfaces.api.dependencies as deps
-    from src.app.api.main import create_app
+    from backend.interfaces.api.main import create_app
 
     app = create_app()
     app.dependency_overrides[deps.get_check_executor] = lambda: _FakeExecutor()

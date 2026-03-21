@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_executor(default_region="ap-southeast-3"):
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     executor = CheckExecutor(
         check_repo=MagicMock(),
@@ -37,7 +37,7 @@ def test_execute_parallel_uses_account_region_when_set():
     executor = _make_executor(default_region="ap-southeast-3")
     acct = _make_account("bbi-prod", region="ap-southeast-1")
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
         executor._execute_parallel(
             [acct], {"cloudwatch": MagicMock()}, "ap-southeast-3"
@@ -53,7 +53,7 @@ def test_execute_parallel_falls_back_to_effective_region_when_account_region_non
     executor = _make_executor(default_region="ap-southeast-3")
     acct = _make_account("standard-prod", region=None)
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
         executor._execute_parallel(
             [acct], {"cloudwatch": MagicMock()}, "ap-southeast-3"
@@ -68,7 +68,7 @@ def test_execute_parallel_injects_alarm_names_for_cloudwatch():
     executor = _make_executor()
     acct = _make_account("connect-prod", alarm_names=["alarm-a", "alarm-b"])
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
         executor._execute_parallel(
             [acct], {"cloudwatch": MagicMock()}, "ap-southeast-3"
@@ -85,7 +85,7 @@ def test_execute_parallel_does_not_inject_alarm_names_for_non_cloudwatch():
     executor = _make_executor()
     acct = _make_account("connect-prod", alarm_names=["alarm-a"])
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
         executor._execute_parallel([acct], {"guardduty": MagicMock()}, "ap-southeast-3")
 
@@ -101,7 +101,7 @@ def test_execute_parallel_request_check_params_override_alarm_names():
     acct = _make_account("connect-prod", alarm_names=["db-alarm"])
 
     override_alarms = ["override-alarm"]
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
         executor._execute_parallel(
             [acct],
@@ -122,7 +122,7 @@ def test_execute_parallel_merges_account_check_configs_for_target_check():
     check_config_row.config = {"budget_names": ["BudgetA"], "warn_percent": 85}
     acct = _make_account("finops-prod", check_configs=[check_config_row])
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
         executor._execute_parallel(
             [acct], {"daily-budget": MagicMock()}, "ap-southeast-3"
@@ -146,7 +146,7 @@ def test_execute_parallel_merges_account_check_configs_for_alarm_verification():
     }
     acct = _make_account("dwh", check_configs=[check_config_row])
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
         executor._execute_parallel(
             [acct], {"alarm_verification": MagicMock()}, "ap-southeast-3"
@@ -170,7 +170,7 @@ def test_execute_parallel_merges_account_check_configs_for_backup():
     }
     acct = _make_account("backup-hris", check_configs=[check_config_row])
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
         executor._execute_parallel([acct], {"backup": MagicMock()}, "ap-southeast-3")
 
@@ -192,7 +192,7 @@ def test_execute_parallel_merges_account_check_configs_for_aws_utilization():
     }
     acct = _make_account("public-web", check_configs=[check_config_row])
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok"}
         executor._execute_parallel(
             [acct], {"aws-utilization-3core": MagicMock()}, "ap-southeast-3"
@@ -207,7 +207,7 @@ def test_execute_parallel_merges_account_check_configs_for_aws_utilization():
 
 
 def test_execute_parallel_times_out_stuck_checks():
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     executor = CheckExecutor(
         check_repo=MagicMock(),
@@ -222,7 +222,7 @@ def test_execute_parallel_times_out_stuck_checks():
         return {"status": "ok"}
 
     with patch(
-        "src.app.services.check_executor._run_single_check", side_effect=_slow_run
+        "backend.domain.services.check_executor._run_single_check", side_effect=_slow_run
     ):
         results = executor._execute_parallel(
             [acct], {"cloudwatch": MagicMock()}, "ap-southeast-3"
@@ -248,7 +248,7 @@ def _make_customer(
 
 def test_execute_multi_customer_returns_check_runs_list():
     """execute() with two customer_ids returns two entries in check_runs."""
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     cust1 = _make_customer(
         "cust-1", accounts=[_make_account("prof-a", region="ap-southeast-1")]
@@ -274,7 +274,7 @@ def test_execute_multi_customer_returns_check_runs_list():
         check_repo=check_repo, customer_repo=customer_repo, region="ap-southeast-3"
     )
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok", "_formatted_output": "ok"}
         result = executor.execute(
             customer_ids=["cust-1", "cust-2"], mode="all", send_slack=False
@@ -288,7 +288,7 @@ def test_execute_multi_customer_returns_check_runs_list():
 
 def test_execute_multi_customer_skips_unknown_customer():
     """execute() skips missing customers; all-missing raises ValueError."""
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     customer_repo = MagicMock()
     customer_repo.get_customer.return_value = None  # all unknown
@@ -305,7 +305,7 @@ def test_execute_multi_customer_skips_unknown_customer():
 
 def test_execute_multi_customer_skips_no_active_accounts():
     """execute() skips customers with zero active accounts."""
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     cust1 = _make_customer("cust-1", accounts=[])  # no accounts
     cust2 = _make_customer("cust-2", accounts=[_make_account("prof-b")])
@@ -325,7 +325,7 @@ def test_execute_multi_customer_skips_no_active_accounts():
         check_repo=check_repo, customer_repo=customer_repo, region="ap-southeast-3"
     )
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {"status": "ok", "_formatted_output": "ok"}
         result = executor.execute(
             customer_ids=["cust-1", "cust-2"], mode="all", send_slack=False
@@ -337,7 +337,7 @@ def test_execute_multi_customer_skips_no_active_accounts():
 
 
 def test_execute_single_backup_returns_whatsapp_primary_output_and_backup_overview():
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     acct_ok = _make_account("connect-prod", region="ap-southeast-1")
     acct_fail = _make_account("ffi", region="ap-southeast-1")
@@ -377,7 +377,7 @@ def test_execute_single_backup_returns_whatsapp_primary_output_and_backup_overvi
         return base
 
     with patch(
-        "src.app.services.check_executor._run_single_check", side_effect=_fake_run
+        "backend.domain.services.check_executor._run_single_check", side_effect=_fake_run
     ):
         result = executor.execute(
             customer_ids=["cust-1"],

@@ -26,7 +26,7 @@ def _make_customer(customer_id: str, accounts: list):
 
 
 def test_execute_tui_mode_never_persists_to_db():
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     account = _make_account("prof-a")
     customer = _make_customer("cust-1", [account])
@@ -42,7 +42,7 @@ def test_execute_tui_mode_never_persists_to_db():
         region="ap-southeast-3",
     )
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {
             "status": "ok",
             "summary": "ok",
@@ -65,7 +65,7 @@ def test_execute_tui_mode_never_persists_to_db():
 
 
 def test_execute_api_mode_persists_to_db():
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     account = _make_account("prof-a")
     customer = _make_customer("cust-1", [account])
@@ -84,7 +84,7 @@ def test_execute_api_mode_persists_to_db():
         region="ap-southeast-3",
     )
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {
             "status": "ok",
             "summary": "ok",
@@ -107,7 +107,7 @@ def test_execute_api_mode_persists_to_db():
 
 
 def test_execute_api_mode_writes_normalized_finding_events_for_guardduty():
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     account = _make_account("prof-a")
     customer = _make_customer("cust-1", [account])
@@ -126,7 +126,7 @@ def test_execute_api_mode_writes_normalized_finding_events_for_guardduty():
         region="ap-southeast-3",
     )
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {
             "status": "success",
             "findings": 1,
@@ -158,7 +158,7 @@ def test_execute_api_mode_writes_normalized_finding_events_for_guardduty():
 
 
 def test_execute_tui_mode_does_not_write_normalized_finding_events():
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     account = _make_account("prof-a")
     customer = _make_customer("cust-1", [account])
@@ -174,7 +174,7 @@ def test_execute_tui_mode_does_not_write_normalized_finding_events():
         region="ap-southeast-3",
     )
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {
             "status": "success",
             "findings": 1,
@@ -201,7 +201,7 @@ def test_execute_tui_mode_does_not_write_normalized_finding_events():
 
 
 def test_execute_api_mode_writes_normalized_finding_events_for_backup():
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     account = _make_account("prof-a")
     customer = _make_customer("cust-1", [account])
@@ -220,7 +220,7 @@ def test_execute_api_mode_writes_normalized_finding_events_for_backup():
         region="ap-southeast-3",
     )
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {
             "status": "ATTENTION REQUIRED",
             "failed_jobs": 1,
@@ -269,7 +269,7 @@ def test_execute_api_mode_writes_normalized_finding_events_for_backup():
 
 
 def test_execute_api_mode_writes_normalized_metric_samples_for_daily_arbel():
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     account = _make_account("prof-a")
     customer = _make_customer("cust-1", [account])
@@ -288,7 +288,7 @@ def test_execute_api_mode_writes_normalized_metric_samples_for_daily_arbel():
         region="ap-southeast-3",
     )
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {
             "status": "ATTENTION REQUIRED",
             "service_type": "rds",
@@ -323,7 +323,7 @@ def test_execute_api_mode_writes_normalized_metric_samples_for_daily_arbel():
 
 
 def test_execute_tui_mode_does_not_write_normalized_metric_samples():
-    from src.app.services.check_executor import CheckExecutor
+    from backend.domain.services.check_executor import CheckExecutor
 
     account = _make_account("prof-a")
     customer = _make_customer("cust-1", [account])
@@ -339,7 +339,7 @@ def test_execute_tui_mode_does_not_write_normalized_metric_samples():
         region="ap-southeast-3",
     )
 
-    with patch("src.app.services.check_executor._run_single_check") as mock_run:
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
         mock_run.return_value = {
             "status": "ATTENTION REQUIRED",
             "service_type": "rds",

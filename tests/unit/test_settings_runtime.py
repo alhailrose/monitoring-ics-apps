@@ -1,6 +1,6 @@
 import pytest
 
-from src.app.settings import get_settings
+from backend.config.settings import get_settings
 
 
 def setup_function():

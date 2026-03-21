@@ -1,4 +1,4 @@
-from src.core.runtime import runners
+from backend.domain.runtime import runners
 
 
 def test_huawei_legacy_mode_prints_single_report_only(monkeypatch, capsys):

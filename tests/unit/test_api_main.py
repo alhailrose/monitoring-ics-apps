@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
-from src.app.settings import get_settings
+from backend.config.settings import get_settings
 
 
 def setup_function():
@@ -14,7 +14,7 @@ def teardown_function():
 
 
 def test_liveness_endpoint_returns_ok():
-    from src.app.api.main import create_app
+    from backend.interfaces.api.main import create_app
 
     app = create_app()
     client = TestClient(app)
@@ -27,8 +27,8 @@ def test_liveness_endpoint_returns_ok():
 
 
 def test_readiness_endpoint_returns_db_check(monkeypatch):
-    import src.app.api.dependencies as deps
-    from src.app.api.main import create_app
+    import backend.interfaces.api.dependencies as deps
+    from backend.interfaces.api.main import create_app
 
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     factory = sessionmaker(
@@ -51,7 +51,7 @@ def test_api_auth_enforced_when_enabled(monkeypatch):
     monkeypatch.setenv("API_AUTH_ENABLED", "true")
     monkeypatch.setenv("API_KEYS", "top-secret")
 
-    from src.app.api.main import create_app
+    from backend.interfaces.api.main import create_app
 
     app = create_app()
     client = TestClient(app)
@@ -65,7 +65,7 @@ def test_api_auth_accepts_x_api_key_header(monkeypatch):
     monkeypatch.setenv("API_AUTH_ENABLED", "true")
     monkeypatch.setenv("API_KEYS", "top-secret")
 
-    from src.app.api.main import create_app
+    from backend.interfaces.api.main import create_app
 
     app = create_app()
     client = TestClient(app)
@@ -82,7 +82,7 @@ def test_api_auth_accepts_bearer_token(monkeypatch):
     monkeypatch.setenv("API_AUTH_ENABLED", "true")
     monkeypatch.setenv("API_KEYS", "top-secret")
 
-    from src.app.api.main import create_app
+    from backend.interfaces.api.main import create_app
 
     app = create_app()
     client = TestClient(app)

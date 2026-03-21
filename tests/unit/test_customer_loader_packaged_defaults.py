@@ -1,4 +1,4 @@
-import src.configs.loader as loader
+import backend.config.loader as loader
 
 load_customer_config = getattr(loader, "load_customer_config")
 list_customers = getattr(loader, "list_customers")

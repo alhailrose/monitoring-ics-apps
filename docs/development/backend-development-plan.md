@@ -44,7 +44,7 @@ This is the main living plan for backend evolution.
 | 2 | Normalize backup reliability events | completed |
 | 3 | Normalize utilization and globalize config-driven checks | completed |
 | 4 | Finalize remaining checks + frontend API contract | completed |
-| 4.5 | Foldering and docs alignment (pre-Phase 5) | completed |
+| 4.5 | Foldering/docs alignment and full src cutover (pre-Phase 5) | completed |
 | 5 | Authentication and AWS connection lifecycle hardening | planned |
 
 ## Detailed checklist
@@ -107,8 +107,8 @@ This is the main living plan for backend evolution.
 
 | Task | Description | Expected Outcome | Status Progress |
 |---|---|---|---|
-| Canonical boundary freeze | Set runtime boundary: `backend/*` canonical, `src/*` transition compatibility layer | Runtime boundaries are clear and consistent in code/docs | Completed (100%) |
-| Wrapper inventory | Inventory `src/*` wrappers and safe-removal candidates | Wrapper list and cleanup candidates are documented | Completed (100%) |
+| Canonical boundary freeze | Set runtime boundary: `backend/*` sebagai satu-satunya namespace runtime python | Runtime boundaries are clear and consistent in code/docs | Completed (100%) |
+| Wrapper inventory | Inventory wrapper `src/*` dan selesaikan removal untuk full cutover | Wrapper list and removal status are documented | Completed (100%) |
 | Architecture docs alignment | Align architecture docs with current foldering state | Architecture docs reflect latest structure accurately | Completed (100%) |
 | Stale docs cleanup | Remove/merge stale pre-migration runtime narratives | No misleading stale runtime narratives remain | Completed (100%) |
 | Entrypoint docs alignment | Align `README.md`, `docs/PROJECT.md`, and runbooks with latest entrypoint/delegation model | Entrypoint references are consistent across docs | Completed (100%) |
@@ -167,3 +167,4 @@ This is the main living plan for backend evolution.
 - 2026-03-19: Migrated checker implementations to `backend/checks/*` and converted `src/checks/*` to compatibility aliases.
 - 2026-03-19: Finalized checks cutover by removing `src/checks/*` package and updating imports/tests to `backend/checks/*`.
 - 2026-03-19: Updated Phase overview status to completed for Phase 4.5 after cutover verification.
+- 2026-03-21: Completed full runtime/test cutover from `src/*` to `backend/*`, removed tracked `src/*` python modules, and updated architecture docs/tests accordingly.

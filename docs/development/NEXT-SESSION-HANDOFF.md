@@ -52,7 +52,7 @@ aws sso login --profile <profile> --use-device-code --no-browser
 ## Backend Operating Model
 
 - Canonical implementation: `backend/*`
-- `src/*` = compatibility layer only
+- `src/*` python namespace removed from runtime codebase
 - API path = DB persistent
 - TUI path = local (YAML-based)
 - Backend config source of truth = database

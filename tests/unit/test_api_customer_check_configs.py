@@ -41,7 +41,7 @@ class _FakeCustomerService:
 
 def test_account_check_config_crud_endpoints():
     import backend.interfaces.api.dependencies as deps
-    from src.app.api.main import create_app
+    from backend.interfaces.api.main import create_app
 
     fake = _FakeCustomerService()
 
@@ -74,7 +74,7 @@ def test_account_check_config_crud_endpoints():
 
 def test_account_check_config_returns_404_for_missing_account():
     import backend.interfaces.api.dependencies as deps
-    from src.app.api.main import create_app
+    from backend.interfaces.api.main import create_app
 
     fake = _FakeCustomerService()
     app = create_app()

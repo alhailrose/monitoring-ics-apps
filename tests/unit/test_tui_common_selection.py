@@ -1,4 +1,4 @@
-from src.app.tui.common import apply_bulk_action, filter_values_by_query
+from backend.interfaces.cli.common import apply_bulk_action, filter_values_by_query
 
 
 def test_filter_values_by_query_is_case_insensitive_contains():

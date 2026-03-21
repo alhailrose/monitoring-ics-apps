@@ -14,7 +14,7 @@ os.environ.setdefault(
     "postgresql+psycopg://monitor:monitor@localhost:5432/monitoring",
 )
 
-from src.app.api.main import app  # noqa: E402
+from backend.interfaces.api.main import app  # noqa: E402
 
 client = TestClient(app)
 

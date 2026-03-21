@@ -377,6 +377,158 @@ def test_collect_section_report_sets_ec2_instance_name_from_config(monkeypatch):
     assert reports["rabbitmq"]["instance_name"] == "aws-prod-rabbitmq"
 
 
+def test_collect_section_report_ignores_ec2_cpu_spike_5_minutes_or_less(monkeypatch):
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=1)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(
+        checker,
+        "_fetch_metrics",
+        lambda *args, **kwargs: {
+            "CPUUtilization": {
+                "last": 68.0,
+                "avg": (65.0 + 72.0 + 68.0) / 3,
+                "max": 72.0,
+                "values": [65.0, 72.0, 68.0],
+                "timestamps": [
+                    base,
+                    base + timedelta(minutes=1),
+                    base + timedelta(minutes=2),
+                ],
+            }
+        },
+    )
+    monkeypatch.setattr(
+        checker,
+        "_resolve_role_thresholds",
+        lambda *args, **kwargs: {"CPUUtilization": 70.0},
+    )
+    monkeypatch.setattr(
+        checker, "_resolve_live_threshold", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(checker, "_check_ec2_alarms", lambda *args, **kwargs: [])
+
+    class _SessionStub:
+        def client(self, service_name, region_name=None):
+            _ = service_name, region_name
+            return object()
+
+    reports, any_warn = checker._collect_section_report(
+        _SessionStub(),
+        object(),
+        "sfa",
+        {
+            "service_type": "ec2",
+            "instances": {"vm-sfa": "i-0cb272299353b6831"},
+            "instance_names": {"i-0cb272299353b6831": "vm-sfa"},
+            "metrics": ["CPUUtilization"],
+            "thresholds": {"CPUUtilization": 70.0},
+        },
+    )
+
+    assert reports["vm-sfa"]["metrics"]["CPUUtilization"]["status"] == "ok"
+    assert any_warn is False
+
+
+def test_evaluate_metric_ec2_cpu_uses_average_not_latest_and_shows_longest_spike():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=1)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    values = [60.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0]
+    status, msg = checker._evaluate_metric(
+        "CPUUtilization",
+        {
+            "last": 60.0,
+            "avg": sum(values) / len(values),
+            "values": values,
+            "timestamps": [base + timedelta(minutes=i) for i in range(len(values))],
+        },
+        {"CPUUtilization": 70.0},
+        "sfa",
+        service_type="ec2",
+    )
+
+    assert status == "warn"
+    assert "rata-rata" in msg
+    assert "spike terlama 7 menit" in msg
+
+
+def test_evaluate_metric_ec2_cpu_detects_6_minute_spike_with_low_average():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    values = [40.0] * 20 + [80.0] * 6 + [40.0] * 20
+    status, msg = checker._evaluate_metric(
+        "CPUUtilization",
+        {
+            "last": 40.0,
+            "avg": sum(values) / len(values),
+            "values": values,
+            "timestamps": [base + timedelta(minutes=i) for i in range(len(values))],
+        },
+        {"CPUUtilization": 70.0},
+        "sfa",
+        service_type="ec2",
+    )
+
+    assert status == "past-warn"
+    assert "spike terlama 6 menit" in msg
+
+
+def test_collect_section_report_ec2_cpu_ignores_higher_live_alarm_threshold(
+    monkeypatch,
+):
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    values = [40.0] * 20 + [80.0] * 6 + [40.0] * 20
+    monkeypatch.setattr(
+        checker,
+        "_fetch_metrics",
+        lambda *args, **kwargs: {
+            "CPUUtilization": {
+                "last": 40.0,
+                "avg": sum(values) / len(values),
+                "max": max(values),
+                "values": values,
+                "timestamps": [base + timedelta(minutes=i) for i in range(len(values))],
+            }
+        },
+    )
+    monkeypatch.setattr(
+        checker,
+        "_resolve_role_thresholds",
+        lambda *args, **kwargs: {"CPUUtilization": 70.0},
+    )
+    monkeypatch.setattr(
+        checker,
+        "_resolve_live_threshold",
+        lambda *args, **kwargs: 90.0,
+    )
+    monkeypatch.setattr(checker, "_check_ec2_alarms", lambda *args, **kwargs: [])
+
+    class _SessionStub:
+        def client(self, service_name, region_name=None):
+            _ = service_name, region_name
+            return object()
+
+    reports, any_warn = checker._collect_section_report(
+        _SessionStub(),
+        object(),
+        "sfa",
+        {
+            "service_type": "ec2",
+            "instances": {"vm-sfa": "i-0cb272299353b6831"},
+            "instance_names": {"i-0cb272299353b6831": "vm-sfa"},
+            "metrics": ["CPUUtilization"],
+            "thresholds": {"CPUUtilization": 70.0},
+        },
+    )
+
+    assert reports["vm-sfa"]["metrics"]["CPUUtilization"]["status"] == "past-warn"
+    assert any_warn is True
+
+
 def test_check_rds_scope_skips_extra_ec2_section(monkeypatch):
     checker = DailyArbelChecker(
         region="ap-southeast-3", window_hours=3, section_scope="rds"

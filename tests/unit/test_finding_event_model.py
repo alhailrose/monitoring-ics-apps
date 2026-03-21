@@ -1,4 +1,4 @@
-from src.db.models import FindingEvent
+from backend.infra.database.models import FindingEvent
 
 from backend.domain.finding_events import FINDING_EVENT_CHECK_NAMES
 

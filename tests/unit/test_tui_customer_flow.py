@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.app.tui.flows import customer
-from src.app.tui import interactive
+from backend.interfaces.cli.flows import customer
+from backend.interfaces.cli import interactive
 
 
 def _checker_factory(supports_consolidated=False):
@@ -365,9 +365,9 @@ def test_pick_profiles_from_customers_uses_mode_selector(monkeypatch):
         "globex": {"accounts": [{"profile": "prod-b", "display_name": "Prod B"}]},
     }
 
-    monkeypatch.setattr("src.configs.loader.list_customers", lambda: customers)
+    monkeypatch.setattr("backend.config.loader.list_customers", lambda: customers)
     monkeypatch.setattr(
-        "src.configs.loader.load_customer_config",
+        "backend.config.loader.load_customer_config",
         lambda customer_id: cfg_by_customer[customer_id],
     )
 

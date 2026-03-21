@@ -1,4 +1,4 @@
-from src.configs.loader import find_customer_account, load_customer_config
+from backend.config.loader import find_customer_account, load_customer_config
 
 
 def test_src_loader_reads_aryanoble_config():

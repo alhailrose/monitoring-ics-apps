@@ -1,4 +1,4 @@
-from src.app.services.metric_samples_mapper import map_check_metric_samples
+from backend.domain.services.metric_samples_mapper import map_check_metric_samples
 
 
 def test_map_daily_arbel_instances_to_metric_samples():

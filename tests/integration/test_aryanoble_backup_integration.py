@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 
 def test_aryanoble_backup_integration_simple():
     """Integration test for Aryanoble backup report generation"""
-    from src.core.runtime.reports import build_whatsapp_backup_aryanoble
+    from backend.domain.runtime.reports import build_whatsapp_backup_aryanoble
 
     # Mock realistic backup results
     jakarta_tz = timezone(timedelta(hours=7))

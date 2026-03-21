@@ -26,7 +26,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import models so metadata is populated
-from src.db.models import Base  # noqa: E402
+from backend.infra.database.models import Base  # noqa: E402
 
 target_metadata = Base.metadata
 

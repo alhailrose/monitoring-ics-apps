@@ -23,10 +23,9 @@ monitoring-hub = "backend.interfaces.cli.main:main"
 monitoring-hub-dev = "backend.interfaces.cli.main:main"
 
 [tool.setuptools.packages.find]
-include = ["src*", "backend*"]
+include = ["backend*"]
 
 [tool.setuptools.package-data]
-"src.configs.defaults.customers" = ["*.yaml"]
 "backend.config.defaults.customers" = ["*.yaml"]
 
 [build-system]

@@ -6,7 +6,6 @@ Reference contract: `docs/architecture/target-structure-contract.md`
 
 - Runtime entrypoint now uses backend interfaces directly:
   - `monitoring-hub` console script -> `backend.interfaces.cli.main:main`
-  - `src.app.cli.main` remains compatibility wrapper only
 - Canonical interface/runtime modules live under `backend/`:
   - API: `backend/interfaces/api/*`
   - CLI/TUI: `backend/interfaces/cli/*`
@@ -17,25 +16,24 @@ Reference contract: `docs/architecture/target-structure-contract.md`
   - Domain services: `backend/domain/services/*`
   - Config settings: `backend/config/settings.py`
   - Customer flow canonical: `backend/interfaces/cli/flows/customer.py`
-- `src/` runtime code has no imports from `monitoring_hub.*` or `checks.*`.
+- Runtime codebase no longer uses `src.*` namespace imports.
 
 ## Compatibility posture
 
 - Legacy top-level packages have been removed from repository runtime surface:
   - removed: `monitoring_hub/*`
   - removed: `checks/*`
-- Runtime code points to `backend/*` canonical paths, with `src/app/*` maintained as compatibility wrappers.
-- Runtime checks now point to `backend/checks/*`; `backend/checks/*` remains compatibility wrappers.
+- Legacy `src/*` python modules have been removed from tracked runtime code.
 
 ## Validation coverage
 
-- Integration guardrail enforces no legacy imports in src runtime tree.
-- CLI entrypoint integration test enforces wrapper delegation to backend interface target.
+- Integration guardrail enforces no `src.*` imports in repository python code.
+- CLI/API tests target canonical backend modules directly.
 - Existing unit/integration suites remain in `tests/unit` and `tests/integration`.
 
 ## Remaining follow-up (non-blocking)
 
-1. Continue wrapper cleanup by migrating remaining non-interface `src/*` modules into `backend/*` layers.
+1. Keep docs/runbooks synchronized with backend-only runtime namespace.
 
 ## Phase 2 scaffold + CI/CD baseline (incremental)
 

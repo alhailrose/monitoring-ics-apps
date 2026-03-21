@@ -1,5 +1,5 @@
-from src.core.runtime.config_loader import DEFAULT_PROFILE_GROUPS
-from src.configs.loader import load_customer_config
+from backend.domain.runtime.config_loader import DEFAULT_PROFILE_GROUPS
+from backend.config.loader import load_customer_config
 
 
 def test_aryanoble_default_group_includes_new_backup_accounts():
