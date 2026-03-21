@@ -41,6 +41,8 @@ class Settings:
     api_auth_enabled: bool = False
     api_keys: list[str] = field(default_factory=list)
     api_key_header: str = "X-API-Key"
+    jwt_secret: str = "change-me-in-production"
+    jwt_expire_hours: int = 8
 
 
 @lru_cache(maxsize=1)
@@ -75,4 +77,6 @@ def get_settings() -> Settings:
         api_auth_enabled=api_auth_enabled,
         api_keys=api_keys,
         api_key_header=os.getenv("API_KEY_HEADER", "X-API-Key"),
+        jwt_secret=os.getenv("JWT_SECRET", "change-me-in-production"),
+        jwt_expire_hours=int(os.getenv("JWT_EXPIRE_HOURS", "8")),
     )

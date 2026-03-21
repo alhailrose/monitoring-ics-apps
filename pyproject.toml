@@ -15,7 +15,10 @@ dependencies = [
   "alembic>=1.13.0",
   "psycopg[binary]>=3.1.0",
   "pydantic>=2.0.0",
+  "passlib[bcrypt]>=1.7.4",
+  "python-jose[cryptography]>=3.3.0",
   "tzdata; platform_system == 'Windows'",
+  "python-multipart>=0.0.20",
 ]
 
 [project.scripts]
@@ -31,6 +34,12 @@ include = ["backend*"]
 [build-system]
 requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-httpx>=0.35.0",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

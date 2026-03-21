@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 import backend.interfaces.api.dependencies as deps
+from backend.interfaces.api.routes.auth import router as auth_router
 from backend.interfaces.api.routes.checks import router as checks_router
 from backend.interfaces.api.routes.customers import router as customers_router
 from backend.interfaces.api.routes.dashboard import router as dashboard_router
@@ -68,6 +69,9 @@ def create_app() -> FastAPI:
             duration_ms,
         )
         return response
+
+    # Auth routes are public — no api_dependencies applied
+    application.include_router(auth_router, prefix="/api/v1")
 
     api_dependencies = [Depends(deps.require_api_key)]
     application.include_router(

@@ -1,16 +1,25 @@
 """Dependency providers for API routes."""
 
+import logging
 from functools import lru_cache
+from typing import Annotated
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordBearer
 
 from backend.config.settings import get_settings
 from backend.infra.database.repositories.customer_repository import CustomerRepository
 from backend.infra.database.repositories.check_repository import CheckRepository
+from backend.infra.database.repositories.user_repository import UserRepository
 from backend.infra.database.session import build_session_factory
 from backend.domain.services.customer_service import CustomerService
 from backend.domain.services.check_executor import CheckExecutor
 from backend.domain.services.session_health import SessionHealthService
+from backend.domain.services.auth_service import AuthService, InvalidTokenError, TokenPayload
+
+logger = logging.getLogger(__name__)
+
+_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 
 @lru_cache(maxsize=1)
@@ -63,6 +72,91 @@ def get_session_health_service():
         yield SessionHealthService(customer_repo=repo)
     finally:
         session.close()
+
+
+def get_auth_service():
+    session = _get_session()
+    settings = get_settings()
+    try:
+        repo = UserRepository(session)
+        yield AuthService(
+            user_repo=repo,
+            jwt_secret=settings.jwt_secret,
+            jwt_expire_hours=settings.jwt_expire_hours,
+        )
+    finally:
+        session.close()
+
+
+def require_auth(
+    token: Annotated[str | None, Depends(_oauth2_scheme)],
+    request: Request,
+) -> TokenPayload:
+    """Validate JWT Bearer token and return the decoded payload.
+
+    During the transition period, also accepts a valid API key and returns a
+    synthetic super_user payload so existing integrations continue to work.
+    Logs a deprecation warning when an API key is used.
+    """
+    settings = get_settings()
+
+    # -- JWT path --
+    if token:
+        session = _get_session_factory()()
+        try:
+            repo = UserRepository(session)
+            auth_svc = AuthService(
+                user_repo=repo,
+                jwt_secret=settings.jwt_secret,
+                jwt_expire_hours=settings.jwt_expire_hours,
+            )
+            try:
+                return auth_svc.decode_token(token)
+            except InvalidTokenError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=str(exc),
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        finally:
+            session.close()
+
+    # -- Legacy API key fallback --
+    if settings.api_auth_enabled:
+        provided_key = request.headers.get(settings.api_key_header)
+        if not provided_key:
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.lower().startswith("bearer "):
+                provided_key = auth_header.split(" ", 1)[1].strip()
+        if provided_key and provided_key in settings.api_keys:
+            logger.warning(
+                "API key auth is deprecated — migrate to JWT via POST /api/v1/auth/login"
+            )
+            return TokenPayload(user_id="api-key", username="api-key", role="super_user")
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def require_role(required_role: str):
+    """Return a FastAPI dependency that enforces a minimum role.
+
+    Usage:
+        @router.post("/", dependencies=[Depends(require_role("super_user"))])
+    """
+    def _check(current_user: Annotated[TokenPayload, Depends(require_auth)]):
+        role_hierarchy = {"super_user": 2, "user": 1}
+        user_level = role_hierarchy.get(current_user.role, 0)
+        required_level = role_hierarchy.get(required_role, 99)
+        if user_level < required_level:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Role '{required_role}' required",
+            )
+    return _check
 
 
 def require_api_key(request: Request):

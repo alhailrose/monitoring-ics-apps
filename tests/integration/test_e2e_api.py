@@ -6,6 +6,7 @@ Requires: PostgreSQL running, AWS SSO credentials active
 
 import os
 import pytest
+from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 # Ensure we hit the real PostgreSQL
@@ -14,7 +15,25 @@ os.environ.setdefault(
     "postgresql+psycopg://monitor:monitor@localhost:5432/monitoring",
 )
 
+# Use a known JWT secret so we can mint test tokens without a DB user
+_E2E_JWT_SECRET = "e2e-test-secret"
+os.environ.setdefault("JWT_SECRET", _E2E_JWT_SECRET)
+
 from backend.interfaces.api.main import app  # noqa: E402
+from jose import jwt  # noqa: E402
+
+_E2E_TOKEN = jwt.encode(
+    {
+        "sub": "e2e-user",
+        "username": "e2e",
+        "role": "super_user",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=8),
+    },
+    _E2E_JWT_SECRET,
+    algorithm="HS256",
+)
+
+_AUTH_HEADERS = {"Authorization": f"Bearer {_E2E_TOKEN}"}
 
 client = TestClient(app)
 
@@ -42,6 +61,7 @@ class TestCustomerCRUD:
                 "checks": ["cost", "guardduty", "cloudwatch", "notifications"],
                 "slack_enabled": False,
             },
+            headers=_AUTH_HEADERS,
         )
         assert r.status_code == 201, r.text
         data = r.json()
@@ -68,6 +88,7 @@ class TestCustomerCRUD:
                 "display_name": "E2E Updated",
                 "checks": ["cost", "guardduty"],
             },
+            headers=_AUTH_HEADERS,
         )
         assert r.status_code == 200
         assert r.json()["display_name"] == "E2E Updated"
@@ -80,6 +101,7 @@ class TestCustomerCRUD:
                 "name": "e2e-test-customer",
                 "display_name": "Duplicate",
             },
+            headers=_AUTH_HEADERS,
         )
         assert r.status_code == 409
 
@@ -97,6 +119,7 @@ class TestAccounts:
                 "profile_name": "connect-prod",
                 "display_name": "Connect Production",
             },
+            headers=_AUTH_HEADERS,
         )
         assert r.status_code == 201, r.text
         data = r.json()
@@ -116,6 +139,7 @@ class TestAccounts:
             json={
                 "display_name": "Connect Prod (Updated)",
             },
+            headers=_AUTH_HEADERS,
         )
         assert r.status_code == 200
         assert r.json()["display_name"] == "Connect Prod (Updated)"
@@ -146,6 +170,7 @@ class TestCheckExecution:
                 "mode": "single",
                 "check_name": "guardduty",
             },
+            headers=_AUTH_HEADERS,
         )
         assert r.status_code == 200, r.text
         data = r.json()
@@ -175,6 +200,7 @@ class TestCheckExecution:
                 "mode": "single",
                 "check_name": "cost",
             },
+            headers=_AUTH_HEADERS,
         )
         assert r.status_code == 200, r.text
         data = r.json()
@@ -189,6 +215,7 @@ class TestCheckExecution:
             json={
                 "checks": ["cost", "guardduty", "cloudwatch", "notifications"],
             },
+            headers=_AUTH_HEADERS,
         )
 
         r = client.post(
@@ -197,6 +224,7 @@ class TestCheckExecution:
                 "customer_ids": [_customer_id],
                 "mode": "all",
             },
+            headers=_AUTH_HEADERS,
         )
         assert r.status_code == 200, r.text
         data = r.json()
@@ -232,6 +260,7 @@ class TestCheckExecution:
                 "customer_ids": [_customer_id],
                 "mode": "single",
             },
+            headers=_AUTH_HEADERS,
         )
         assert r.status_code == 400
 
@@ -251,6 +280,7 @@ class TestHistory:
             params={
                 "customer_id": _customer_id,
             },
+            headers=_AUTH_HEADERS,
         )
         assert r.status_code == 200, r.text
         data = r.json()
@@ -274,7 +304,7 @@ class TestHistory:
             assert item["check_mode"] == "single"
 
     def test_check_run_detail(self):
-        r = client.get(f"/api/v1/history/{_check_run_id}")
+        r = client.get(f"/api/v1/history/{_check_run_id}", headers=_AUTH_HEADERS)
         assert r.status_code == 200, r.text
         data = r.json()
         assert data["check_run_id"] == _check_run_id
@@ -296,7 +326,7 @@ class TestCleanup:
     """Clean up test data."""
 
     def test_delete_customer(self):
-        r = client.delete(f"/api/v1/customers/{_customer_id}")
+        r = client.delete(f"/api/v1/customers/{_customer_id}", headers=_AUTH_HEADERS)
         assert r.status_code == 204
 
     def test_customer_gone(self):

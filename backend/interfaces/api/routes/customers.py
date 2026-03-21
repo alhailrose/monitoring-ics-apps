@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.interfaces.api.dependencies import get_customer_service
+from backend.interfaces.api.dependencies import get_customer_service, require_role
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -66,7 +66,7 @@ def get_customer(customer_id: str, service=Depends(get_customer_service)):
     return customer
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(require_role("super_user"))])
 def create_customer(
     payload: CreateCustomerRequest, service=Depends(get_customer_service)
 ):
@@ -84,7 +84,7 @@ def create_customer(
         raise HTTPException(status_code=409, detail=str(exc))
 
 
-@router.patch("/{customer_id}")
+@router.patch("/{customer_id}", dependencies=[Depends(require_role("super_user"))])
 def update_customer(
     customer_id: str,
     payload: UpdateCustomerRequest,
@@ -99,7 +99,7 @@ def update_customer(
     return result
 
 
-@router.delete("/{customer_id}", status_code=204)
+@router.delete("/{customer_id}", status_code=204, dependencies=[Depends(require_role("super_user"))])
 def delete_customer(customer_id: str, service=Depends(get_customer_service)):
     if not service.delete_customer(customer_id):
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -108,7 +108,7 @@ def delete_customer(customer_id: str, service=Depends(get_customer_service)):
 # -- Account sub-routes --
 
 
-@router.post("/{customer_id}/accounts", status_code=201)
+@router.post("/{customer_id}/accounts", status_code=201, dependencies=[Depends(require_role("super_user"))])
 def add_account(
     customer_id: str,
     payload: AddAccountRequest,
@@ -127,7 +127,7 @@ def add_account(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.patch("/accounts/{account_id}")
+@router.patch("/accounts/{account_id}", dependencies=[Depends(require_role("super_user"))])
 def update_account(
     account_id: str,
     payload: UpdateAccountRequest,
@@ -142,7 +142,7 @@ def update_account(
     return result
 
 
-@router.delete("/accounts/{account_id}", status_code=204)
+@router.delete("/accounts/{account_id}", status_code=204, dependencies=[Depends(require_role("super_user"))])
 def delete_account(account_id: str, service=Depends(get_customer_service)):
     if not service.delete_account(account_id):
         raise HTTPException(status_code=404, detail="Account not found")
