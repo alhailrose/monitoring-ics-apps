@@ -704,6 +704,88 @@ def _build_summary_report(
     return "\n".join(lines)
 
 
+def _build_simple_report(
+    profiles: list[str],
+    all_results: dict[str, dict[str, dict]],
+    checks: list[str],
+) -> str:
+    """Build a minimal flat-list report — one alarm/finding name per line.
+
+    Format:
+      Selamat Pagi
+      Berikut Alert Pagi ini
+      YYYY.MM.DD
+
+      AlarmName1
+      AlarmName2
+      ...
+
+    If nothing is in alarm, ends with "tidak ada alarm aktif".
+    Designed for customers like Frisian Flag that use CloudWatch only and want
+    a clean copy-paste message.
+    """
+    now_jkt = datetime.now(timezone(timedelta(hours=7)))
+    if 5 <= now_jkt.hour < 11:
+        time_label = "Pagi"
+    elif 11 <= now_jkt.hour < 15:
+        time_label = "Siang"
+    elif 15 <= now_jkt.hour < 18:
+        time_label = "Sore"
+    else:
+        time_label = "Malam"
+
+    date_str = now_jkt.strftime("%Y.%m.%d")
+
+    lines = [
+        f"Selamat {time_label}",
+        f"Berikut Alert {time_label} ini",
+        date_str,
+    ]
+
+    alarm_names: list[str] = []
+
+    for chk in checks:
+        for profile in profiles:
+            res = all_results.get(profile, {}).get(chk, {})
+            if not res or res.get("status") == "error":
+                continue
+
+            if chk == "cloudwatch":
+                for detail in res.get("details", []):
+                    name = detail.get("name", "")
+                    if name:
+                        alarm_names.append(name)
+
+            elif chk == "guardduty":
+                count = int(res.get("findings", 0) or 0)
+                if count > 0:
+                    alarm_names.append(f"GuardDuty: {count} finding(s) detected")
+
+            elif chk == "notifications":
+                count = int(res.get("recent_count", 0) or 0)
+                if count > 0:
+                    alarm_names.append(f"Notifications: {count} baru")
+
+            elif chk == "backup":
+                failed = int(res.get("failed_jobs", 0) or 0)
+                if failed > 0:
+                    alarm_names.append(f"Backup: {failed} job gagal")
+
+            elif chk == "cost":
+                count = int(res.get("total_anomalies", 0) or 0)
+                if count > 0:
+                    alarm_names.append(f"Cost Anomaly: {count} terdeteksi")
+
+    if alarm_names:
+        lines.append("")
+        lines.extend(alarm_names)
+    else:
+        lines.append("")
+        lines.append("tidak ada alarm aktif")
+
+    return "\n".join(lines)
+
+
 class CheckExecutor:
     """Synchronous check executor for web API.
 
@@ -929,7 +1011,13 @@ class CheckExecutor:
             consolidated = ""
             report_mode = getattr(customer, "report_mode", "detailed") or "detailed"
             if mode in ("all", "arbel"):
-                if report_mode == "summary":
+                if report_mode == "simple":
+                    consolidated = _build_simple_report(
+                        profiles=profiles,
+                        all_results=profile_results,
+                        checks=list(checks_to_run.keys()),
+                    )
+                elif report_mode == "summary":
                     consolidated = _build_summary_report(
                         profiles=profiles,
                         all_results=profile_results,

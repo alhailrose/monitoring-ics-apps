@@ -134,6 +134,7 @@ export function CustomerSheet({ customer, open, onClose }: CustomerSheetProps) {
                 <SelectValue placeholder="Select report mode" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="simple">Simple (alarm list only)</SelectItem>
                 <SelectItem value="summary">Summary (condensed)</SelectItem>
                 <SelectItem value="detailed">Detailed (full report)</SelectItem>
               </SelectContent>
