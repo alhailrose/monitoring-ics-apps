@@ -125,63 +125,22 @@ class GuardDutyChecker(BaseChecker):
             }
 
     def format_report(self, results):
-        """Format GuardDuty findings into readable report"""
+        """Format GuardDuty — concise per-account data output."""
         if results["status"] == "error":
             return f"ERROR: {results['error']}"
         if results["status"] == "disabled":
-            return "GuardDuty is not enabled for this account."
-
-        now = self.timestamp
-        date_str = now.strftime("%B %d, %Y")
-        time_str = now.strftime("%H:%M WIB")
+            return f"GuardDuty | {results['profile']} ({results['account_id']})\nStatus: Disabled"
 
         lines = []
-        lines.append("AWS GUARDDUTY REPORT")
-        lines.append(f"Date: {date_str} | Time: {time_str}")
-        lines.append(f"Account: {results['profile']} ({results['account_id']})")
-        lines.append("")
-        lines.append("=" * 80)
-        lines.append("")
-        lines.append("EXECUTIVE SUMMARY")
+        lines.append(f"GuardDuty | {results['profile']} ({results['account_id']})")
+        lines.append(f"Findings: {results['findings']}")
 
         if results["findings"] == 0:
-            lines.append("GuardDuty monitoring completed. No new findings today.")
-        else:
-            lines.append(
-                f"GuardDuty monitoring completed. {results['findings']} finding(s) detected today."
-            )
-
-        lines.append("")
-        lines.append("=" * 80)
-        lines.append("")
-        lines.append("ASSESSMENT RESULTS")
-
-        if results["findings"] == 0:
-            lines.append("Status: CLEAR - No findings detected today")
-            lines.append("")
-            lines.append("=" * 80)
+            lines.append("Status: Clear")
             return "\n".join(lines)
 
-        lines.append(f"Status: ATTENTION REQUIRED - {results['findings']} findings")
-        lines.append("")
-        lines.append("Recent Findings (up to 5):")
-        for idx, detail in enumerate(results["details"], 1):
-            lines.append(f"\n• Finding #{idx}")
-            lines.append(f"  Type: {detail['type']}")
-            lines.append(f"  Title: {detail['title']}")
-            lines.append(f"  Severity: {detail['severity']}")
-            lines.append(f"  Updated: {detail['updated']}")
-
-        lines.append("")
-        lines.append("=" * 80)
-        lines.append("")
-        lines.append("RECOMMENDATIONS")
-        lines.append("1. Review and remediate the listed findings promptly")
-        lines.append(
-            "2. Validate GuardDuty alerts are integrated with your incident workflow"
-        )
-        lines.append("")
-        lines.append("=" * 80)
+        for idx, detail in enumerate(results.get("details", [])[:5], 1):
+            lines.append(f"  {idx}. [{detail['severity']}] {detail['type']} — {detail['title']} ({detail['updated']})")
 
         return "\n".join(lines)
 

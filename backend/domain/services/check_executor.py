@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional
 
@@ -52,10 +52,16 @@ ARBEL_CHECKS = [
 
 def _json_safe(obj):
     """Recursively convert non-serializable objects to strings."""
+    from decimal import Decimal
+
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, Decimal):
+        return float(obj)
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
     if isinstance(obj, dict):
-        return {k: _json_safe(v) for k, v in obj.items()}
+        return {str(k): _json_safe(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_json_safe(item) for item in obj]
     if isinstance(obj, set):
@@ -115,7 +121,16 @@ def _build_summary(raw_result: dict, check_name: str) -> str:
     if check_name == "notifications":
         count = raw_result.get("notification_count", 0)
         return f"{count} notification(s)"
-    return raw_result.get("summary", "Check completed")
+    if check_name == "ec2_utilization":
+        summary_dict = raw_result.get("summary", {})
+        if isinstance(summary_dict, dict):
+            warn = summary_dict.get("warning", 0)
+            crit = summary_dict.get("critical", 0)
+            total = summary_dict.get("total", 0)
+            if crit > 0 or warn > 0:
+                return f"{warn} warning, {crit} critical (of {total})"
+            return f"All normal ({total} total)"
+    return str(raw_result.get("summary", "Check completed"))
 
 
 def _run_single_check(
@@ -346,6 +361,349 @@ def _build_consolidated_report(
     return "\n".join(lines)
 
 
+def _build_summary_report(
+    profiles: list[str],
+    all_results: dict[str, dict[str, dict]],
+    checks: list[str],
+    checkers: dict,
+    check_errors: list[tuple],
+    clean_accounts: list[str],
+    region: str,
+    group_name: str | None = None,
+    accounts: list | None = None,
+) -> str:
+    """Build a condensed summary report (WhatsApp-friendly).
+
+    Used when customer.report_mode == "summary". Produces a compact daily
+    alert format with utilization metrics and brief other-check summaries.
+
+    Output format matches the WhatsApp monitoring message template:
+      Selamat Pagi Team
+      Berikut Alert Monitoring
+      YYYY.MM.DD
+
+      Utilisasi X Jam (CPU/MEM/DISK)
+      - AccountName (account_id)
+          - InstanceName | CPU(avg)=X% | MEM(avg)=Y% | DISK=Z%
+        *Catatan Alert:*
+          ...
+
+      Ringkasan Check Lain
+      - Notifikasi: ...
+      - Cost Anomaly: ...
+      - GuardDuty: ...
+      - Alarm CloudWatch: ...
+    """
+    now_jkt = datetime.now(timezone(timedelta(hours=7)))
+    if 5 <= now_jkt.hour < 11:
+        greeting = "Selamat Pagi"
+    elif 11 <= now_jkt.hour < 15:
+        greeting = "Selamat Siang"
+    elif 15 <= now_jkt.hour < 18:
+        greeting = "Selamat Sore"
+    else:
+        greeting = "Selamat Malam"
+
+    date_str = now_jkt.strftime("%Y.%m.%d")
+
+    # Build profile → display_name map from DB accounts
+    profile_display: dict[str, str] = {}
+    profile_aws_id: dict[str, str] = {}
+    for acc in (accounts or []):
+        profile_display[acc.profile_name] = acc.display_name
+        if acc.account_id:
+            profile_aws_id[acc.profile_name] = acc.account_id
+
+    lines = []
+    lines.append(f"{greeting} Team")
+    lines.append("Berikut Alert Monitoring")
+    lines.append(date_str)
+
+    # ── Utilization section ──────────────────────────────────────────────
+    utilization_checks = [
+        c for c in checks
+        if c in ("daily-arbel", "daily-arbel-rds", "daily-arbel-ec2", "aws-utilization-3core", "ec2_utilization")
+    ]
+    if utilization_checks:
+        # Detect window_hours from first available result
+        window_hours = 12
+        for profile in profiles:
+            for chk in utilization_checks:
+                res = all_results.get(profile, {}).get(chk, {})
+                wh = res.get("window_hours") or (res.get("util_window") or {}).get("hours")
+                if wh:
+                    window_hours = int(wh)
+                    break
+            else:
+                continue
+            break
+
+        lines.append("")
+        lines.append(f"Utilisasi {window_hours} Jam (CPU/MEM/DISK)")
+
+        for profile in profiles:
+            account_lines = []
+            alert_notes = []
+            account_label = None
+            account_id_str = None
+
+            for chk in utilization_checks:
+                res = all_results.get(profile, {}).get(chk, {})
+                if not res or res.get("status") in ("error", "skipped"):
+                    continue
+
+                if not account_label:
+                    account_label = res.get("account_name") or profile_display.get(profile, profile)
+                    account_id_str = res.get("account_id") or profile_aws_id.get(profile, "")
+
+                # ── aws-utilization-3core / ec2_utilization format ──
+                if chk in ("aws-utilization-3core", "ec2_utilization") and res.get("status") == "success":
+                    for row in res.get("instances", []):
+                        inst_name = row.get("name") or row.get("instance_id") or "-"
+                        parts = []
+
+                        cpu_avg = row.get("cpu_avg_12h")
+                        cpu_peak = row.get("cpu_peak_12h")
+                        cpu_peak_at = row.get("cpu_peak_at_12h")
+                        mem_avg = row.get("memory_avg_12h")
+                        mem_peak = row.get("memory_peak_12h")
+                        disk_free = row.get("disk_free_min_percent")
+
+                        if cpu_avg is not None:
+                            parts.append(f"CPU(avg)={cpu_avg:.2f}%")
+                        if mem_avg is not None:
+                            parts.append(f"MEM(avg)={mem_avg:.2f}%")
+                        if disk_free is not None:
+                            parts.append(f"DISK={disk_free:.2f}%")
+
+                        if parts:
+                            account_lines.append(f"    - {inst_name} | {' | '.join(parts)}")
+
+                        # Alert notes for spikes
+                        inst_status = str(row.get("status") or "").upper()
+                        if inst_status in ("WARNING", "CRITICAL"):
+                            if cpu_peak is not None and cpu_avg is not None and cpu_peak > cpu_avg * 1.5:
+                                time_str = f" pada {cpu_peak_at}" if cpu_peak_at else ""
+                                alert_notes.append(
+                                    f"*CPU {inst_name} sempat sangat tinggi {cpu_peak:.2f}%{time_str} (avg={cpu_avg:.2f}%).*"
+                                )
+                            if mem_avg is not None and mem_peak is not None and mem_peak > 80:
+                                alert_notes.append(
+                                    f"*Memory {inst_name} tinggi dan konsisten dalam {window_hours} jam terakhir (avg={mem_avg:.2f}%, peak={mem_peak:.2f}%).*"
+                                )
+                            if disk_free is not None and disk_free < 10:
+                                alert_notes.append(
+                                    f"*Disk {inst_name} sangat rendah (sisa minimum {disk_free:.2f}%).*"
+                                )
+                    continue
+
+                # ── daily-arbel / daily-arbel-rds / daily-arbel-ec2 format ──
+                # Process main instances + extra_sections
+                all_sections = [res]
+                for section in res.get("extra_sections") or []:
+                    if isinstance(section, dict):
+                        all_sections.append(section)
+
+                for section in all_sections:
+                    instances = section.get("instances", {})
+                    for role, data in instances.items():
+                        inst_name = data.get("instance_name") or data.get("instance_id") or role
+                        metrics = data.get("metrics", {})
+
+                        # Collect metric values
+                        parts = []
+
+                        for metric_name, info in metrics.items():
+                            avg = info.get("avg")
+                            last = info.get("last")
+                            max_val = info.get("max")
+                            status = info.get("status", "ok")
+
+                            if metric_name == "CPUUtilization":
+                                val = avg if avg is not None else last
+                                if val is not None:
+                                    parts.append(f"CPU(avg)={val:.2f}%")
+                                    if status in ("warn", "past-warn") and max_val is not None and max_val > val * 1.5:
+                                        peak_time_str = ""
+                                        timestamps = info.get("timestamps", [])
+                                        values = info.get("values", [])
+                                        if timestamps and values and len(timestamps) == len(values):
+                                            max_idx = values.index(max(values))
+                                            peak_ts = timestamps[max_idx]
+                                            if hasattr(peak_ts, 'strftime'):
+                                                jkt_tz = timezone(timedelta(hours=7))
+                                                peak_jkt = peak_ts.astimezone(jkt_tz) if peak_ts.tzinfo else peak_ts
+                                                peak_time_str = f" pada {peak_jkt.strftime('%Y-%m-%d %H:%M:%S')} +07"
+                                        alert_notes.append(
+                                            f"*CPU {inst_name} sempat sangat tinggi {max_val:.2f}%{peak_time_str} (avg={val:.2f}%).*"
+                                        )
+
+                            elif metric_name == "ACUUtilization":
+                                val = avg if avg is not None else last
+                                if val is not None:
+                                    parts.append(f"ACU(avg)={val:.2f}%")
+
+                            elif metric_name == "FreeableMemory":
+                                val = avg if avg is not None else last
+                                if val is not None:
+                                    gb = val / (1024**3)
+                                    parts.append(f"MEM(avg)={gb:.2f}GB")
+                                    if status == "warn":
+                                        values = info.get("values", [val])
+                                        peak_gb = min(values) / (1024**3) if values else gb
+                                        alert_notes.append(
+                                            f"*Memory {inst_name} rendah dan konsisten dalam {window_hours} jam terakhir (avg={gb:.2f}GB, min={peak_gb:.2f}GB).*"
+                                        )
+
+                            elif metric_name == "FreeStorageSpace":
+                                val = last if last is not None else (avg if avg is not None else None)
+                                if val is not None:
+                                    gb = val / (1024**3)
+                                    parts.append(f"DISK={gb:.2f}GB")
+                                    if status == "warn":
+                                        alert_notes.append(
+                                            f"*Disk {inst_name} sangat rendah (sisa {gb:.2f}GB).*"
+                                        )
+
+                            elif metric_name == "DatabaseConnections":
+                                val = last if last is not None else (avg if avg is not None else None)
+                                if val is not None:
+                                    parts.append(f"CONN={int(val)}")
+
+                        # EC2 disk_memory_alarms for alert notes
+                        for alarm in data.get("disk_memory_alarms") or []:
+                            alarm_name = alarm.get("alarm_name", "")
+                            state = alarm.get("current_state", "")
+                            periods = alarm.get("periods") or []
+                            if "mem" in alarm_name.lower():
+                                if state == "ALARM":
+                                    alert_notes.append(f"*Memory {inst_name} dalam kondisi ALARM.*")
+                                elif periods:
+                                    alert_notes.append(
+                                        f"*Memory {inst_name} sempat ALARM dalam {window_hours} jam terakhir.*"
+                                    )
+                            elif "disk" in alarm_name.lower():
+                                if state == "ALARM":
+                                    alert_notes.append(f"*Disk {inst_name} dalam kondisi ALARM.*")
+                                elif periods:
+                                    alert_notes.append(
+                                        f"*Disk {inst_name} sempat ALARM dalam {window_hours} jam terakhir.*"
+                                    )
+
+                        if parts:
+                            account_lines.append(f"    - {inst_name} | {' | '.join(parts)}")
+
+            if account_label and (account_lines or alert_notes):
+                lines.append(f"- {account_label} ({account_id_str})")
+                lines.extend(account_lines)
+                if alert_notes:
+                    lines.append("  *Catatan Alert:*")
+                    for note in alert_notes:
+                        lines.append(f"    - {note}")
+
+    # ── Other checks summary ────────────────────────────────────────────
+    other_checks = [c for c in checks if c not in utilization_checks]
+    if other_checks or check_errors:
+        lines.append("")
+        lines.append("Ringkasan Check Lain")
+
+        # Notifications
+        if "notifications" in checks:
+            total_notif = 0
+            for profile in profiles:
+                res = all_results.get(profile, {}).get("notifications", {})
+                total_notif += int(res.get("recent_count", 0))
+            window = 12
+            for profile in profiles:
+                res = all_results.get(profile, {}).get("notifications", {})
+                if res.get("window_hours"):
+                    window = int(res["window_hours"])
+                    break
+            if total_notif == 0:
+                lines.append(f"- Notifikasi ({window} jam): tidak ada notifikasi baru")
+            else:
+                lines.append(f"- Notifikasi ({window} jam): {total_notif} notifikasi baru")
+
+        # Cost Anomaly
+        if "cost" in checks:
+            total_anomalies = 0
+            for profile in profiles:
+                res = all_results.get(profile, {}).get("cost", {})
+                total_anomalies += int(res.get("total_anomalies", 0))
+            if total_anomalies == 0:
+                lines.append("- Cost Anomaly: tidak ada cost anomaly")
+            else:
+                lines.append(f"- Cost Anomaly: {total_anomalies} cost anomaly terdeteksi")
+
+        # GuardDuty
+        if "guardduty" in checks:
+            disabled_accounts = []
+            finding_accounts = []
+            total_findings = 0
+            for profile in profiles:
+                res = all_results.get(profile, {}).get("guardduty", {})
+                acct_name = profile_display.get(profile, res.get("account_name", profile))
+                acct_id = res.get("account_id") or profile_aws_id.get(profile, "")
+                label = f"{acct_name} ({acct_id})" if acct_id else acct_name
+                if res.get("status") == "disabled":
+                    disabled_accounts.append(label)
+                elif int(res.get("findings", 0)) > 0:
+                    count = int(res["findings"])
+                    total_findings += count
+                    finding_accounts.append((label, count))
+            if disabled_accounts and not finding_accounts:
+                lines.append(f"- GuardDuty Finding: tidak aktif pada {', '.join(disabled_accounts)}")
+            elif finding_accounts:
+                parts = [f"{count} finding pada {label}" for label, count in finding_accounts]
+                msg = "- GuardDuty Finding: " + ", ".join(parts)
+                if disabled_accounts:
+                    msg += f" (tidak aktif pada {', '.join(disabled_accounts)})"
+                lines.append(msg)
+            else:
+                lines.append("- GuardDuty Finding: tidak ada finding baru")
+
+        # CloudWatch Alarms
+        if "cloudwatch" in checks:
+            total_alarms = 0
+            alarm_accounts = []
+            for profile in profiles:
+                res = all_results.get(profile, {}).get("cloudwatch", {})
+                count = int(res.get("count", 0))
+                if count > 0:
+                    total_alarms += count
+                    acct_name = profile_display.get(profile, res.get("account_name", profile))
+                    acct_id = res.get("account_id") or profile_aws_id.get(profile, "")
+                    label = f"{acct_name} ({acct_id})" if acct_id else acct_name
+                    alarm_accounts.append((label, count))
+            if total_alarms == 0:
+                lines.append("- Alarm CloudWatch: tidak ada alarm aktif")
+            else:
+                parts = [f"{count} alarm pada {label}" for label, count in alarm_accounts]
+                lines.append(f"- Alarm CloudWatch: {', '.join(parts)}")
+
+        # Backup
+        if "backup" in checks:
+            failed = 0
+            for profile in profiles:
+                res = all_results.get(profile, {}).get("backup", {})
+                failed += int(res.get("failed_jobs", 0))
+            if failed == 0:
+                lines.append("- Backup: semua backup berhasil")
+            else:
+                lines.append(f"- Backup: {failed} job backup gagal")
+
+    # Check errors at the end
+    if check_errors:
+        lines.append("")
+        lines.append("*Error:*")
+        for profile, chk, err in check_errors[:5]:
+            lines.append(f"- {profile} ({chk}): {err}")
+        if len(check_errors) > 5:
+            lines.append(f"... +{len(check_errors) - 5} lainnya")
+
+    return "\n".join(lines)
+
+
 class CheckExecutor:
     """Synchronous check executor for web API.
 
@@ -525,6 +883,9 @@ class CheckExecutor:
                             raw_result=raw_result,
                         )
                         if finding_events:
+                            for fe in finding_events:
+                                if "raw_payload" in fe:
+                                    fe["raw_payload"] = _json_safe(fe["raw_payload"])
                             self.check_repo.add_finding_events(
                                 check_run_id=check_run.id,
                                 account_id=account.id,
@@ -537,6 +898,9 @@ class CheckExecutor:
                             raw_result=raw_result,
                         )
                         if metric_samples:
+                            for ms in metric_samples:
+                                if "raw_payload" in ms:
+                                    ms["raw_payload"] = _json_safe(ms["raw_payload"])
                             self.check_repo.add_metric_samples(
                                 check_run_id=check_run.id,
                                 account_id=account.id,
@@ -555,6 +919,7 @@ class CheckExecutor:
                             "status": status,
                             "summary": summary,
                             "output": output,
+                            "details": details,
                         }
                     )
 
@@ -562,18 +927,32 @@ class CheckExecutor:
 
             # Build consolidated output for all/arbel modes, or concatenated output for single
             consolidated = ""
+            report_mode = getattr(customer, "report_mode", "detailed") or "detailed"
             if mode in ("all", "arbel"):
-                consolidated = _build_consolidated_report(
-                    profiles=profiles,
-                    all_results=profile_results,
-                    checks=list(checks_to_run.keys()),
-                    checkers=checkers_map,
-                    check_errors=check_errors,
-                    clean_accounts=clean_accounts,
-                    errors_by_check=errors_by_check,
-                    region=effective_region,
-                    group_name=customer.display_name,
-                )
+                if report_mode == "summary":
+                    consolidated = _build_summary_report(
+                        profiles=profiles,
+                        all_results=profile_results,
+                        checks=list(checks_to_run.keys()),
+                        checkers=checkers_map,
+                        check_errors=check_errors,
+                        clean_accounts=clean_accounts,
+                        region=effective_region,
+                        group_name=customer.display_name,
+                        accounts=accounts,
+                    )
+                else:
+                    consolidated = _build_consolidated_report(
+                        profiles=profiles,
+                        all_results=profile_results,
+                        checks=list(checks_to_run.keys()),
+                        checkers=checkers_map,
+                        check_errors=check_errors,
+                        clean_accounts=clean_accounts,
+                        errors_by_check=errors_by_check,
+                        region=effective_region,
+                        group_name=customer.display_name,
+                    )
                 if "backup" in checks_to_run:
                     wa_results = {
                         p: {
@@ -602,23 +981,26 @@ class CheckExecutor:
                         wa_results
                     )
                 else:
-                    parts = []
                     for item in result_items:
                         acct = item["account"]
-                        header = (
-                            f"=== {acct['display_name']} ({acct['profile_name']}) ==="
-                        )
-                        parts.append(header)
-                        parts.append(item.get("output", "") or item["summary"])
-                        parts.append("")
-                    consolidated = "\n".join(parts)
+                        acct_key = f"{customer_id}:{acct['display_name']}"
+                        consolidated_outputs[acct_key] = item.get("output", "") or item["summary"]
+                    consolidated = None
 
-            consolidated_outputs[customer_id] = consolidated
+            if consolidated is not None:
+                consolidated_outputs[customer_id] = consolidated
 
             # Send to Slack if requested
             slack_sent = False
+            slack_text = consolidated or ""
+            if not slack_text and mode == "single":
+                # For single mode, combine per-account outputs for Slack
+                slack_text = "\n\n".join(
+                    item.get("output", "") or item["summary"]
+                    for item in result_items
+                )
             if send_slack and customer.slack_enabled and customer.slack_webhook_url:
-                slack_sent = self._send_slack(customer, consolidated, mode, check_name)
+                slack_sent = self._send_slack(customer, slack_text, mode, check_name)
 
             # Finalize check run
             if persist_enabled and check_run is not None:
@@ -644,13 +1026,13 @@ class CheckExecutor:
         if persist_enabled:
             self.check_repo.commit()
 
-        return {
+        return _json_safe({
             "check_runs": check_runs_list,
             "execution_time_seconds": round(time.time() - start_time, 2),
             "results": all_result_items,
             "consolidated_outputs": consolidated_outputs,
             "backup_overviews": backup_overviews,
-        }
+        })
 
     @staticmethod
     def _resolve_persist_mode(run_source: str, persist_mode: str) -> str:
@@ -783,16 +1165,26 @@ class CheckExecutor:
                     )
                     futures[future] = (account, chk_name)
 
-            done, pending = wait(
-                futures.keys(),
-                timeout=self.timeout,
-                return_when=ALL_COMPLETED,
-            )
+            # Per-check timeout: each check gets at most PER_CHECK_TIMEOUT seconds.
+            # Total wall-clock is still bounded by self.timeout (batch ceiling).
+            per_check_timeout = min(60, self.timeout)
+            batch_deadline = time.monotonic() + self.timeout
 
-            for future in done:
+            for future in as_completed(futures.keys(), timeout=self.timeout):
                 account, chk_name = futures[future]
+                remaining = batch_deadline - time.monotonic()
                 try:
-                    raw_result = future.result()
+                    raw_result = future.result(
+                        timeout=max(0.1, min(per_check_timeout, remaining))
+                    )
+                except TimeoutError:
+                    raw_result = {
+                        "status": "error",
+                        "error": (
+                            f"Check '{chk_name}' on '{account.display_name}' "
+                            f"timed out after {per_check_timeout}s"
+                        ),
+                    }
                 except Exception as exc:
                     raw_result = {"status": "error", "error": str(exc)}
 
@@ -800,15 +1192,17 @@ class CheckExecutor:
                     results[account] = {}
                 results[account][chk_name] = raw_result
 
-            for future in pending:
-                account, chk_name = futures[future]
-                future.cancel()
-                if account not in results:
-                    results[account] = {}
-                results[account][chk_name] = {
-                    "status": "error",
-                    "error": f"Check timed out after {self.timeout}s",
-                }
+            # Mark any futures not yet collected as timed-out (batch deadline exceeded)
+            for future, (account, chk_name) in futures.items():
+                if account not in results or chk_name not in results.get(account, {}):
+                    future.cancel()
+                    results.setdefault(account, {})[chk_name] = {
+                        "status": "error",
+                        "error": (
+                            f"Check '{chk_name}' on '{account.display_name}' "
+                            f"cancelled — batch timeout of {self.timeout}s exceeded"
+                        ),
+                    }
 
         return results
 

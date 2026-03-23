@@ -14,9 +14,15 @@ class MetricAccountResponse(BaseModel):
     display_name: str
 
 
+class MetricCustomerResponse(BaseModel):
+    id: str
+    display_name: str
+
+
 class MetricItemResponse(BaseModel):
     id: str
     check_run_id: str
+    customer: MetricCustomerResponse
     account: MetricAccountResponse
     check_name: str
     metric_name: str
@@ -36,9 +42,40 @@ class MetricListResponse(BaseModel):
     items: list[MetricItemResponse]
 
 
+class MetricTimeseriesItem(BaseModel):
+    date: str
+    metric_name: str
+    account_id: str
+    account_display_name: str
+    avg_value: float | None = None
+    max_value: float | None = None
+    sample_count: int
+
+
+class MetricTimeseriesResponse(BaseModel):
+    items: list[MetricTimeseriesItem]
+
+
+@router.get("/timeseries", response_model=MetricTimeseriesResponse)
+def get_metric_timeseries(
+    check_name: str = Query(...),
+    customer_id: str | None = Query(None),
+    account_id: str | None = Query(None),
+    days: int = Query(14, ge=1, le=90),
+    repo=Depends(get_check_repository),
+):
+    items = repo.get_metric_timeseries(
+        check_name=check_name,
+        customer_id=customer_id,
+        account_id=account_id,
+        days=days,
+    )
+    return {"items": items}
+
+
 @router.get("", response_model=MetricListResponse)
 def list_metrics(
-    customer_id: str,
+    customer_id: str | None = Query(None),
     check_name: str | None = Query(None),
     metric_name: str | None = Query(None),
     metric_status: str | None = Query(None),
@@ -64,6 +101,10 @@ def list_metrics(
             {
                 "id": sample.id,
                 "check_run_id": sample.check_run_id,
+                "customer": {
+                    "id": account.customer.id,
+                    "display_name": account.customer.display_name,
+                },
                 "account": {
                     "id": account.id,
                     "profile_name": account.profile_name,

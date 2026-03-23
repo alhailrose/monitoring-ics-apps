@@ -19,7 +19,6 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
 - Incremental app scaffold tersedia di `apps/web`, `apps/api`, `apps/tui` (kompatibilitas, non-breaking).
 - Frontend tetap Vite di folder `web/` selama masa transisi.
 - CI dipisah per target deployment:
-  - Web: `.github/workflows/ci-web.yml`
   - API: `.github/workflows/ci-api.yml`
   - TUI: `.github/workflows/ci-tui.yml`
 - Kebijakan artifact frontend: `web/node_modules` dan `web/dist` tidak lagi disimpan di git; artifact build web dipublish oleh CI Web.
@@ -31,8 +30,7 @@ Platform sekarang mendukung fondasi dual-interface:
 - API FastAPI tersedia di `backend/interfaces/api/main.py`.
 - Runtime canonical ada di `backend/*`; namespace `src/*` sudah dicutover penuh.
 - Execution policy split: TUI runs are non-persistent, API runs are persistent.
-- Tidak ada worker terpisah pada runtime compose saat ini (eksekusi lewat API service layer).
-- Web runtime tetap di folder `web/` (Vite), scaffold migrasi ada di `apps/web/`.
+- Tidak ada worker terpisah pada runtime compose saat ini (eksekusi lewat API service layer)
 - Stack single server aktif: `postgres + api + nginx` di `infra/docker/docker-compose.yml`.
 
 Quick check dual-interface:
@@ -55,33 +53,10 @@ Terminal 1 (API auto-reload + postgres):
 bash scripts/dev/api-dev.sh
 ```
 
-Terminal 2 (Web HMR):
-
-```bash
-bash scripts/dev/web-dev.sh
-```
-
 Port dev:
 
-- Web: `http://localhost:4173`
 - API: `http://localhost:8000`
 
-### Industrial Ops Glass Web UI (foundation status)
-
-Web package saat ini berfungsi sebagai fondasi UI yang sudah tervalidasi lewat test, namun belum diposisikan sebagai runtime service produksi siap pakai (build/deploy production belum menjadi default path di repo ini):
-- **Home (`/`)**: command-center entrypoint dengan headline operasional, KPI card, dan quick actions.
-- **Jobs (`/jobs`)**: form manual run yang aksesibel, action `Run Now`, dan status queue/table dengan badge semantik.
-- **History (`/history`)**: state handling lengkap (loading, error banner, empty state `No runs yet`) plus pencarian client-side.
-- **Cross-cutting hardening**: responsive layout mobile/desktop, semantic landmarks, focus-visible styling, dan reduced-motion support.
-
-Verifikasi fondasi web + backend lokal:
-
-```bash
-# from repository root
-bash scripts/ci/web-quality.sh
-bash scripts/ci/api-quality.sh
-docker compose -f infra/docker/docker-compose.yml config
-```
 
 ### Backend hardening (Phase 2)
 

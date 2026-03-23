@@ -292,93 +292,39 @@ class BackupStatusChecker(BaseChecker):
             }
 
     def format_report(self, results):
+        """Format backup status — concise per-account data output."""
         if results.get("status") == "error":
             return f"ERROR: {results.get('error')}"
 
         lines = []
-        lines.append("AWS BACKUP STATUS")
-        lines.append(f"Region: {results.get('region')}")
-        checked_at_utc = results.get("checked_at_utc")
-        window_start_utc = results.get("window_start_utc")
-        if isinstance(checked_at_utc, datetime) and isinstance(
-            window_start_utc, datetime
-        ):
-            checked_wib = checked_at_utc.astimezone(JAKARTA_TZ)
-            window_wib = window_start_utc.astimezone(JAKARTA_TZ)
-            lines.append(f"Checked at: {checked_wib.strftime('%Y-%m-%d %H:%M WIB')}")
-            lines.append(
-                f"Window: {window_wib.strftime('%Y-%m-%d %H:%M')} - {checked_wib.strftime('%Y-%m-%d %H:%M WIB')}"
-            )
+        lines.append(f"Backup | {results.get('profile', '')} | {results.get('region', '')}")
         lines.append(
-            f"Jobs: total {results.get('total_jobs', 0)} | completed {results.get('completed_jobs', 0)} | failed {results.get('failed_jobs', 0)} | expired {results.get('expired_jobs', 0)}"
+            f"Jobs: {results.get('total_jobs', 0)} total | {results.get('completed_jobs', 0)} ok | {results.get('failed_jobs', 0)} failed | {results.get('expired_jobs', 0)} expired"
         )
 
-        # Show failed/expired jobs first with details
+        # Failed/expired details
         details = results.get("job_details", [])
         failed_jobs = [j for j in details if j.get("state") in ["FAILED", "EXPIRED"]]
-        if failed_jobs:
-            lines.append("")
-            lines.append(f"⚠️ FAILED/EXPIRED JOBS ({len(failed_jobs)}):")
-            for j in failed_jobs:
-                ts_wib = j.get("created_wib")
-                ts_str = (
-                    ts_wib.strftime("%Y-%m-%d %H:%M WIB")
-                    if hasattr(ts_wib, "strftime")
-                    else str(ts_wib)
-                )
-                reason = j.get("reason", "No reason provided")
-                lines.append(f"- {j.get('state')}: {j.get('resource_label', 'N/A')}")
-                lines.append(f"  Time: {ts_str}")
-                lines.append(f"  Reason: {reason}")
+        for j in failed_jobs:
+            ts_wib = j.get("created_wib")
+            ts_str = ts_wib.strftime("%H:%M WIB") if hasattr(ts_wib, "strftime") else str(ts_wib)
+            lines.append(f"  - {j.get('state')}: {j.get('resource_label', 'N/A')} ({ts_str}) — {j.get('reason', '')}")
 
-        # List sample successful jobs (up to 3)
-        if details:
-            success_jobs = [j for j in details if j.get("state") == "COMPLETED"][:3]
-            if success_jobs:
-                lines.append("")
-                lines.append("Recent successful jobs (up to 3):")
-                for j in success_jobs:
-                    ts_wib = j.get("created_wib")
-                    ts_str = (
-                        ts_wib.strftime("%Y-%m-%d %H:%M WIB")
-                        if hasattr(ts_wib, "strftime")
-                        else str(ts_wib)
-                    )
-                    lines.append(f"- {j.get('resource_label', 'N/A')} at {ts_str}")
-
-        # Backup plans listing
-        plans = results.get("backup_plans", [])
-        if plans:
-            lines.append("")
-            lines.append("Backup plans:")
-            for p in plans[:5]:
-                lines.append(f"- {p}")
-
-        vaults = results.get("vaults", [])
-        if vaults:
-            lines.append("")
-            lines.append("Vault activity (24h):")
-            for v in vaults:
-                if v.get("error"):
-                    lines.append(f"- {v['vault_name']}: ERROR {v['error']}")
-                    continue
-                lines.append(
-                    f"- {v['vault_name']}: {v.get('recovery_points_24h', 0)} new recovery point(s); total {v.get('total_recovery_points', 0)}"
-                )
+        # Vault activity
+        for v in results.get("vaults", []):
+            if v.get("error"):
+                lines.append(f"  - Vault {v['vault_name']}: ERROR {v['error']}")
+            else:
+                lines.append(f"  - Vault {v['vault_name']}: {v.get('recovery_points_24h', 0)} new / {v.get('total_recovery_points', 0)} total")
 
         if results.get("monitor_rds_snapshots"):
-            lines.append("")
             lines.append(f"RDS snapshots (24h): {results.get('rds_snapshots_24h', 0)}")
 
         if results.get("issues"):
-            lines.append("")
-            lines.append("Issues:")
             for i in results["issues"]:
-                lines.append(f"- {i}")
-
-        if not results.get("issues"):
-            lines.append("")
-            lines.append("Status: All backup activities healthy in last 24h")
+                lines.append(f"  ! {i}")
+        elif not failed_jobs:
+            lines.append("Status: Healthy")
 
         return "\n".join(lines)
 

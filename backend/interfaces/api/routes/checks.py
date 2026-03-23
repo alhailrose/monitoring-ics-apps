@@ -2,14 +2,52 @@
 
 from typing import Annotated
 import logging
+import threading
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.interfaces.api.dependencies import get_check_executor
 
 router = APIRouter(prefix="/checks", tags=["checks"])
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# In-memory job store for async execution
+# Stores up to ~500 recent jobs; old entries evicted when limit is reached.
+# ---------------------------------------------------------------------------
+_MAX_JOBS = 500
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
+
+
+def _store_job(job_id: str, status: str, result=None, error: str | None = None) -> None:
+    with _jobs_lock:
+        if len(_jobs) >= _MAX_JOBS:
+            oldest = next(iter(_jobs))
+            del _jobs[oldest]
+        _jobs[job_id] = {"job_id": job_id, "status": status, "result": result, "error": error}
+
+
+def _run_job(job_id: str, payload, executor) -> None:
+    """Background task: execute checks and update job store."""
+    try:
+        result = executor.execute(
+            customer_ids=payload.customer_ids or [],
+            mode=payload.mode,
+            check_name=payload.check_name,
+            account_ids=payload.account_ids,
+            send_slack=payload.send_slack,
+            region=payload.region,
+            check_params=payload.check_params,
+            run_source="api",
+            persist_mode="normalized",
+        )
+        _store_job(job_id, status="done", result=result)
+    except Exception as exc:
+        logger.exception("Async check job %s failed", job_id)
+        _store_job(job_id, status="error", error=str(exc))
 
 
 class ExecuteCheckRequest(BaseModel):
@@ -82,6 +120,8 @@ class CheckResultResponse(BaseModel):
     status: str
     summary: str
     output: str
+    details: dict | None = None
+    error_class: str | None = None
 
 
 class ExecuteCheckResponse(BaseModel):
@@ -142,7 +182,43 @@ def execute_check(payload: ExecuteCheckRequest, executor=Depends(get_check_execu
         raise
     except Exception as exc:
         logger.exception("Check execution failed")
-        raise HTTPException(status_code=500, detail="Execution failed") from exc
+        raise HTTPException(status_code=500, detail=f"Execution failed: {exc}") from exc
+
+
+@router.post("/execute/async")
+async def execute_check_async(
+    payload: ExecuteCheckRequest,
+    background_tasks: BackgroundTasks,
+    executor=Depends(get_check_executor),
+):
+    """Queue a check execution and return a job_id immediately.
+
+    Poll GET /checks/jobs/{job_id} to retrieve the result when status == "done".
+    Use this for large multi-customer / all-mode runs to avoid HTTP timeouts.
+    """
+    if payload.mode == "single" and not payload.check_name:
+        raise HTTPException(status_code=400, detail="check_name required for single mode")
+
+    job_id = str(uuid4())
+    _store_job(job_id, status="queued")
+    background_tasks.add_task(_run_job, job_id, payload, executor)
+    return {"job_id": job_id, "status": "queued"}
+
+
+@router.get("/jobs/{job_id}")
+def get_job_status(job_id: str):
+    """Poll the status of an async check job.
+
+    Returns:
+        status: "queued" | "done" | "error"
+        result: ExecuteCheckResponse payload (when status == "done")
+        error: error message (when status == "error")
+    """
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
 
 
 @router.get("/available", response_model=AvailableChecksResponse)
@@ -152,7 +228,7 @@ def list_available_checks():
 
     return {
         "checks": [
-            {"name": name, "class": cls.__name__}
+            {"name": name, "class": getattr(cls, '__name__', getattr(cls, 'func', cls).__name__)}
             for name, cls in AVAILABLE_CHECKS.items()
         ]
     }

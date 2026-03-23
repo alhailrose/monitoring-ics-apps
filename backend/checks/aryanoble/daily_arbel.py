@@ -1271,9 +1271,10 @@ class DailyArbelChecker(BaseChecker):
 
             evaluations = {}
             for metric_name in metric_names:
+                raw_metric = metrics_info.get(metric_name, {})
                 status, msg = self._evaluate_metric(
                     metric_name,
-                    metrics_info.get(metric_name, {}),
+                    raw_metric,
                     role_thresholds,
                     profile,
                     service_type=service_type,
@@ -1286,6 +1287,10 @@ class DailyArbelChecker(BaseChecker):
                     }
                 else:
                     evaluations[metric_name] = {"status": status, "message": msg}
+                # Attach raw metric values for structured frontend rendering
+                evaluations[metric_name]["avg"] = raw_metric.get("avg")
+                evaluations[metric_name]["last"] = raw_metric.get("last")
+                evaluations[metric_name]["max"] = raw_metric.get("max")
 
                 if status in ("warn", "past-warn"):
                     any_warn = True
@@ -1518,7 +1523,6 @@ class DailyArbelChecker(BaseChecker):
             return f"ERROR: {results.get('error')}"
 
         now = now_jkt()
-        # Perbaiki greeting: Pagi (5-11), Siang (11-15), Sore (15-18), Malam (18-5)
         if 5 <= now.hour < 11:
             greeting = "Selamat Pagi"
             waktu = "Pagi"
@@ -1536,19 +1540,15 @@ class DailyArbelChecker(BaseChecker):
         time_str = now.strftime("%H:%M WIB")
         acct_name = results.get("account_name", results.get("profile"))
         acct_id = results.get("account_id", "")
-        profile = results.get("profile", "")
         window_hours = int(
             results.get("window_hours", self.window_hours) or self.window_hours
         )
 
         lines: List[str] = []
         lines.append(f"{greeting} Team,")
-
-        # Tambahkan info monitoring window
         lines.append(
             f"Berikut Daily report untuk akun id {acct_name} ({acct_id}) pada {waktu} ini (Data per {time_str}, monitoring {window_hours} jam terakhir)"
         )
-
         lines.append(date_str)
         lines.append("")
 

@@ -3,6 +3,8 @@ Configuration constants for AWS Monitoring Hub.
 Uses external config loader with fallback to built-in defaults.
 """
 
+from functools import partial
+
 from rich.console import Console
 
 try:
@@ -111,11 +113,13 @@ AVAILABLE_CHECKS = {
     "notifications": NotificationChecker,
     "backup": BackupStatusChecker,
     "daily-arbel": DailyArbelChecker,
+    "daily-arbel-rds": partial(DailyArbelChecker, section_scope="rds"),
+    "daily-arbel-ec2": partial(DailyArbelChecker, section_scope="ec2"),
     "daily-budget": DailyBudgetChecker,
     "ec2list": EC2ListChecker,
     "alarm_verification": AlarmVerificationChecker,
     "huawei-ecs-util": HuaweiECSUtilizationChecker,
-    "aws-utilization-3core": AWSUtilization3CoreChecker,
+    "ec2_utilization": AWSUtilization3CoreChecker,
 }
 
 # Checks to run in --all mode (default for all customers)

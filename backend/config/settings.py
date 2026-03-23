@@ -69,7 +69,7 @@ def get_settings() -> Settings:
             "postgresql+psycopg://monitor:monitor@localhost:5432/monitoring",
         ),
         default_region=os.getenv("DEFAULT_REGION", "ap-southeast-3"),
-        max_workers=int(os.getenv("MAX_WORKERS", "5")),
+        max_workers=int(os.getenv("MAX_WORKERS", "20")),
         execution_timeout=int(os.getenv("EXECUTION_TIMEOUT", "300")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         cors_origins=cors_origins,

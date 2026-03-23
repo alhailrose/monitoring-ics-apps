@@ -23,6 +23,8 @@ class CustomerRepository:
         slack_channel: str | None = None,
         slack_enabled: bool = False,
         sso_session: str | None = None,
+        report_mode: str = "summary",
+        label: str | None = None,
     ) -> Customer:
         customer = Customer(
             name=name,
@@ -32,6 +34,8 @@ class CustomerRepository:
             slack_channel=slack_channel,
             slack_enabled=slack_enabled,
             sso_session=sso_session,
+            report_mode=report_mode,
+            label=label,
         )
         self.session.add(customer)
         self.session.flush()

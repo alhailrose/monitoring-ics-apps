@@ -47,6 +47,8 @@ This is the main living plan for backend evolution.
 | 4.5 | Foldering/docs alignment and full src cutover (pre-Phase 5) | completed |
 | 5 | App auth — user roles, login session, frontend auth flow | planned |
 | 6 | AWS connection layer — auth mode model, resolver, SSO expiry in API path | planned |
+| 7 | Web terminal — WebSocket PTY relay for browser-based shell access | completed |
+| 8 | Scalability improvements — worker pool, async execution, per-check timeout, dashboard cache | completed |
 
 ## Detailed checklist
 
@@ -303,6 +305,65 @@ Currently SSO expiry detection only exists in the TUI. This sub-area extends it 
 | Integration test — check execution with `assume_role` | Test a full check execution cycle with an `assume_role` account. Mock `sts.assume_role` to return temporary credentials. Verify those credentials are used. | `assume_role` flow is exercised end-to-end in a controlled environment | Planned |
 | Phase closure | Close Phase 6 after all sub-areas are implemented and tests pass. Update phase overview table and change log. | Phase 6 is officially complete | Planned |
 
+---
+
+### Phase 7 — Web Terminal
+
+#### Design overview
+
+Browser-accessible PTY shell, relayed over WebSocket. The server spawns a real shell process in a pseudo-terminal and relays I/O bidirectionally. Auth is enforced via JWT passed as a query param (browsers cannot send custom headers on WebSocket connections). Only `super_user` role is allowed.
+
+**Primary use case:** run `aws sso login --no-browser` from the browser when SSO sessions expire, without needing server SSH access.
+
+**Protocol:**
+- Client → server: raw text/bytes (keystrokes) OR JSON `{"type":"resize","cols":N,"rows":N}`
+- Server → client: raw bytes (PTY stdout/stderr)
+
+**Endpoint:** `ws(s)://host/api/v1/terminal?token=<jwt>`
+
+| Task | Description | Expected Outcome | Status |
+|---|---|---|---|
+| Create `routes/terminal.py` | WebSocket endpoint at `/api/v1/terminal`. Auth via `?token=` query param — decode JWT, assert `super_user` before `websocket.accept()`. Close with code 4001 on auth failure. | Unauthenticated or non-super_user connections are rejected before any shell is spawned | Completed (100%) |
+| Spawn PTY with subprocess | Use `pty.openpty()` + `subprocess.Popen(stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, preexec_fn=os.setsid)`. Close slave_fd in parent. | Shell runs in a proper PTY — readline, colors, and interactive prompts work correctly | Completed (100%) |
+| Relay PTY output → WebSocket | Read `master_fd` in `loop.run_in_executor` (blocking `os.read`). Send raw bytes to WebSocket. Stop on EOF/OSError. | All shell output including ANSI escape codes is forwarded to the browser terminal | Completed (100%) |
+| Relay WebSocket input → PTY | Write received text/bytes to `master_fd`. Parse JSON resize messages and call `TIOCSWINSZ` ioctl. | Keystrokes reach the shell. Terminal resize (xterm.js `onResize`) updates PTY window size. | Completed (100%) |
+| Cleanup on disconnect | On WebSocket disconnect: cancel reader task, `SIGKILL` the process group, close `master_fd`. | No zombie processes or leaked file descriptors after session ends | Completed (100%) |
+| Register router in `main.py` | Include `terminal_router` without `require_api_key` dependency (auth handled inside route). | Endpoint is reachable at `/api/v1/terminal` | Completed (100%) |
+
+---
+
+### Phase 8 — Scalability Improvements
+
+#### Design overview
+
+Targeted improvements to handle high-concurrency check execution (multi-customer / all-mode) without adding external infrastructure. All changes are backward-compatible and deployed as a single unit.
+
+**4 improvements implemented:**
+
+| Area | Change | Rationale |
+|---|---|---|
+| Worker pool | `MAX_WORKERS` default raised 5 → 20 | AWS SDK calls are I/O-bound (no GIL contention); safe to raise significantly |
+| Async execution | `POST /checks/execute/async` + `GET /checks/jobs/{job_id}` | Avoid HTTP timeout on large multi-customer / all-mode runs |
+| Per-check timeout | `as_completed` with 60s per-check ceiling | Prevents a single slow check from blocking an entire batch indefinitely |
+| Dashboard cache | 5-minute TTL in-memory cache for `get_dashboard_summary` | Avoids 6 COUNT queries on every dashboard refresh; thread-safe via `threading.Lock` |
+
+**Design constraints (no external infra needed):**
+- Job store is in-memory dict with `threading.Lock`, capped at 500 entries (FIFO eviction).
+- Suitable for single-process deployment. Redis/Celery deferred to future phase if horizontal scale is required.
+
+| Task | Description | Expected Outcome | Status |
+|---|---|---|---|
+| Raise MAX_WORKERS default | Change `MAX_WORKERS` env default from `"5"` to `"20"` in `backend/config/settings.py` | ThreadPoolExecutor uses 20 workers by default; still overridable via `MAX_WORKERS` env var | Completed (100%) |
+| Add async execution endpoint | Add `POST /checks/execute/async` that queues a background job and returns `{"job_id": ..., "status": "queued"}` | Long-running multi-customer runs no longer block the HTTP connection | Completed (100%) |
+| Add job polling endpoint | Add `GET /checks/jobs/{job_id}` that returns `{"status": "queued"\|"done"\|"error", "result": ..., "error": ...}` | Frontend can poll job status until `status == "done"` | Completed (100%) |
+| In-memory job store | Thread-safe dict with `threading.Lock`, capped at 500 entries (oldest evicted when full) | No external infra required; safe under concurrent requests in a single-process FastAPI instance | Completed (100%) |
+| Per-check timeout via `as_completed` | Replace batch `wait(timeout=...)` with `as_completed` iteration; per-check ceiling is `min(60, self.timeout)`; uncollected futures after batch deadline are marked as batch-timeout cancelled | A single slow check cannot stall an entire batch past its deadline | Completed (100%) |
+| Dashboard summary TTL cache | Add module-level `_summary_cache: dict[str, tuple[dict, float]]` with `_SUMMARY_TTL = 300` (5 min). Cache keyed by `{customer_id}:{window_hours}`. Thread-safe with `_summary_lock`. | Dashboard endpoint goes from 6 DB queries per refresh to 0 during the TTL window | Completed (100%) |
+| Cache invalidation helper | Add `invalidate_summary_cache(customer_id)` to clear stale cache after a new check run completes | Dashboard data remains fresh after new runs without waiting for TTL to expire | Completed (100%) |
+| Fix cache result assignment bug | `get_dashboard_summary` was using bare `return {...}` — the dict was never assigned to `result` before `_set_cached_summary` was called, so caching never occurred. Fixed by assigning to `result` first. | Cache is actually populated on the first call; subsequent calls within TTL window skip all DB queries | Completed (100%) |
+
+---
+
 ## Commit and docs workflow
 
 ### Before every commit
@@ -318,6 +379,7 @@ Currently SSO expiry detection only exists in the TUI. This sub-area extends it 
 
 ## Change log
 
+- 2026-03-21: Phase 8 scalability improvements implemented and documented (MAX_WORKERS, async jobs, per-check timeout, dashboard cache).
 - 2026-03-19: Initial living plan created from backend readiness assessment.
 - 2026-03-19: Phase 0 completed (execution policy split + persistence policy tests).
 - 2026-03-19: Phase 1 started (finding_events schema + security mapper + API persistence write path).

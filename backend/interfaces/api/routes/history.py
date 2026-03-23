@@ -46,6 +46,7 @@ class HistoryDetailAccountResponse(BaseModel):
 
 
 class HistoryDetailResultResponse(BaseModel):
+    customer_id: str
     account: HistoryDetailAccountResponse
     check_name: str
     status: str
@@ -76,7 +77,7 @@ class HistoryReportResponse(BaseModel):
 
 @router.get("", response_model=HistoryListResponse)
 def list_history(
-    customer_id: str,
+    customer_id: str | None = Query(None),
     start_date: datetime | None = Query(None),
     end_date: datetime | None = Query(None),
     check_mode: str | None = Query(None),
@@ -85,7 +86,7 @@ def list_history(
     offset: int = Query(0, ge=0),
     repo=Depends(get_check_repository),
 ):
-    runs, total = repo.list_history(
+    items, total = repo.list_history_summary(
         customer_id=customer_id,
         start_date=start_date,
         end_date=end_date,
@@ -94,30 +95,6 @@ def list_history(
         limit=limit,
         offset=offset,
     )
-
-    items = []
-    for run in runs:
-        ok = sum(1 for r in run.results if r.status == "OK")
-        warn = sum(1 for r in run.results if r.status in ("WARN", "ALARM"))
-        error = sum(1 for r in run.results if r.status == "ERROR")
-
-        items.append(
-            {
-                "check_run_id": run.id,
-                "check_mode": run.check_mode,
-                "check_name": run.check_name,
-                "created_at": run.created_at.isoformat(),
-                "execution_time_seconds": run.execution_time_seconds,
-                "slack_sent": run.slack_sent,
-                "results_summary": {
-                    "total": len(run.results),
-                    "ok": ok,
-                    "warn": warn,
-                    "error": error,
-                },
-            }
-        )
-
     return {"total": total, "items": items}
 
 
@@ -141,6 +118,7 @@ def get_check_run_detail(check_run_id: str, repo=Depends(get_check_repository)):
         "slack_sent": run.slack_sent,
         "results": [
             {
+                "customer_id": run.customer_id,
                 "account": {
                     "id": r.account.id,
                     "profile_name": r.account.profile_name,

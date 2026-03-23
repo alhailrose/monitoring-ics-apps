@@ -19,6 +19,8 @@ class CreateCustomerRequest(BaseModel):
     slack_channel: str | None = None
     slack_enabled: bool = False
     sso_session: str | None = None
+    report_mode: str = Field(default="summary", pattern="^(summary|detailed)$")
+    label: str | None = Field(default=None, max_length=256)
 
 
 class UpdateCustomerRequest(BaseModel):
@@ -28,6 +30,8 @@ class UpdateCustomerRequest(BaseModel):
     slack_channel: str | None = None
     slack_enabled: bool | None = None
     sso_session: str | None = None
+    report_mode: str | None = Field(default=None, pattern="^(summary|detailed)$")
+    label: str | None = None
 
 
 class AddAccountRequest(BaseModel):
@@ -79,6 +83,8 @@ def create_customer(
             slack_channel=payload.slack_channel,
             slack_enabled=payload.slack_enabled,
             sso_session=payload.sso_session,
+            report_mode=payload.report_mode,
+            label=payload.label,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
@@ -184,6 +190,18 @@ def delete_account_check_config(
             raise HTTPException(status_code=404, detail="Check config not found")
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/accounts/{account_id}/alarms/discover", dependencies=[Depends(require_role("super_user"))])
+def discover_account_alarms(account_id: str, service=Depends(get_customer_service)):
+    """Discover CloudWatch alarm names for an account and save them to DB."""
+    try:
+        alarm_names = service.discover_account_alarms(account_id)
+        return {"alarm_names": alarm_names, "count": len(alarm_names)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to discover alarms: {exc}")
 
 
 @router.post("/{customer_id}/reimport")

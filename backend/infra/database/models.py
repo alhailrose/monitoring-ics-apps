@@ -20,24 +20,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
-from backend.domain.finding_events import FINDING_EVENT_CHECK_NAMES
-from backend.domain.metric_samples import METRIC_SAMPLE_CHECK_NAMES
-
-
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
 def _uuid() -> str:
     return str(uuid4())
-
-
-FINDING_EVENT_CHECK_NAMES_SQL = ",".join(
-    f"'{check_name}'" for check_name in FINDING_EVENT_CHECK_NAMES
-)
-METRIC_SAMPLE_CHECK_NAMES_SQL = ",".join(
-    f"'{check_name}'" for check_name in METRIC_SAMPLE_CHECK_NAMES
-)
 
 
 class Base(DeclarativeBase):
@@ -78,6 +66,10 @@ class Customer(Base):
     slack_channel: Mapped[str | None] = mapped_column(String(128), nullable=True)
     slack_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sso_session: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    report_mode: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="summary"
+    )
+    label: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utc_now, nullable=False
     )
@@ -221,10 +213,6 @@ class FindingEvent(Base):
     __tablename__ = "finding_events"
     __table_args__ = (
         CheckConstraint(
-            f"check_name in ({FINDING_EVENT_CHECK_NAMES_SQL})",
-            name="ck_finding_events_check_name_valid",
-        ),
-        CheckConstraint(
             "severity in ('INFO','LOW','MEDIUM','HIGH','CRITICAL','ALARM')",
             name="ck_finding_events_severity_valid",
         ),
@@ -281,10 +269,6 @@ class AccountCheckConfig(Base):
 class MetricSample(Base):
     __tablename__ = "metric_samples"
     __table_args__ = (
-        CheckConstraint(
-            f"check_name in ({METRIC_SAMPLE_CHECK_NAMES_SQL})",
-            name="ck_metric_samples_check_name_valid",
-        ),
         Index(
             "idx_metric_samples_account_metric",
             "account_id",

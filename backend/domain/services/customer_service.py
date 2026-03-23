@@ -70,6 +70,8 @@ class CustomerService:
         slack_channel: str | None = None,
         slack_enabled: bool = False,
         sso_session: str | None = None,
+        report_mode: str = "summary",
+        label: str | None = None,
     ) -> dict:
         existing = self.repo.get_customer_by_name(name)
         if existing:
@@ -83,6 +85,8 @@ class CustomerService:
             slack_channel=slack_channel,
             slack_enabled=slack_enabled,
             sso_session=sso_session,
+            report_mode=report_mode,
+            label=label,
         )
         self.repo.commit()
         return self._serialize_customer(customer)
@@ -136,6 +140,31 @@ class CustomerService:
         if result:
             self.repo.commit()
         return result
+
+    def discover_account_alarms(self, account_id: str) -> list[str]:
+        """Discover CloudWatch alarm names for an account and save them to DB."""
+        import boto3
+
+        account = self.repo.get_account(account_id)
+        if account is None:
+            raise ValueError("Account not found")
+
+        session = boto3.Session(profile_name=account.profile_name)
+        cw = session.client("cloudwatch")
+
+        paginator = cw.get_paginator("describe_alarms")
+        alarm_names: list[str] = []
+        for page in paginator.paginate(AlarmTypes=["MetricAlarm", "CompositeAlarm"]):
+            for alarm in page.get("MetricAlarms", []):
+                alarm_names.append(alarm["AlarmName"])
+            for alarm in page.get("CompositeAlarms", []):
+                alarm_names.append(alarm["AlarmName"])
+
+        alarm_names.sort()
+
+        self.repo.update_account(account_id, alarm_names=alarm_names)
+        self.repo.commit()
+        return alarm_names
 
     def list_account_check_configs(self, account_id: str) -> list[dict]:
         account = self.repo.get_account(account_id)
@@ -298,6 +327,8 @@ class CustomerService:
             "slack_webhook_url": customer.slack_webhook_url,
             "slack_channel": customer.slack_channel,
             "slack_enabled": customer.slack_enabled,
+            "report_mode": customer.report_mode,
+            "label": customer.label,
             "created_at": customer.created_at.isoformat(),
             "updated_at": customer.updated_at.isoformat(),
             "accounts": [

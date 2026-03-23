@@ -16,9 +16,15 @@ class FindingAccountResponse(BaseModel):
     display_name: str
 
 
+class FindingCustomerResponse(BaseModel):
+    id: str
+    display_name: str
+
+
 class FindingItemResponse(BaseModel):
     id: str
     check_run_id: str
+    customer: FindingCustomerResponse
     account: FindingAccountResponse
     check_name: str
     finding_key: str
@@ -35,7 +41,7 @@ class FindingsListResponse(BaseModel):
 
 @router.get("", response_model=FindingsListResponse)
 def list_findings(
-    customer_id: str,
+    customer_id: str | None = Query(None),
     check_name: str | None = Query(None),
     severity: str | None = Query(None),
     account_id: str | None = Query(None),
@@ -59,6 +65,10 @@ def list_findings(
             {
                 "id": finding.id,
                 "check_run_id": finding.check_run_id,
+                "customer": {
+                    "id": account.customer.id,
+                    "display_name": account.customer.display_name,
+                },
                 "account": {
                     "id": account.id,
                     "profile_name": account.profile_name,
