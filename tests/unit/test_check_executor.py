@@ -361,7 +361,7 @@ def test_execute_single_backup_returns_whatsapp_primary_output_and_backup_overvi
         region="ap-southeast-3",
     )
 
-    def _fake_run(check_name, profile, _region, _kwargs):
+    def _fake_run(check_name, profile, _region, _kwargs, _creds=None):
         base = {
             "status": "success",
             "total_jobs": 2,
@@ -390,8 +390,8 @@ def test_execute_single_backup_returns_whatsapp_primary_output_and_backup_overvi
         )
 
     assert result["consolidated_outputs"]["cust-1"]
-    assert "Status Utama" in result["consolidated_outputs"]["cust-1"]
-    assert "Akun Bermasalah" in result["consolidated_outputs"]["cust-1"]
+    assert "Completed:" in result["consolidated_outputs"]["cust-1"]
+    assert "Failed:" in result["consolidated_outputs"]["cust-1"]
     assert result["backup_overviews"]["cust-1"]["all_success"] is False
     assert result["backup_overviews"]["cust-1"]["problem_accounts_count"] == 1
 
