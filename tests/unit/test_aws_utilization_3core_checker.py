@@ -330,7 +330,7 @@ def test_get_disk_free_min_ignores_squashfs_snap_mounts():
 def test_check_collects_per_instance_rows(monkeypatch):
     checker = AWSUtilization3CoreChecker()
 
-    monkeypatch.setattr(checker, "_create_session", lambda _profile: object())
+    monkeypatch.setattr(checker, "_get_session", lambda _profile: object())
     monkeypatch.setattr(
         checker,
         "_discover_regions",
