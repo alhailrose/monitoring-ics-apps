@@ -8,6 +8,8 @@ from pathlib import Path
 
 import boto3
 
+from backend.utils.crypto import encrypt_secret, decrypt_secret
+
 logger = logging.getLogger(__name__)
 
 AWS_CONFIG_PATH = Path.home() / ".aws" / "config"
@@ -112,9 +114,20 @@ class CustomerService:
         config_extra: dict | None = None,
         region: str | None = None,
         alarm_names: list[str] | None = None,
+        auth_method: str = "profile",
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key: str | None = None,
+        role_arn: str | None = None,
+        external_id: str | None = None,
+        app_secret: str | None = None,
     ) -> dict:
-        # Auto-detect AWS account ID
-        account_id = detect_account_id(profile_name)
+        # Auto-detect AWS account ID (only meaningful for profile auth)
+        account_id = detect_account_id(profile_name) if auth_method == "profile" else None
+
+        # Encrypt secret key if provided
+        secret_enc = None
+        if aws_secret_access_key and app_secret:
+            secret_enc = encrypt_secret(aws_secret_access_key, app_secret)
 
         account = self.repo.add_account(
             customer_id=customer_id,
@@ -124,11 +137,26 @@ class CustomerService:
             config_extra=config_extra,
             region=region,
             alarm_names=alarm_names,
+            auth_method=auth_method,
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key_enc=secret_enc,
+            role_arn=role_arn,
+            external_id=external_id,
         )
         self.repo.commit()
         return self._serialize_account(account)
 
-    def update_account(self, account_id: str, **kwargs) -> dict | None:
+    def update_account(
+        self,
+        account_id: str,
+        app_secret: str | None = None,
+        **kwargs,
+    ) -> dict | None:
+        # Handle secret encryption before delegating to repo
+        raw_secret = kwargs.pop("aws_secret_access_key", None)
+        if raw_secret is not None and app_secret:
+            kwargs["aws_secret_access_key_enc"] = encrypt_secret(raw_secret, app_secret)
+
         account = self.repo.update_account(account_id, **kwargs)
         if account is None:
             return None
@@ -144,12 +172,21 @@ class CustomerService:
     def discover_account_alarms(self, account_id: str) -> list[str]:
         """Discover CloudWatch alarm names for an account and save them to DB."""
         import boto3
+        from backend.domain.services.check_executor import _build_creds_for_account
 
         account = self.repo.get_account(account_id)
         if account is None:
             raise ValueError("Account not found")
 
-        session = boto3.Session(profile_name=account.profile_name)
+        creds = _build_creds_for_account(account)
+        if creds is None:
+            session = boto3.Session(profile_name=account.profile_name)
+        else:
+            session = boto3.Session(
+                aws_access_key_id=creds["aws_access_key_id"],
+                aws_secret_access_key=creds["aws_secret_access_key"],
+                aws_session_token=creds.get("aws_session_token"),
+            )
         cw = session.client("cloudwatch")
 
         paginator = cw.get_paginator("describe_alarms")
@@ -165,6 +202,157 @@ class CustomerService:
         self.repo.update_account(account_id, alarm_names=alarm_names)
         self.repo.commit()
         return alarm_names
+
+    def discover_account_full(self, account_id: str) -> dict:
+        """Discover AWS account ID, alarms, EC2 instances, and RDS resources. Saves to DB."""
+        import boto3
+        from backend.domain.services.check_executor import _build_creds_for_account
+
+        account = self.repo.get_account(account_id)
+        if account is None:
+            raise ValueError("Account not found")
+
+        creds = _build_creds_for_account(account)
+        if creds is None:
+            session = boto3.Session(profile_name=account.profile_name)
+        else:
+            session = boto3.Session(
+                aws_access_key_id=creds["aws_access_key_id"],
+                aws_secret_access_key=creds["aws_secret_access_key"],
+                aws_session_token=creds.get("aws_session_token"),
+            )
+
+        result = {
+            "aws_account_id": None,
+            "alarm_names": [],
+            "ec2_instances": [],
+            "rds_clusters": [],
+            "rds_instances": [],
+            "errors": [],
+        }
+
+        # 1. STS — get AWS account ID
+        try:
+            sts = session.client("sts")
+            identity = sts.get_caller_identity()
+            result["aws_account_id"] = identity.get("Account")
+        except Exception as e:
+            result["errors"].append(f"STS: {e}")
+
+        # 2. CloudWatch — discover alarms (use account region if set, else default)
+        region = account.region or "ap-southeast-3"
+        try:
+            cw = session.client("cloudwatch", region_name=region)
+            paginator = cw.get_paginator("describe_alarms")
+            alarm_names: list[str] = []
+            for page in paginator.paginate(AlarmTypes=["MetricAlarm", "CompositeAlarm"]):
+                for alarm in page.get("MetricAlarms", []):
+                    alarm_names.append(alarm["AlarmName"])
+                for alarm in page.get("CompositeAlarms", []):
+                    alarm_names.append(alarm["AlarmName"])
+            alarm_names.sort()
+            result["alarm_names"] = alarm_names
+        except Exception as e:
+            result["errors"].append(f"CloudWatch: {e}")
+
+        # 3. EC2 — list running instances across all enabled regions
+        try:
+            ec2_default = session.client("ec2", region_name=region)
+            try:
+                regions = [
+                    r["RegionName"]
+                    for r in ec2_default.describe_regions(AllRegions=False).get("Regions", [])
+                    if r.get("RegionName")
+                ]
+            except Exception:
+                regions = [region]
+
+            ec2_instances: list[dict] = []
+            seen_ids: set[str] = set()
+            for reg in regions:
+                try:
+                    ec2 = session.client("ec2", region_name=reg)
+                    paginator = ec2.get_paginator("describe_instances")
+                    for page in paginator.paginate(Filters=[{"Name": "instance-state-name", "Values": ["running"]}]):
+                        for reservation in page.get("Reservations", []):
+                            for inst in reservation.get("Instances", []):
+                                iid = inst.get("InstanceId")
+                                if not iid or iid in seen_ids:
+                                    continue
+                                seen_ids.add(iid)
+                                name = next(
+                                    (t["Value"] for t in (inst.get("Tags") or []) if t.get("Key") == "Name"),
+                                    "-",
+                                )
+                                ec2_instances.append({
+                                    "instance_id": iid,
+                                    "name": name,
+                                    "instance_type": inst.get("InstanceType", "-"),
+                                    "region": reg,
+                                    "platform": "windows" if "windows" in str(inst.get("Platform") or inst.get("PlatformDetails") or "").lower() else "linux",
+                                })
+                except Exception:
+                    continue
+            result["ec2_instances"] = ec2_instances
+        except Exception as e:
+            result["errors"].append(f"EC2: {e}")
+
+        # 4. RDS — clusters and instances
+        try:
+            rds = session.client("rds", region_name=region)
+            try:
+                clusters = rds.describe_db_clusters().get("DBClusters", [])
+                result["rds_clusters"] = [
+                    {
+                        "cluster_id": c.get("DBClusterIdentifier"),
+                        "engine": c.get("Engine"),
+                        "status": c.get("Status"),
+                    }
+                    for c in clusters
+                ]
+            except Exception:
+                pass
+            try:
+                instances = rds.describe_db_instances().get("DBInstances", [])
+                result["rds_instances"] = [
+                    {
+                        "instance_id": i.get("DBInstanceIdentifier"),
+                        "engine": i.get("Engine"),
+                        "instance_class": i.get("DBInstanceClass"),
+                        "status": i.get("DBInstanceStatus"),
+                        "cluster_id": i.get("DBClusterIdentifier"),
+                    }
+                    for i in instances
+                ]
+            except Exception:
+                pass
+        except Exception as e:
+            result["errors"].append(f"RDS: {e}")
+
+        # Save to DB
+        from datetime import datetime, timezone as tz
+
+        update_kwargs: dict = {}
+        if result["aws_account_id"]:
+            update_kwargs["account_id"] = result["aws_account_id"]
+        if result["alarm_names"]:
+            update_kwargs["alarm_names"] = result["alarm_names"]
+
+        # Persist EC2/RDS snapshot in config_extra["_discovery"]
+        existing_extra = dict(account.config_extra or {})
+        existing_extra["_discovery"] = {
+            "timestamp": datetime.now(tz.utc).isoformat(),
+            "ec2_instances": result["ec2_instances"],
+            "rds_clusters": result["rds_clusters"],
+            "rds_instances": result["rds_instances"],
+            "errors": result["errors"],
+        }
+        update_kwargs["config_extra"] = existing_extra
+
+        self.repo.update_account(account_id, **update_kwargs)
+        self.repo.commit()
+
+        return result
 
     def list_account_check_configs(self, account_id: str) -> list[dict]:
         account = self.repo.get_account(account_id)
@@ -219,6 +407,36 @@ class CustomerService:
             "mapped_profiles": mapped_profiles,
             "unmapped_profiles": unmapped,
         }
+
+    @staticmethod
+    def _yaml_daily_arbel_to_sections(acct: dict) -> list[dict] | None:
+        """Build sections list from YAML account config for daily-arbel check."""
+        daily = acct.get("daily_arbel")
+        if not daily:
+            return None
+
+        main_section: dict = {
+            "section_name": acct.get("display_name", acct.get("profile", "")),
+            "service_type": daily.get("service_type", "rds"),
+            "alarm_regions": daily.get("alarm_regions") or [],
+            "instances": dict(daily.get("instances") or {}),
+            "instance_names": dict(daily.get("instance_names") or {}),
+            "metrics": list(daily.get("metrics") or []),
+            "thresholds": dict(daily.get("thresholds") or {}),
+            "role_thresholds": dict(daily.get("role_thresholds") or {}),
+            "alarm_thresholds": dict(daily.get("alarm_thresholds") or {}),
+        }
+        cluster_id = daily.get("cluster_id")
+        if cluster_id:
+            main_section["cluster_id"] = cluster_id
+
+        sections = [main_section]
+
+        for extra in acct.get("daily_arbel_extra") or []:
+            if isinstance(extra, dict):
+                sections.append(dict(extra))
+
+        return sections
 
     def import_from_yaml(self, customer_config: dict) -> dict:
         """Import a customer from YAML config format into database.
@@ -293,9 +511,10 @@ class CustomerService:
                     alarm_names=alarm_names,
                     region=region,
                 )
+                account_db_id = existing_acct.id
                 updated += 1
             else:
-                self.repo.add_account(
+                new_acct = self.repo.add_account(
                     customer_id=customer.id,
                     profile_name=profile,
                     display_name=acct.get("display_name", profile),
@@ -304,7 +523,18 @@ class CustomerService:
                     alarm_names=alarm_names,
                     region=region,
                 )
+                account_db_id = new_acct.id if new_acct else None
                 added += 1
+
+            # Migrate daily-arbel config to AccountCheckConfig table
+            if account_db_id:
+                sections = self._yaml_daily_arbel_to_sections(acct)
+                if sections:
+                    self.repo.upsert_account_check_config(
+                        account_id=account_db_id,
+                        check_name="daily-arbel",
+                        config={"sections": sections},
+                    )
 
         self.repo.commit()
         return {
@@ -347,5 +577,10 @@ class CustomerService:
             "config_extra": account.config_extra,
             "region": account.region,
             "alarm_names": account.alarm_names,
+            "auth_method": getattr(account, "auth_method", "profile") or "profile",
+            "aws_access_key_id": getattr(account, "aws_access_key_id", None),
+            "role_arn": getattr(account, "role_arn", None),
+            "external_id": getattr(account, "external_id", None),
+            # aws_secret_access_key_enc is intentionally never returned
             "created_at": account.created_at.isoformat(),
         }
