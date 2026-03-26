@@ -242,13 +242,15 @@ def _run_single_check(
     region: str,
     check_kwargs: Optional[dict] = None,
     injected_creds: dict | None = None,
+    account_id: str | None = None,
 ) -> dict:
     """Run one check on one profile, return raw result."""
     checker_class = AVAILABLE_CHECKS.get(check_name)
     if checker_class is None:
         return {"status": "error", "error": f"Unknown check: {check_name}"}
 
-    account_id = get_account_id_from_profile(profile)
+    if not account_id or account_id == "Unknown":
+        account_id = get_account_id_from_profile(profile)
     checker = checker_class(region=region, **(check_kwargs or {}))
     if injected_creds is not None:
         checker._injected_creds = injected_creds
@@ -1634,6 +1636,7 @@ class CheckExecutor:
                         region_for_account,
                         check_kwargs,
                         injected_creds,
+                        account.account_id,
                     )
                     futures[future] = (account, chk_name)
 
