@@ -39,6 +39,8 @@ class AWSUtilization3CoreChecker(BaseChecker):
                 self.thresholds[key] = float(override)
 
         self.profile_regions = dict(kwargs.get("profile_regions", {}) or {})
+        raw_list = kwargs.get("instance_list")
+        self.instance_list: list[dict] | None = list(raw_list) if raw_list else None
 
     @staticmethod
     def _instance_name(row: dict[str, Any]) -> str:
@@ -60,9 +62,6 @@ class AWSUtilization3CoreChecker(BaseChecker):
         if isinstance(value, (int, float)):
             return round(float(value), 2)
         return None
-
-    def _create_session(self, profile: str):
-        return boto3.Session(profile_name=profile)
 
     def _discover_regions(self, session, profile: str | None = None) -> list[str]:
         configured = []
@@ -332,6 +331,7 @@ class AWSUtilization3CoreChecker(BaseChecker):
         instance_id: str,
         start_time: datetime,
         end_time: datetime,
+        os_type: str = "linux",
     ) -> float | None:
         ignored_fstypes = {
             "squashfs",
@@ -401,6 +401,37 @@ class AWSUtilization3CoreChecker(BaseChecker):
                 continue
             free_candidates.append(100.0 - float(peak_used))
 
+        # Fallback for Windows: try LogicalDisk % Free Space
+        if not free_candidates and os_type == "windows":
+            try:
+                listed = cloudwatch.list_metrics(
+                    Namespace="CWAgent",
+                    MetricName="LogicalDisk % Free Space",
+                    Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
+                )
+            except Exception:
+                return None
+
+            for metric_def in listed.get("Metrics", []) or []:
+                dims = metric_def.get("Dimensions", []) or []
+                dim_map = {d.get("Name"): d.get("Value") for d in dims}
+                drive = dim_map.get("instance", "")
+                if drive == "_Total":
+                    continue
+                try:
+                    avg_free, _peak, _peak_at = self._get_metric_summary(
+                        cloudwatch,
+                        namespace="CWAgent",
+                        metric_name="LogicalDisk % Free Space",
+                        dimensions=dims,
+                        start_time=start_time,
+                        end_time=end_time,
+                    )
+                except Exception:
+                    continue
+                if avg_free is not None:
+                    free_candidates.append(float(avg_free))
+
         if not free_candidates:
             return None
         return min(free_candidates)
@@ -439,6 +470,7 @@ class AWSUtilization3CoreChecker(BaseChecker):
             instance["instance_id"],
             start_time,
             end_time,
+            os_type=instance.get("os_type", "linux"),
         )
 
         status = classify_instance_status(
@@ -497,9 +529,12 @@ class AWSUtilization3CoreChecker(BaseChecker):
 
     def check(self, profile: str, account_id: str) -> dict[str, Any]:
         try:
-            session = self._create_session(profile)
-            regions = self._discover_regions(session, profile=profile)
-            instances = self._list_instances(session, regions)
+            session = self._get_session(profile)
+            if self.instance_list:
+                instances = self.instance_list
+            else:
+                regions = self._discover_regions(session, profile=profile)
+                instances = self._list_instances(session, regions)
 
             end_time = datetime.now(timezone.utc)
             start_time = end_time - timedelta(hours=self.util_hours)

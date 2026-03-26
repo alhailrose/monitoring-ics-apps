@@ -222,7 +222,8 @@ def test_execute_parallel_times_out_stuck_checks():
         return {"status": "ok"}
 
     with patch(
-        "backend.domain.services.check_executor._run_single_check", side_effect=_slow_run
+        "backend.domain.services.check_executor._run_single_check",
+        side_effect=_slow_run,
     ):
         results = executor._execute_parallel(
             [acct], {"cloudwatch": MagicMock()}, "ap-southeast-3"
@@ -284,6 +285,7 @@ def test_execute_multi_customer_returns_check_runs_list():
     assert len(result["check_runs"]) == 2
     cids = {r["customer_id"] for r in result["check_runs"]}
     assert cids == {"cust-1", "cust-2"}
+    assert result["customer_labels"] == {"cust-1": "Test", "cust-2": "Test"}
 
 
 def test_execute_multi_customer_skips_unknown_customer():
@@ -377,7 +379,8 @@ def test_execute_single_backup_returns_whatsapp_primary_output_and_backup_overvi
         return base
 
     with patch(
-        "backend.domain.services.check_executor._run_single_check", side_effect=_fake_run
+        "backend.domain.services.check_executor._run_single_check",
+        side_effect=_fake_run,
     ):
         result = executor.execute(
             customer_ids=["cust-1"],
@@ -391,3 +394,98 @@ def test_execute_single_backup_returns_whatsapp_primary_output_and_backup_overvi
     assert "Akun Bermasalah" in result["consolidated_outputs"]["cust-1"]
     assert result["backup_overviews"]["cust-1"]["all_success"] is False
     assert result["backup_overviews"]["cust-1"]["problem_accounts_count"] == 1
+
+
+def test_execute_single_daily_arbel_ec2_uses_account_name_keys_for_consolidated_outputs():
+    from backend.domain.services.check_executor import CheckExecutor
+
+    acct_hris = _make_account("HRIS", region="ap-southeast-3")
+    acct_hris.id = "acc-hris"
+    acct_hris.display_name = "Arbel HRIS"
+    acct_hris.is_active = True
+
+    acct_sfa = _make_account("sfa", region="ap-southeast-3")
+    acct_sfa.id = "acc-sfa"
+    acct_sfa.display_name = "Arbel SFA"
+    acct_sfa.is_active = True
+
+    customer = _make_customer(
+        "cust-1", display_name="Aryanoble", accounts=[acct_hris, acct_sfa]
+    )
+
+    customer_repo = MagicMock()
+    customer_repo.get_customer.return_value = customer
+
+    check_repo = MagicMock()
+    run = MagicMock()
+    run.id = "run-uuid-1"
+    check_repo.create_check_run.return_value = run
+
+    executor = CheckExecutor(
+        check_repo=check_repo,
+        customer_repo=customer_repo,
+        region="ap-southeast-3",
+    )
+
+    def _fake_run(*args, **_kwargs):
+        _ = _kwargs
+        check_name, profile = args[0], args[1]
+        _ = check_name
+        return {
+            "status": "ok",
+            "_formatted_output": f"report-{profile}",
+        }
+
+    with patch(
+        "backend.domain.services.check_executor._run_single_check",
+        side_effect=_fake_run,
+    ):
+        result = executor.execute(
+            customer_ids=["cust-1"],
+            mode="single",
+            check_name="daily-arbel-ec2",
+            send_slack=False,
+        )
+
+    outputs = result["consolidated_outputs"]
+    assert outputs["Arbel HRIS"] == "report-HRIS"
+    assert outputs["Arbel SFA"] == "report-sfa"
+    assert all(not key.startswith("cust-1:") for key in outputs)
+
+
+def test_ec2_utilization_uses_stored_instance_list():
+    """instance_list kwarg skips _discover_regions and _list_instances."""
+    from backend.checks.generic.aws_utilization_3core import AWSUtilization3CoreChecker
+    from unittest.mock import patch, MagicMock
+
+    stored_instances = [
+        {
+            "instance_id": "i-abc123",
+            "name": "my-server",
+            "os_type": "linux",
+            "instance_type": "t3.small",
+            "region": "ap-southeast-3",
+        }
+    ]
+
+    checker = AWSUtilization3CoreChecker(instance_list=stored_instances)
+
+    with patch.object(checker, "_discover_regions") as mock_discover, \
+         patch.object(checker, "_list_instances") as mock_list, \
+         patch.object(checker, "_get_session") as mock_session, \
+         patch.object(checker, "_collect_instance_metrics") as mock_collect:
+
+        mock_collect.return_value = {**stored_instances[0], "cpu_avg_12h": 10.0,
+            "cpu_peak_12h": 15.0, "cpu_peak_at_12h": None, "memory_avg_12h": None,
+            "memory_peak_12h": None, "memory_peak_at_12h": None, "memory_metric": None,
+            "memory_note": None, "disk_free_min_percent": None, "disk_note": None,
+            "status": "NORMAL"}
+        mock_session.return_value = MagicMock()
+
+        result = checker.check("test-profile", "123456789012")
+
+    mock_discover.assert_not_called()
+    mock_list.assert_not_called()
+    assert result["status"] == "success"
+    assert len(result["instances"]) == 1
+    assert result["instances"][0]["instance_id"] == "i-abc123"
