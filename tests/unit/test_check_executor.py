@@ -489,3 +489,50 @@ def test_ec2_utilization_uses_stored_instance_list():
     assert result["status"] == "success"
     assert len(result["instances"]) == 1
     assert result["instances"][0]["instance_id"] == "i-abc123"
+
+
+def test_executor_injects_instance_list_from_discovery():
+    """_execute_parallel injects instance_list into ec2_utilization kwargs from _discovery."""
+    executor = _make_executor()
+
+    discovery_data = {
+        "ec2_instances": [
+            {
+                "instance_id": "i-aaa111",
+                "name": "prod-server",
+                "instance_type": "t3.medium",
+                "region": "ap-southeast-3",
+                "platform": "",
+            },
+            {
+                "instance_id": "i-bbb222",
+                "name": "win-server",
+                "instance_type": "t3.large",
+                "region": "ap-southeast-3",
+                "platform": "windows",
+            },
+        ]
+    }
+    acct = _make_account("prod-profile", config_extra={"_discovery": discovery_data})
+
+    captured_kwargs = {}
+
+    def capture(*args, **kwargs):
+        # _run_single_check(check_name, profile, region, check_kwargs, injected_creds)
+        captured_kwargs[args[0]] = args[3]
+        return {"status": "ok"}
+
+    with patch("backend.domain.services.check_executor._run_single_check", side_effect=capture):
+        executor._execute_parallel(
+            [acct], {"ec2_utilization": MagicMock()}, "ap-southeast-3"
+        )
+
+    assert "ec2_utilization" in captured_kwargs
+    injected = captured_kwargs["ec2_utilization"]
+    assert injected is not None
+    instance_list = injected["instance_list"]
+    assert len(instance_list) == 2
+    linux = next(i for i in instance_list if i["instance_id"] == "i-aaa111")
+    win = next(i for i in instance_list if i["instance_id"] == "i-bbb222")
+    assert linux["os_type"] == "linux"
+    assert win["os_type"] == "windows"

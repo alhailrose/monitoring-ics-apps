@@ -25,10 +25,11 @@ from backend.domain.runtime.config import (
 )
 from backend.domain.runtime.utils import get_account_id as get_account_id_from_profile
 from backend.domain.runtime.reports import (
-    build_whatsapp_backup,
+    build_whatsapp_backup_aryanoble,
     build_whatsapp_rds,
     summarize_backup_whatsapp,
 )
+from backend.domain.finding_events import FINDING_EVENT_CHECKS
 from backend.domain.services.finding_events_mapper import map_check_findings
 from backend.domain.services.metric_samples_mapper import map_check_metric_samples
 from backend.checks.common.aws_errors import (
@@ -121,6 +122,32 @@ def _build_summary(raw_result: dict, check_name: str) -> str:
     if check_name == "notifications":
         count = raw_result.get("notification_count", 0)
         return f"{count} notification(s)"
+    if check_name == "backup":
+        failed = int(raw_result.get("failed_jobs", 0) or 0)
+        expired = int(raw_result.get("expired_jobs", 0) or 0)
+        total = int(raw_result.get("total_jobs", 0) or 0)
+        vaults = raw_result.get("vaults") or []
+        vault_ok = sum(
+            1
+            for v in vaults
+            if not v.get("error") and v.get("recovery_points_24h", 0) > 0
+        )
+        vault_fail = sum(
+            1 for v in vaults if v.get("error") or v.get("recovery_points_24h", 0) == 0
+        )
+        if vaults and total == 0:
+            # Vault-only account
+            if vault_fail > 0:
+                return f"{vault_fail} vault(s) no backup today"
+            return f"{vault_ok} vault(s) OK"
+        parts = [f"{total} jobs"]
+        if failed > 0:
+            parts.append(f"{failed} failed")
+        if expired > 0:
+            parts.append(f"{expired} expired")
+        if not failed and not expired:
+            parts.append("all OK")
+        return ", ".join(parts)
     if check_name == "ec2_utilization":
         summary_dict = raw_result.get("summary", {})
         if isinstance(summary_dict, dict):
@@ -133,11 +160,88 @@ def _build_summary(raw_result: dict, check_name: str) -> str:
     return str(raw_result.get("summary", "Check completed"))
 
 
+def _build_creds_for_account(account, region: str | None = None) -> dict:
+    """Resolve credentials for an account based on its auth_method.
+
+    Returns a dict with keys:
+      aws_access_key_id, aws_secret_access_key, aws_session_token (may be None)
+
+    Callers should create their own boto3.Session from these credentials rather
+    than sharing a single Session across threads, to avoid any profile/env state
+    leaking in.
+    """
+    import boto3
+    from backend.utils.crypto import decrypt_secret
+    from backend.config.settings import get_settings
+
+    auth_method = getattr(account, "auth_method", "profile") or "profile"
+    effective_region = region or getattr(account, "region", None)
+
+    if auth_method == "access_key":
+        key_id = account.aws_access_key_id
+        secret_enc = account.aws_secret_access_key_enc
+        logger.info(
+            "[auth] access_key creds for '%s': key_id=%s, secret_enc_set=%s",
+            account.profile_name,
+            key_id,
+            bool(secret_enc),
+        )
+        if not key_id or not secret_enc:
+            raise ValueError(
+                f"Account '{account.profile_name}' missing access key credentials"
+            )
+        secret = decrypt_secret(secret_enc, get_settings().jwt_secret)
+        return {
+            "aws_access_key_id": key_id,
+            "aws_secret_access_key": secret,
+            "aws_session_token": None,
+        }
+
+    elif auth_method == "assumed_role":
+        role_arn = account.role_arn
+        if not role_arn:
+            raise ValueError(
+                f"Account '{account.profile_name}' missing role_arn for assumed_role"
+            )
+        # Build base session for STS call: access_key if available, else profile
+        if account.aws_access_key_id and account.aws_secret_access_key_enc:
+            secret = decrypt_secret(
+                account.aws_secret_access_key_enc, get_settings().jwt_secret
+            )
+            base_session = boto3.Session(
+                aws_access_key_id=account.aws_access_key_id,
+                aws_secret_access_key=secret,
+                aws_session_token=None,
+                region_name=effective_region,
+            )
+        else:
+            base_session = boto3.Session(
+                profile_name=account.profile_name, region_name=effective_region
+            )
+        sts = base_session.client("sts", region_name="us-east-1")
+        assume_kwargs: dict = {
+            "RoleArn": role_arn,
+            "RoleSessionName": f"monitoring-hub-{account.profile_name}",
+        }
+        if account.external_id:
+            assume_kwargs["ExternalId"] = account.external_id
+        creds = sts.assume_role(**assume_kwargs)["Credentials"]
+        return {
+            "aws_access_key_id": creds["AccessKeyId"],
+            "aws_secret_access_key": creds["SecretAccessKey"],
+            "aws_session_token": creds["SessionToken"],
+        }
+
+    else:  # profile — no injected credentials; checker uses its own profile session
+        return None
+
+
 def _run_single_check(
     check_name: str,
     profile: str,
     region: str,
     check_kwargs: Optional[dict] = None,
+    injected_creds: dict | None = None,
 ) -> dict:
     """Run one check on one profile, return raw result."""
     checker_class = AVAILABLE_CHECKS.get(check_name)
@@ -146,9 +250,24 @@ def _run_single_check(
 
     account_id = get_account_id_from_profile(profile)
     checker = checker_class(region=region, **(check_kwargs or {}))
+    if injected_creds is not None:
+        checker._injected_creds = injected_creds
+        logger.info(
+            "[auth] Injected creds into %s for profile '%s' (key=%s)",
+            checker_class.__name__,
+            profile,
+            injected_creds.get("aws_access_key_id"),
+        )
 
     try:
         result = checker.check(profile, account_id)
+        if result.get("status") == "error":
+            logger.warning(
+                "[check] %s/%s returned error: %s",
+                check_name,
+                profile,
+                result.get("error"),
+            )
         try:
             result["_formatted_output"] = checker.format_report(result)
         except Exception:
@@ -158,6 +277,12 @@ def _run_single_check(
         return result
     except Exception as exc:
         if is_credential_error(exc):
+            logger.warning(
+                "[auth] Credential error in %s for profile '%s': %s",
+                check_name,
+                profile,
+                exc,
+            )
             return {
                 "status": "error",
                 "error": friendly_credential_message(exc, profile),
@@ -353,7 +478,11 @@ def _build_consolidated_report(
             p: {chk: all_results.get(p, {}).get(chk, {}) for chk in checks}
             for p in profiles
         }
-        lines.append(build_whatsapp_backup(date_str_wa, wa_results))
+        lines.append(
+            build_whatsapp_backup_aryanoble(
+                date_str_wa, wa_results, group_name=group_name
+            )
+        )
         lines.append("")
         lines.append("--rds")
         lines.append(build_whatsapp_rds(wa_results))
@@ -409,7 +538,7 @@ def _build_summary_report(
     # Build profile → display_name map from DB accounts
     profile_display: dict[str, str] = {}
     profile_aws_id: dict[str, str] = {}
-    for acc in (accounts or []):
+    for acc in accounts or []:
         profile_display[acc.profile_name] = acc.display_name
         if acc.account_id:
             profile_aws_id[acc.profile_name] = acc.account_id
@@ -421,8 +550,16 @@ def _build_summary_report(
 
     # ── Utilization section ──────────────────────────────────────────────
     utilization_checks = [
-        c for c in checks
-        if c in ("daily-arbel", "daily-arbel-rds", "daily-arbel-ec2", "aws-utilization-3core", "ec2_utilization")
+        c
+        for c in checks
+        if c
+        in (
+            "daily-arbel",
+            "daily-arbel-rds",
+            "daily-arbel-ec2",
+            "aws-utilization-3core",
+            "ec2_utilization",
+        )
     ]
     if utilization_checks:
         # Detect window_hours from first available result
@@ -430,7 +567,9 @@ def _build_summary_report(
         for profile in profiles:
             for chk in utilization_checks:
                 res = all_results.get(profile, {}).get(chk, {})
-                wh = res.get("window_hours") or (res.get("util_window") or {}).get("hours")
+                wh = res.get("window_hours") or (res.get("util_window") or {}).get(
+                    "hours"
+                )
                 if wh:
                     window_hours = int(wh)
                     break
@@ -453,11 +592,18 @@ def _build_summary_report(
                     continue
 
                 if not account_label:
-                    account_label = res.get("account_name") or profile_display.get(profile, profile)
-                    account_id_str = res.get("account_id") or profile_aws_id.get(profile, "")
+                    account_label = res.get("account_name") or profile_display.get(
+                        profile, profile
+                    )
+                    account_id_str = res.get("account_id") or profile_aws_id.get(
+                        profile, ""
+                    )
 
                 # ── aws-utilization-3core / ec2_utilization format ──
-                if chk in ("aws-utilization-3core", "ec2_utilization") and res.get("status") == "success":
+                if (
+                    chk in ("aws-utilization-3core", "ec2_utilization")
+                    and res.get("status") == "success"
+                ):
                     for row in res.get("instances", []):
                         inst_name = row.get("name") or row.get("instance_id") or "-"
                         parts = []
@@ -477,17 +623,27 @@ def _build_summary_report(
                             parts.append(f"DISK={disk_free:.2f}%")
 
                         if parts:
-                            account_lines.append(f"    - {inst_name} | {' | '.join(parts)}")
+                            account_lines.append(
+                                f"    - {inst_name} | {' | '.join(parts)}"
+                            )
 
                         # Alert notes for spikes
                         inst_status = str(row.get("status") or "").upper()
                         if inst_status in ("WARNING", "CRITICAL"):
-                            if cpu_peak is not None and cpu_avg is not None and cpu_peak > cpu_avg * 1.5:
+                            if (
+                                cpu_peak is not None
+                                and cpu_avg is not None
+                                and cpu_peak > cpu_avg * 1.5
+                            ):
                                 time_str = f" pada {cpu_peak_at}" if cpu_peak_at else ""
                                 alert_notes.append(
                                     f"*CPU {inst_name} sempat sangat tinggi {cpu_peak:.2f}%{time_str} (avg={cpu_avg:.2f}%).*"
                                 )
-                            if mem_avg is not None and mem_peak is not None and mem_peak > 80:
+                            if (
+                                mem_avg is not None
+                                and mem_peak is not None
+                                and mem_peak > 80
+                            ):
                                 alert_notes.append(
                                     f"*Memory {inst_name} tinggi dan konsisten dalam {window_hours} jam terakhir (avg={mem_avg:.2f}%, peak={mem_peak:.2f}%).*"
                                 )
@@ -507,7 +663,9 @@ def _build_summary_report(
                 for section in all_sections:
                     instances = section.get("instances", {})
                     for role, data in instances.items():
-                        inst_name = data.get("instance_name") or data.get("instance_id") or role
+                        inst_name = (
+                            data.get("instance_name") or data.get("instance_id") or role
+                        )
                         metrics = data.get("metrics", {})
 
                         # Collect metric values
@@ -523,16 +681,28 @@ def _build_summary_report(
                                 val = avg if avg is not None else last
                                 if val is not None:
                                     parts.append(f"CPU(avg)={val:.2f}%")
-                                    if status in ("warn", "past-warn") and max_val is not None and max_val > val * 1.5:
+                                    if (
+                                        status in ("warn", "past-warn")
+                                        and max_val is not None
+                                        and max_val > val * 1.5
+                                    ):
                                         peak_time_str = ""
                                         timestamps = info.get("timestamps", [])
                                         values = info.get("values", [])
-                                        if timestamps and values and len(timestamps) == len(values):
+                                        if (
+                                            timestamps
+                                            and values
+                                            and len(timestamps) == len(values)
+                                        ):
                                             max_idx = values.index(max(values))
                                             peak_ts = timestamps[max_idx]
-                                            if hasattr(peak_ts, 'strftime'):
+                                            if hasattr(peak_ts, "strftime"):
                                                 jkt_tz = timezone(timedelta(hours=7))
-                                                peak_jkt = peak_ts.astimezone(jkt_tz) if peak_ts.tzinfo else peak_ts
+                                                peak_jkt = (
+                                                    peak_ts.astimezone(jkt_tz)
+                                                    if peak_ts.tzinfo
+                                                    else peak_ts
+                                                )
                                                 peak_time_str = f" pada {peak_jkt.strftime('%Y-%m-%d %H:%M:%S')} +07"
                                         alert_notes.append(
                                             f"*CPU {inst_name} sempat sangat tinggi {max_val:.2f}%{peak_time_str} (avg={val:.2f}%).*"
@@ -550,13 +720,19 @@ def _build_summary_report(
                                     parts.append(f"MEM(avg)={gb:.2f}GB")
                                     if status == "warn":
                                         values = info.get("values", [val])
-                                        peak_gb = min(values) / (1024**3) if values else gb
+                                        peak_gb = (
+                                            min(values) / (1024**3) if values else gb
+                                        )
                                         alert_notes.append(
                                             f"*Memory {inst_name} rendah dan konsisten dalam {window_hours} jam terakhir (avg={gb:.2f}GB, min={peak_gb:.2f}GB).*"
                                         )
 
                             elif metric_name == "FreeStorageSpace":
-                                val = last if last is not None else (avg if avg is not None else None)
+                                val = (
+                                    last
+                                    if last is not None
+                                    else (avg if avg is not None else None)
+                                )
                                 if val is not None:
                                     gb = val / (1024**3)
                                     parts.append(f"DISK={gb:.2f}GB")
@@ -566,7 +742,11 @@ def _build_summary_report(
                                         )
 
                             elif metric_name == "DatabaseConnections":
-                                val = last if last is not None else (avg if avg is not None else None)
+                                val = (
+                                    last
+                                    if last is not None
+                                    else (avg if avg is not None else None)
+                                )
                                 if val is not None:
                                     parts.append(f"CONN={int(val)}")
 
@@ -577,21 +757,27 @@ def _build_summary_report(
                             periods = alarm.get("periods") or []
                             if "mem" in alarm_name.lower():
                                 if state == "ALARM":
-                                    alert_notes.append(f"*Memory {inst_name} dalam kondisi ALARM.*")
+                                    alert_notes.append(
+                                        f"*Memory {inst_name} dalam kondisi ALARM.*"
+                                    )
                                 elif periods:
                                     alert_notes.append(
                                         f"*Memory {inst_name} sempat ALARM dalam {window_hours} jam terakhir.*"
                                     )
                             elif "disk" in alarm_name.lower():
                                 if state == "ALARM":
-                                    alert_notes.append(f"*Disk {inst_name} dalam kondisi ALARM.*")
+                                    alert_notes.append(
+                                        f"*Disk {inst_name} dalam kondisi ALARM.*"
+                                    )
                                 elif periods:
                                     alert_notes.append(
                                         f"*Disk {inst_name} sempat ALARM dalam {window_hours} jam terakhir.*"
                                     )
 
                         if parts:
-                            account_lines.append(f"    - {inst_name} | {' | '.join(parts)}")
+                            account_lines.append(
+                                f"    - {inst_name} | {' | '.join(parts)}"
+                            )
 
             if account_label and (account_lines or alert_notes):
                 lines.append(f"- {account_label} ({account_id_str})")
@@ -600,6 +786,27 @@ def _build_summary_report(
                     lines.append("  *Catatan Alert:*")
                     for note in alert_notes:
                         lines.append(f"    - {note}")
+
+    def _trim_text(value: str, max_len: int = 72) -> str:
+        text = " ".join(str(value or "").split())
+        if len(text) <= max_len:
+            return text
+        return text[: max_len - 3].rstrip() + "..."
+
+    def _example_items(values: list[str], max_items: int = 2) -> list[str]:
+        seen = []
+        for val in values:
+            cleaned = _trim_text(val)
+            if cleaned and cleaned not in seen:
+                seen.append(cleaned)
+        if not seen:
+            return []
+        shown = seen[:max_items]
+        lines = [f"  • {name}" for name in shown]
+        extra_count = len(seen) - max_items
+        if extra_count > 0:
+            lines.append(f"  • +{extra_count} lainnya")
+        return lines
 
     # ── Other checks summary ────────────────────────────────────────────
     other_checks = [c for c in checks if c not in utilization_checks]
@@ -610,9 +817,29 @@ def _build_summary_report(
         # Notifications
         if "notifications" in checks:
             total_notif = 0
+            notif_examples = []
             for profile in profiles:
                 res = all_results.get(profile, {}).get("notifications", {})
                 total_notif += int(res.get("recent_count", 0))
+                for event in res.get("recent_events") or []:
+                    notif_event = (
+                        event.get("notificationEvent", {})
+                        if isinstance(event, dict)
+                        else {}
+                    )
+                    headline = (
+                        notif_event.get("messageComponents", {}).get("headline")
+                        if isinstance(notif_event, dict)
+                        else None
+                    )
+                    event_type = (
+                        notif_event.get("sourceEventMetadata", {}).get("eventType")
+                        if isinstance(notif_event, dict)
+                        else None
+                    )
+                    candidate = headline or event_type
+                    if candidate:
+                        notif_examples.append(str(candidate))
             window = 12
             for profile in profiles:
                 res = all_results.get(profile, {}).get("notifications", {})
@@ -622,7 +849,10 @@ def _build_summary_report(
             if total_notif == 0:
                 lines.append(f"- Notifikasi ({window} jam): tidak ada notifikasi baru")
             else:
-                lines.append(f"- Notifikasi ({window} jam): {total_notif} notifikasi baru")
+                lines.append(
+                    f"- Notifikasi ({window} jam): {total_notif} notifikasi baru"
+                )
+                lines.extend(_example_items(notif_examples))
 
         # Cost Anomaly
         if "cost" in checks:
@@ -633,16 +863,21 @@ def _build_summary_report(
             if total_anomalies == 0:
                 lines.append("- Cost Anomaly: tidak ada cost anomaly")
             else:
-                lines.append(f"- Cost Anomaly: {total_anomalies} cost anomaly terdeteksi")
+                lines.append(
+                    f"- Cost Anomaly: {total_anomalies} cost anomaly terdeteksi"
+                )
 
         # GuardDuty
         if "guardduty" in checks:
             disabled_accounts = []
             finding_accounts = []
             total_findings = 0
+            finding_examples = []
             for profile in profiles:
                 res = all_results.get(profile, {}).get("guardduty", {})
-                acct_name = profile_display.get(profile, res.get("account_name", profile))
+                acct_name = profile_display.get(
+                    profile, res.get("account_name", profile)
+                )
                 acct_id = res.get("account_id") or profile_aws_id.get(profile, "")
                 label = f"{acct_name} ({acct_id})" if acct_id else acct_name
                 if res.get("status") == "disabled":
@@ -651,14 +886,25 @@ def _build_summary_report(
                     count = int(res["findings"])
                     total_findings += count
                     finding_accounts.append((label, count))
+                    for detail in res.get("details") or []:
+                        if not isinstance(detail, dict):
+                            continue
+                        candidate = detail.get("title") or detail.get("type")
+                        if candidate:
+                            finding_examples.append(str(candidate))
             if disabled_accounts and not finding_accounts:
-                lines.append(f"- GuardDuty Finding: tidak aktif pada {', '.join(disabled_accounts)}")
+                lines.append(
+                    f"- GuardDuty Finding: tidak aktif pada {', '.join(disabled_accounts)}"
+                )
             elif finding_accounts:
-                parts = [f"{count} finding pada {label}" for label, count in finding_accounts]
+                parts = [
+                    f"{count} finding pada {label}" for label, count in finding_accounts
+                ]
                 msg = "- GuardDuty Finding: " + ", ".join(parts)
                 if disabled_accounts:
                     msg += f" (tidak aktif pada {', '.join(disabled_accounts)})"
                 lines.append(msg)
+                lines.extend(_example_items(finding_examples))
             else:
                 lines.append("- GuardDuty Finding: tidak ada finding baru")
 
@@ -666,20 +912,32 @@ def _build_summary_report(
         if "cloudwatch" in checks:
             total_alarms = 0
             alarm_accounts = []
+            alarm_examples = []
             for profile in profiles:
                 res = all_results.get(profile, {}).get("cloudwatch", {})
                 count = int(res.get("count", 0))
                 if count > 0:
                     total_alarms += count
-                    acct_name = profile_display.get(profile, res.get("account_name", profile))
+                    acct_name = profile_display.get(
+                        profile, res.get("account_name", profile)
+                    )
                     acct_id = res.get("account_id") or profile_aws_id.get(profile, "")
                     label = f"{acct_name} ({acct_id})" if acct_id else acct_name
                     alarm_accounts.append((label, count))
+                    for detail in res.get("details") or []:
+                        if not isinstance(detail, dict):
+                            continue
+                        name = detail.get("name")
+                        if name:
+                            alarm_examples.append(str(name))
             if total_alarms == 0:
                 lines.append("- Alarm CloudWatch: tidak ada alarm aktif")
             else:
-                parts = [f"{count} alarm pada {label}" for label, count in alarm_accounts]
+                parts = [
+                    f"{count} alarm pada {label}" for label, count in alarm_accounts
+                ]
                 lines.append(f"- Alarm CloudWatch: {', '.join(parts)}")
+                lines.extend(_example_items(alarm_examples))
 
         # Backup
         if "backup" in checks:
@@ -844,6 +1102,7 @@ class CheckExecutor:
         check_runs_list = []
         all_result_items = []
         consolidated_outputs = {}
+        customer_labels = {}
         backup_overviews = {}
         warnings = []
         processed_customers = 0
@@ -874,6 +1133,11 @@ class CheckExecutor:
                 continue
 
             processed_customers += 1
+            customer_labels[customer_id] = (
+                getattr(customer, "display_name", None)
+                or getattr(customer, "name", None)
+                or customer_id
+            )
 
             # Resolve checks to run
             checks_to_run = self._resolve_checks(mode, check_name, customer)
@@ -964,7 +1228,10 @@ class CheckExecutor:
                             account_id=account.id,
                             raw_result=raw_result,
                         )
-                        if finding_events:
+                        if (
+                            chk_name in FINDING_EVENT_CHECKS
+                            and raw_result.get("status") != "error"
+                        ):
                             for fe in finding_events:
                                 if "raw_payload" in fe:
                                     fe["raw_payload"] = _json_safe(fe["raw_payload"])
@@ -972,6 +1239,7 @@ class CheckExecutor:
                                 check_run_id=check_run.id,
                                 account_id=account.id,
                                 events=finding_events,
+                                check_name=chk_name,
                             )
 
                         metric_samples = map_check_metric_samples(
@@ -1010,7 +1278,37 @@ class CheckExecutor:
             # Build consolidated output for all/arbel modes, or concatenated output for single
             consolidated = ""
             report_mode = getattr(customer, "report_mode", "detailed") or "detailed"
-            if mode in ("all", "arbel"):
+            if mode == "arbel":
+                # Arbel: one consolidated output per account (keyed by account display_name)
+                for account in accounts:
+                    acct_profile = account.profile_name
+                    acct_results = profile_results.get(acct_profile, {})
+                    if not acct_results:
+                        continue
+                    parts = []
+                    for chk_name, checker in checkers_map.items():
+                        raw = acct_results.get(chk_name)
+                        if raw:
+                            text = checker.format_report(raw)
+                            if text and str(text).strip():
+                                parts.append(str(text).strip())
+                    if parts:
+                        consolidated_outputs[account.display_name] = "\n\n".join(parts)
+                consolidated = (
+                    None  # already stored above; skip the generic store below
+                )
+                if "backup" in checks_to_run:
+                    wa_results = {
+                        p: {
+                            chk: profile_results.get(p, {}).get(chk, {})
+                            for chk in checks_to_run
+                        }
+                        for p in profiles
+                    }
+                    backup_overviews[customer_id] = summarize_backup_whatsapp(
+                        wa_results
+                    )
+            elif mode == "all":
                 if report_mode == "simple":
                     consolidated = _build_simple_report(
                         profiles=profiles,
@@ -1064,16 +1362,45 @@ class CheckExecutor:
                         }
                         for p in profiles
                     }
-                    consolidated = build_whatsapp_backup(date_str_wa, wa_results)
+                    consolidated = build_whatsapp_backup_aryanoble(
+                        date_str_wa, wa_results, group_name=customer.display_name
+                    )
                     backup_overviews[customer_id] = summarize_backup_whatsapp(
                         wa_results
                     )
                 else:
-                    for item in result_items:
-                        acct = item["account"]
-                        acct_key = f"{customer_id}:{acct['display_name']}"
-                        consolidated_outputs[acct_key] = item.get("output", "") or item["summary"]
-                    consolidated = None
+                    # For Arbel single checks, expose one consolidated output per account.
+                    is_arbel_single = check_name in {
+                        "daily-arbel",
+                        "daily-arbel-rds",
+                        "daily-arbel-ec2",
+                    }
+                    if is_arbel_single:
+                        for item in result_items:
+                            acct_name = item.get("account", {}).get("display_name", "")
+                            output_text = item.get("output", "") or item.get(
+                                "summary", ""
+                            )
+                            if acct_name and output_text:
+                                consolidated_outputs[acct_name] = output_text
+                        consolidated = None
+                    else:
+                        # Single-check mode: combine per-account format_report outputs
+                        # with account name headers so the user can copy a full report.
+                        combined_parts = []
+                        for item in result_items:
+                            acct_name = item.get("account", {}).get("display_name", "")
+                            output_text = item.get("output", "") or item.get(
+                                "summary", ""
+                            )
+                            if output_text:
+                                header = f"[{acct_name}]" if acct_name else ""
+                                combined_parts.append(
+                                    f"{header}\n{output_text}".strip()
+                                )
+                        consolidated = (
+                            "\n\n".join(combined_parts) if combined_parts else None
+                        )
 
             if consolidated is not None:
                 consolidated_outputs[customer_id] = consolidated
@@ -1084,8 +1411,7 @@ class CheckExecutor:
             if not slack_text and mode == "single":
                 # For single mode, combine per-account outputs for Slack
                 slack_text = "\n\n".join(
-                    item.get("output", "") or item["summary"]
-                    for item in result_items
+                    item.get("output", "") or item["summary"] for item in result_items
                 )
             if send_slack and customer.slack_enabled and customer.slack_webhook_url:
                 slack_sent = self._send_slack(customer, slack_text, mode, check_name)
@@ -1114,13 +1440,17 @@ class CheckExecutor:
         if persist_enabled:
             self.check_repo.commit()
 
-        return _json_safe({
-            "check_runs": check_runs_list,
-            "execution_time_seconds": round(time.time() - start_time, 2),
-            "results": all_result_items,
-            "consolidated_outputs": consolidated_outputs,
-            "backup_overviews": backup_overviews,
-        })
+        return _json_safe(
+            {
+                "mode": mode,
+                "check_runs": check_runs_list,
+                "execution_time_seconds": round(time.time() - start_time, 2),
+                "results": all_result_items,
+                "consolidated_outputs": consolidated_outputs,
+                "customer_labels": customer_labels,
+                "backup_overviews": backup_overviews,
+            }
+        )
 
     @staticmethod
     def _resolve_persist_mode(run_source: str, persist_mode: str) -> str:
@@ -1199,6 +1529,25 @@ class CheckExecutor:
                 } or None  # empty dict → None to skip the merge block
 
             for account in accounts:
+                # Resolve credentials for non-profile auth methods
+                auth_method = getattr(account, "auth_method", "profile") or "profile"
+                injected_creds = None
+                if auth_method != "profile":
+                    try:
+                        injected_creds = _build_creds_for_account(account, region)
+                    except Exception as exc:
+                        logger.warning(
+                            "Auth setup failed for account %s: %s",
+                            account.profile_name,
+                            exc,
+                        )
+                        for chk_name in checks:
+                            results.setdefault(account, {})[chk_name] = {
+                                "status": "error",
+                                "error": f"Auth setup: {exc}",
+                            }
+                        continue
+
                 for chk_name, _checker_class in checks.items():
                     # Start with config_extra from DB
                     check_kwargs = None
@@ -1217,6 +1566,40 @@ class CheckExecutor:
                                 check_kwargs = {}
                             check_kwargs.update(row.config)
                             break
+
+                    # Inject stored EC2 instance list from discovery for ec2_utilization
+                    if chk_name == "ec2_utilization":
+                        discovery = (account.config_extra or {}).get("_discovery", {})
+                        ec2_instances = discovery.get("ec2_instances") or []
+                        if ec2_instances:
+                            if check_kwargs is None:
+                                check_kwargs = {}
+                            check_kwargs.setdefault(
+                                "instance_list",
+                                [
+                                    {
+                                        "instance_id": inst["instance_id"],
+                                        "name": inst.get("name", "-"),
+                                        "os_type": (
+                                            "windows"
+                                            if "windows"
+                                            in (inst.get("platform") or "").lower()
+                                            else "linux"
+                                        ),
+                                        "instance_type": inst.get("instance_type", ""),
+                                        "region": inst["region"],
+                                    }
+                                    for inst in ec2_instances
+                                    if inst.get("instance_id") and inst.get("region")
+                                ],
+                            )
+
+                    # Inject account display_name for daily-budget so it doesn't
+                    # rely on the hardcoded ACCOUNT_LABELS dict in the checker
+                    if chk_name == "daily-budget" and account.display_name:
+                        if check_kwargs is None:
+                            check_kwargs = {}
+                        check_kwargs.setdefault("account_name", account.display_name)
 
                     # Inject alarm_names from DB for cloudwatch and alarm_verification checks
                     if (
@@ -1250,6 +1633,7 @@ class CheckExecutor:
                         account.profile_name,
                         region_for_account,
                         check_kwargs,
+                        injected_creds,
                     )
                     futures[future] = (account, chk_name)
 
