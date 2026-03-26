@@ -35,6 +35,69 @@ class _CloudWatchRoleAwareStub:
         return {"MetricAlarms": []}
 
 
+class _CloudWatchRegionAlarmStub:
+    def __init__(self, region_name, state_by_alarm=None, history_by_alarm=None):
+        self.meta = type("Meta", (), {"region_name": region_name})()
+        self._state_by_alarm = state_by_alarm or {}
+        self._history_by_alarm = history_by_alarm or {}
+
+    def describe_alarms(self, AlarmNames):
+        name = AlarmNames[0]
+        state = self._state_by_alarm.get(name)
+        if state is None:
+            return {"MetricAlarms": []}
+        return {"MetricAlarms": [{"AlarmName": name, "StateValue": state}]}
+
+    def describe_alarm_history(self, AlarmName, **_kwargs):
+        return {"AlarmHistoryItems": self._history_by_alarm.get(AlarmName, [])}
+
+
+class _SessionRegionStub:
+    def __init__(self, clients):
+        self.clients = clients
+
+    def client(self, service_name, region_name=None):
+        _ = service_name
+        return self.clients[region_name]
+
+
+def test_check_ec2_alarms_falls_back_to_configured_alarm_regions():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    alarm_name = "aryanoble-prod-Window2019Base-webserver Disk D < 10%"
+
+    primary = _CloudWatchRegionAlarmStub(
+        "ap-southeast-3",
+        state_by_alarm={},
+        history_by_alarm={},
+    )
+    fallback = _CloudWatchRegionAlarmStub(
+        "ap-southeast-1",
+        state_by_alarm={alarm_name: "ALARM"},
+        history_by_alarm={alarm_name: []},
+    )
+    session = _SessionRegionStub(
+        {
+            "ap-southeast-3": primary,
+            "ap-southeast-1": fallback,
+        }
+    )
+
+    alarms = checker._check_ec2_alarms(
+        primary,
+        "HRIS",
+        "webserver",
+        cfg={
+            "alarm_thresholds": {"webserver": [alarm_name]},
+            "alarm_regions": ["ap-southeast-1"],
+        },
+        session=session,
+    )
+
+    assert len(alarms) == 1
+    assert alarms[0]["alarm_name"] == alarm_name
+    assert alarms[0]["current_state"] == "ALARM"
+
+
 def test_resolve_role_thresholds_uses_alarm_threshold_for_freeable_memory():
     checker = DailyArbelChecker(region="ap-southeast-3", window_hours=3)
     cfg = ACCOUNT_CONFIG["dermies-max"]
@@ -140,6 +203,136 @@ def test_evaluate_metric_uses_alarm_history_when_metric_breach_missing():
     assert status == "past-warn"
     assert "sekarang normal" in msg
     assert "ALARM pukul 12:32-12:45 WIB (13 menit)" in msg
+
+
+def test_evaluate_metric_db_connections_detects_ten_datapoint_past_breach():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    values = [100.0] * 10 + [40.0] * 2
+    status, msg = checker._evaluate_metric(
+        "DatabaseConnections",
+        {
+            "last": 40.0,
+            "values": values,
+            "timestamps": [base + timedelta(minutes=i) for i in range(len(values))],
+        },
+        {"DatabaseConnections": 80.0},
+        "connect-prod",
+    )
+
+    assert status == "past-warn"
+    assert "(10 menit)" in msg
+
+
+def test_evaluate_metric_ec2_cpu_detects_five_datapoint_spike():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    values = [90.0] * 5 + [40.0] * 2
+    status, msg = checker._evaluate_metric(
+        "CPUUtilization",
+        {
+            "last": 40.0,
+            "avg": 55.0,
+            "values": values,
+            "timestamps": [base + timedelta(minutes=i) for i in range(len(values))],
+        },
+        {"CPUUtilization": 80.0},
+        "sfa",
+        service_type="ec2",
+    )
+
+    assert status == "past-warn"
+    assert "(5 menit)" in msg
+
+
+def test_evaluate_metric_rds_acu_reports_short_past_spike():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    values = [30.0, 90.0, 90.0, 90.0, 90.0, 30.0]
+    status, msg = checker._evaluate_metric(
+        "ACUUtilization",
+        {
+            "last": 30.0,
+            "avg": sum(values) / len(values),
+            "values": values,
+            "timestamps": [base + timedelta(minutes=i) for i in range(len(values))],
+        },
+        {"ACUUtilization": 75.0},
+        "connect-prod",
+        service_type="rds",
+    )
+
+    assert status == "past-warn"
+    assert "sempat > 75%" in msg
+    assert "(4 menit)" in msg
+
+
+def test_evaluate_metric_rds_freeable_memory_reports_short_past_drop():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    values = [12 * 1024**3, 8 * 1024**3, 8 * 1024**3, 8 * 1024**3, 12 * 1024**3]
+    status, msg = checker._evaluate_metric(
+        "FreeableMemory",
+        {
+            "last": 12 * 1024**3,
+            "values": values,
+            "timestamps": [base + timedelta(minutes=i) for i in range(len(values))],
+        },
+        {"FreeableMemory": 10 * 1024**3},
+        "connect-prod",
+        service_type="rds",
+    )
+
+    assert status == "past-warn"
+    assert "sempat <" in msg
+    assert "(3 menit)" in msg
+
+
+def test_evaluate_metric_serverless_capacity_reports_four_minute_spike():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    values = [10.0, 25.0, 25.0, 25.0, 25.0, 10.0]
+    status, msg = checker._evaluate_metric(
+        "ServerlessDatabaseCapacity",
+        {
+            "last": 10.0,
+            "values": values,
+            "timestamps": [base + timedelta(minutes=i) for i in range(len(values))],
+        },
+        {"ServerlessDatabaseCapacity": 24.0},
+        "cis-erha",
+        service_type="rds",
+    )
+
+    assert status == "past-warn"
+    assert "sempat > 24 ACU" in msg
+    assert "(4 menit)" in msg
+
+
+def test_evaluate_metric_buffer_cache_ignores_one_minute_noise():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    values = [99.0, 80.0, 99.0]
+    status, msg = checker._evaluate_metric(
+        "BufferCacheHitRatio",
+        {
+            "last": 99.0,
+            "values": values,
+            "timestamps": [base + timedelta(minutes=i) for i in range(len(values))],
+        },
+        {"BufferCacheHitRatio": 90.0},
+        "cis-erha",
+        service_type="rds",
+    )
+
+    assert status == "ok"
+    assert "normal" in msg
 
 
 def test_should_emphasize_alarm_message_for_10min_or_more():
@@ -249,6 +442,33 @@ def test_format_report_renders_extra_ec2_section():
     assert "CIS ERHA EC2 (EC2):" in report
     assert "Instances: aws-prod-rabbitmq (i-076e1d2c0c3478c21)" in report
     assert "aws-prod-rabbitmq pukul 10:00-10:20 WIB (20 menit)" in report
+
+
+def test_format_ec2_summary_keeps_disk_memory_alarm_period_6_minutes():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
+    lines = []
+
+    checker._format_ec2_summary(
+        {
+            "instances": {
+                "webserver": {
+                    "instance_id": "i-053c5b7302686e05d",
+                    "instance_name": "webserver",
+                    "metrics": {},
+                    "disk_memory_alarms": [
+                        {
+                            "alarm_name": "disk-c-low",
+                            "current_state": "OK",
+                            "periods": [(0.0, "07:00", "07:06", 6)],
+                        }
+                    ],
+                }
+            }
+        },
+        lines,
+    )
+
+    assert any("07:00-07:06 WIB (6 menit)" in line for line in lines)
 
 
 def test_format_report_uses_result_window_hours_for_rds_header():
@@ -453,7 +673,7 @@ def test_evaluate_metric_ec2_cpu_uses_average_not_latest_and_shows_longest_spike
     assert "spike terlama 7 menit" in msg
 
 
-def test_evaluate_metric_ec2_cpu_detects_6_minute_spike_with_low_average():
+def test_evaluate_metric_ec2_cpu_detects_5_minute_spike_with_low_average():
     checker = DailyArbelChecker(region="ap-southeast-3", window_hours=12)
     base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
 
@@ -473,6 +693,32 @@ def test_evaluate_metric_ec2_cpu_detects_6_minute_spike_with_low_average():
 
     assert status == "past-warn"
     assert "spike terlama 6 menit" in msg
+
+
+def test_evaluate_metric_ec2_cpu_detects_sparse_5_minute_spike():
+    checker = DailyArbelChecker(region="ap-southeast-3", window_hours=1)
+    base = datetime(2026, 3, 20, 1, 0, tzinfo=timezone.utc)
+
+    status, msg = checker._evaluate_metric(
+        "CPUUtilization",
+        {
+            "last": 40.0,
+            "avg": 65.0,
+            "values": [40.0, 90.0, 90.0, 40.0],
+            "timestamps": [
+                base,
+                base + timedelta(minutes=5),
+                base + timedelta(minutes=10),
+                base + timedelta(minutes=15),
+            ],
+        },
+        {"CPUUtilization": 80.0},
+        "HRIS",
+        service_type="ec2",
+    )
+
+    assert status == "past-warn"
+    assert "pukul" in msg
 
 
 def test_collect_section_report_ec2_cpu_ignores_higher_live_alarm_threshold(
@@ -676,3 +922,57 @@ def test_check_rds_scope_skips_primary_ec2_account(monkeypatch):
     assert calls == []
     assert result.get("status") == "skipped"
     assert result.get("reason") == "section_scope_not_configured"
+
+
+def test_sections_kwarg_bypasses_yaml_and_account_config():
+    """When sections kwarg is provided, _resolve_account_config uses it directly."""
+    checker = DailyArbelChecker(
+        sections=[
+            {
+                "section_name": "Test RDS",
+                "service_type": "rds",
+                "cluster_id": "test-cluster",
+                "instances": {"primary": "test-rds-instance"},
+                "metrics": ["CPUUtilization", "FreeableMemory"],
+                "thresholds": {"CPUUtilization": 80, "FreeableMemory": 1073741824},
+                "alarm_thresholds": {},
+            }
+        ]
+    )
+
+    cfg = checker._resolve_account_config("unknown-profile", "000000000000")
+
+    assert cfg is not None
+    assert cfg["cluster_id"] == "test-cluster"
+    assert cfg["instances"] == {"primary": "test-rds-instance"}
+    assert cfg["thresholds"]["CPUUtilization"] == 80
+    assert cfg["service_type"] == "rds"
+    assert cfg["extra_sections"] == []
+
+
+def test_sections_kwarg_with_extra_sections():
+    """Second+ sections become extra_sections."""
+    checker = DailyArbelChecker(
+        sections=[
+            {
+                "section_name": "Main RDS",
+                "service_type": "rds",
+                "instances": {"primary": "rds-instance"},
+                "metrics": ["FreeableMemory"],
+                "thresholds": {},
+            },
+            {
+                "section_name": "Extra EC2",
+                "service_type": "ec2",
+                "instances": {"webserver": "i-abc123"},
+                "metrics": ["CPUUtilization"],
+                "thresholds": {"CPUUtilization": 70},
+            },
+        ]
+    )
+
+    cfg = checker._resolve_account_config("any-profile", "111111111111")
+
+    assert cfg["section_name"] == "Main RDS"
+    assert len(cfg["extra_sections"]) == 1
+    assert cfg["extra_sections"][0]["section_name"] == "Extra EC2"

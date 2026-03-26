@@ -170,6 +170,7 @@ ACCOUNT_CONFIG = {
     "HRIS": {
         "account_name": "HRIS",
         "service_type": "ec2",
+        "alarm_regions": ["ap-southeast-3", "ap-southeast-1"],
         "instances": {
             "webserver": "i-053c5b7302686e05d",
             "database": "i-0a22fd1fc782f71dc",
@@ -185,6 +186,7 @@ ACCOUNT_CONFIG = {
         "alarm_thresholds": {
             "webserver": [
                 "aryanoble-prod-Window2019Base-webserver Disk C < 20%",
+                "aryanoble-prod-Window2019Base-webserver Disk D < 10%",
                 "aryanoble-prod-Window2019Base-webserver Disk D < 20%",
                 "aryanoble-prod-Window2019Base-webserver-mem-above-80",
             ],
@@ -340,6 +342,11 @@ class DailyArbelChecker(BaseChecker):
             normalized_scope = "both"
         self.section_scope = normalized_scope
 
+        raw_sections = kwargs.get("sections")
+        self.db_sections: list[dict] | None = (
+            list(raw_sections) if isinstance(raw_sections, list) and raw_sections else None
+        )
+
         override_source = {}
         nested_override = kwargs.get("daily_arbel")
         if isinstance(nested_override, dict):
@@ -460,7 +467,33 @@ class DailyArbelChecker(BaseChecker):
 
         return results
 
+    def _sections_to_cfg(self, sections: list[dict], profile: str) -> dict | None:
+        """Convert DB sections list to internal cfg format expected by _collect_section_report."""
+        if not sections:
+            return None
+        first = sections[0]
+        extra_sections = list(sections[1:])
+        cfg: dict = {
+            "account_name": first.get("section_name", profile),
+            "section_name": first.get("section_name", profile),
+            "cluster_id": first.get("cluster_id"),
+            "service_type": first.get("service_type", "rds"),
+            "alarm_regions": list(first.get("alarm_regions") or []),
+            "instances": dict(first.get("instances") or {}),
+            "instance_names": dict(first.get("instance_names") or {}),
+            "metrics": list(first.get("metrics") or []),
+            "thresholds": dict(first.get("thresholds") or {}),
+            "role_thresholds": dict(first.get("role_thresholds") or {}),
+            "alarm_thresholds": dict(first.get("alarm_thresholds") or {}),
+            "extra_sections": extra_sections,
+        }
+        return self._apply_account_config_override(cfg, profile)
+
     def _resolve_account_config(self, profile, account_id):
+        # DB path — highest priority (from AccountCheckConfig table via executor)
+        if self.db_sections:
+            return self._sections_to_cfg(self.db_sections, profile)
+
         customer_account = None
         try:
             customer_account = find_customer_account("aryanoble", account_id)
@@ -479,6 +512,7 @@ class DailyArbelChecker(BaseChecker):
                 "account_name": customer_account.get("display_name", profile),
                 "cluster_id": daily.get("cluster_id"),
                 "service_type": daily.get("service_type", "rds"),
+                "alarm_regions": daily.get("alarm_regions", []),
                 "instances": daily.get("instances", {}),
                 "instance_names": daily.get("instance_names", {}),
                 "metrics": daily.get("metrics", []),
@@ -705,16 +739,10 @@ class DailyArbelChecker(BaseChecker):
             end_time = period[-1][0].astimezone(JKT).strftime("%H:%M")
             peak_val = peak[1]
 
-            # Hitung durasi dalam menit.
-            # mode=span: durasi berdasarkan rentang waktu (legacy behavior)
-            # mode=samples: durasi berdasarkan jumlah titik sample (untuk EC2 CPU spike)
-            if duration_mode == "samples":
-                duration = max(1, len(period))
-            else:
-                duration = max(
-                    1,
-                    int((period[-1][0] - period[0][0]).total_seconds() / 60),
-                )
+            # Durasi breach dihitung inklusif agar N titik data 1-menit
+            # dianggap N menit (bukan N-1 menit).
+            span_minutes = int((period[-1][0] - period[0][0]).total_seconds() / 60)
+            duration = max(1, span_minutes + 1)
 
             result.append((peak_val, start_time, end_time, duration))
 
@@ -784,7 +812,7 @@ class DailyArbelChecker(BaseChecker):
         return "past-warn", spike_periods
 
     def _check_ec2_alarms(
-        self, cw_client, profile: str, role: str, cfg=None
+        self, cw_client, profile: str, role: str, cfg=None, session=None
     ) -> list[dict]:
         """Check CloudWatch alarm states for disk/memory for a given EC2 role.
 
@@ -805,21 +833,50 @@ class DailyArbelChecker(BaseChecker):
         window_start_utc = now_utc - timedelta(hours=self.window_hours)
         results = []
 
+        primary_region = getattr(getattr(cw_client, "meta", None), "region_name", None)
+        if not primary_region:
+            primary_region = self.region
+
+        configured_alarm_regions = cfg.get("alarm_regions", [])
+        regions_to_try = [primary_region]
+        for region_name in configured_alarm_regions:
+            if region_name and region_name not in regions_to_try:
+                regions_to_try.append(region_name)
+
+        region_clients = {primary_region: cw_client}
+
         for alarm_name in alarm_names:
             try:
                 current_state = "OK"
-                described = cw_client.describe_alarms(AlarmNames=[alarm_name])
-                metric_alarms = described.get("MetricAlarms", [])
-                if metric_alarms:
-                    current_state = metric_alarms[0].get("StateValue", "OK")
+                history = []
+                described_client = None
 
-                history = cw_client.describe_alarm_history(
-                    AlarmName=alarm_name,
-                    HistoryItemType="StateUpdate",
-                    StartDate=window_start_utc,
-                    EndDate=now_utc,
-                    ScanBy="TimestampDescending",
-                ).get("AlarmHistoryItems", [])
+                for region_name in regions_to_try:
+                    client = region_clients.get(region_name)
+                    if client is None:
+                        if session is None:
+                            continue
+                        client = session.client("cloudwatch", region_name=region_name)
+                        region_clients[region_name] = client
+
+                    described = client.describe_alarms(AlarmNames=[alarm_name])
+                    metric_alarms = described.get("MetricAlarms", [])
+                    if not metric_alarms:
+                        continue
+
+                    current_state = metric_alarms[0].get("StateValue", "OK")
+                    history = client.describe_alarm_history(
+                        AlarmName=alarm_name,
+                        HistoryItemType="StateUpdate",
+                        StartDate=window_start_utc,
+                        EndDate=now_utc,
+                        ScanBy="TimestampDescending",
+                    ).get("AlarmHistoryItems", [])
+                    described_client = client
+                    break
+
+                if described_client is None:
+                    continue
 
                 periods = self._extract_alarm_periods(
                     history,
@@ -894,6 +951,23 @@ class DailyArbelChecker(BaseChecker):
         if thr is None:
             return "no-data", f"{metric}: Threshold tidak dikonfigurasi"
 
+        def _min_breach_minutes(metric_name: str) -> int:
+            if service_type == "ec2" and metric_name == "CPUUtilization":
+                return 5
+            if metric_name == "BufferCacheHitRatio":
+                return 10
+            if metric_name == "DatabaseConnections":
+                return 10
+            if metric_name in {
+                "ACUUtilization",
+                "CPUUtilization",
+                "FreeableMemory",
+                "FreeStorageSpace",
+                "ServerlessDatabaseCapacity",
+            }:
+                return 3
+            return 1
+
         if metric in ("ACUUtilization", "CPUUtilization"):
             label = (
                 "ACU Utilization" if metric == "ACUUtilization" else "CPU Utilization"
@@ -908,13 +982,9 @@ class DailyArbelChecker(BaseChecker):
                 profile,
                 duration_mode="samples" if is_ec2_cpu else "span",
             )
-            # RDS: tampilkan breach >= 10 menit; EC2 CPU: hanya > 5 menit.
-            min_duration = 5 if is_ec2_cpu else 10
+            min_duration = _min_breach_minutes(metric)
             if bd:
-                if is_ec2_cpu:
-                    bd = [p for p in bd if p[3] > min_duration]
-                else:
-                    bd = [p for p in bd if p[3] >= min_duration]
+                bd = [p for p in bd if p[3] >= min_duration]
 
             current_value = last
             if is_ec2_cpu:
@@ -986,9 +1056,9 @@ class DailyArbelChecker(BaseChecker):
             bd = alarm_periods or self._breach_detail(
                 info, thresholds, metric, "below", profile
             )
-            # Filter: hanya tampilkan breach >= 10 menit
+            min_duration = _min_breach_minutes(metric)
             if bd:
-                bd = [p for p in bd if p[3] >= 10]
+                bd = [p for p in bd if p[3] >= min_duration]
 
             if last < thr:
                 msg = f"{label}: {human_bytes(last)} (rendah < {human_bytes(thr)})"
@@ -1030,9 +1100,9 @@ class DailyArbelChecker(BaseChecker):
         if metric == "DatabaseConnections":
             label = "DB Connections"
             bd = self._breach_detail(info, thresholds, metric, "above", profile)
-            # Filter: hanya tampilkan breach >= 10 menit
+            min_duration = _min_breach_minutes(metric)
             if bd:
-                bd = [p for p in bd if p[3] >= 10]
+                bd = [p for p in bd if p[3] >= min_duration]
 
             if last > thr:
                 msg = f"{label}: {int(last)} (di atas {thr})"
@@ -1061,9 +1131,9 @@ class DailyArbelChecker(BaseChecker):
         if metric == "FreeStorageSpace":
             label = "Free Storage"
             bd = self._breach_detail(info, thresholds, metric, "below", profile)
-            # Filter: hanya tampilkan breach >= 10 menit
+            min_duration = _min_breach_minutes(metric)
             if bd:
-                bd = [p for p in bd if p[3] >= 10]
+                bd = [p for p in bd if p[3] >= min_duration]
 
             if last < thr:
                 msg = f"{label}: {human_bytes(last)} (rendah < {human_bytes(thr)})"
@@ -1095,8 +1165,9 @@ class DailyArbelChecker(BaseChecker):
             bd = alarm_periods or self._breach_detail(
                 info, thresholds, metric, "above", profile
             )
+            min_duration = _min_breach_minutes(metric)
             if bd:
-                bd = [p for p in bd if p[3] >= 10]
+                bd = [p for p in bd if p[3] >= min_duration]
 
             if last > thr:
                 msg = f"{label}: {last:.1f} ACU (di atas {int(thr)} ACU)"
@@ -1141,8 +1212,9 @@ class DailyArbelChecker(BaseChecker):
             bd = alarm_periods or self._breach_detail(
                 info, thresholds, metric, "below", profile
             )
+            min_duration = _min_breach_minutes(metric)
             if bd:
-                bd = [p for p in bd if p[3] >= 10]
+                bd = [p for p in bd if p[3] >= min_duration]
 
             if last < thr:
                 msg = f"{label}: {last:.1f}% (rendah < {int(thr)}%)"
@@ -1305,7 +1377,9 @@ class DailyArbelChecker(BaseChecker):
                 )
 
             if service_type == "ec2":
-                alarm_results = self._check_ec2_alarms(cw, profile, role, cfg=cfg)
+                alarm_results = self._check_ec2_alarms(
+                    cw, profile, role, cfg=cfg, session=session
+                )
                 instance_reports[role]["disk_memory_alarms"] = alarm_results
                 if alarm_results:
                     any_warn = True
@@ -1388,7 +1462,7 @@ class DailyArbelChecker(BaseChecker):
             }
 
         try:
-            session = boto3.Session(profile_name=profile, region_name=self.region)
+            session = self._get_session(profile)
             cw = session.client("cloudwatch", region_name=self.region)
             primary_service_type = cfg.get("service_type", "rds")
             scope = self.section_scope
@@ -1712,8 +1786,8 @@ class DailyArbelChecker(BaseChecker):
                         # Aktif sekarang — tanpa detail waktu
                         lines.append(f"    {inst_name} | {alarm_name}: ALARM")
                     else:
-                        # Pernah ALARM — tampilkan hanya periode >= 15 menit
-                        long_periods = [(s, e, d) for _, s, e, d in periods if d >= 15]
+                        # Pernah ALARM — tampilkan periode valid >= 5 menit
+                        long_periods = [(s, e, d) for _, s, e, d in periods if d >= 5]
                         if long_periods:
                             period_strs = [
                                 f"{s}-{e} WIB ({d} menit)" for s, e, d in long_periods
