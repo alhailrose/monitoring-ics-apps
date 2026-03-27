@@ -34,6 +34,12 @@ describe('LoginForm', () => {
     expect(screen.getByRole('button', { name: /login/i })).toBeInTheDocument()
   })
 
+  it('renders enterprise helper text', () => {
+    render(<LoginForm />)
+    expect(screen.getByText(/ruang kendali ics/i)).toBeInTheDocument()
+    expect(screen.getByText(/aktivitas login dipantau/i)).toBeInTheDocument()
+  })
+
   it('shows error alert when action returns an error', async () => {
     mockLoginAction.mockResolvedValue({ error: 'Invalid username or password' })
 

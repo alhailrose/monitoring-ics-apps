@@ -29,10 +29,12 @@ export function LoginForm() {
   const [state, action] = useActionState(loginAction, null)
 
   return (
-    <Card>
+    <Card className="border-border/60 shadow-2xl shadow-black/5">
       <CardHeader>
-        <CardTitle>Sign in</CardTitle>
-        <CardDescription>Enter your credentials to access the dashboard</CardDescription>
+        <CardTitle className="text-xl">Sign in to ICS Monitoring</CardTitle>
+        <CardDescription>
+          Masuk ke ruang kendali ICS menggunakan kredensial internal dengan sesi MFA yang diaudit.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form action={action} className="flex flex-col gap-4">
@@ -55,6 +57,9 @@ export function LoginForm() {
           </div>
           <SubmitButton />
         </form>
+        <p className="mt-4 text-[11px] text-muted-foreground">
+          Akses terbatas untuk personel ICS. Aktivitas login dipantau otomatis.
+        </p>
       </CardContent>
     </Card>
   )
