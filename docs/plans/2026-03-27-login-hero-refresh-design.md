@@ -27,3 +27,6 @@
 - Visual QA across desktop (≥1024px) and mobile (≤640px) to ensure gradients, glow effects, and footer placement render correctly.
 - Accessibility check: maintain contrast ratios for text on gradients; ensure footer emoji/text remain legible.
 - No functional auth changes; existing tests remain valid after layout updates.
+
+## Verification Log
+- 2026-03-27: Launched `npm run dev` (Next.js auto-switched to port 3001) to confirm the refreshed hero page renders without build/runtime errors. Full visual check will be completed in-browser when a GUI is available.
