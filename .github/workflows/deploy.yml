@@ -78,6 +78,7 @@ jobs:
           source: "infra/docker/docker-compose.prod.yml,infra/docker/nginx.prod.conf"
           target: "/opt/monitoring-app"
           strip_components: 2
+          debug: true
 
       - name: Deploy on EC2
         uses: appleboy/ssh-action@v1.2.0
