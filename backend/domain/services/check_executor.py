@@ -1646,27 +1646,30 @@ class CheckExecutor:
             per_check_timeout = min(60, self.timeout)
             batch_deadline = time.monotonic() + self.timeout
 
-            for future in as_completed(futures.keys(), timeout=self.timeout):
-                account, chk_name = futures[future]
-                remaining = batch_deadline - time.monotonic()
-                try:
-                    raw_result = future.result(
-                        timeout=max(0.1, min(per_check_timeout, remaining))
-                    )
-                except TimeoutError:
-                    raw_result = {
-                        "status": "error",
-                        "error": (
-                            f"Check '{chk_name}' on '{account.display_name}' "
-                            f"timed out after {per_check_timeout}s"
-                        ),
-                    }
-                except Exception as exc:
-                    raw_result = {"status": "error", "error": str(exc)}
+            try:
+                for future in as_completed(futures.keys(), timeout=self.timeout):
+                    account, chk_name = futures[future]
+                    remaining = batch_deadline - time.monotonic()
+                    try:
+                        raw_result = future.result(
+                            timeout=max(0.1, min(per_check_timeout, remaining))
+                        )
+                    except TimeoutError:
+                        raw_result = {
+                            "status": "error",
+                            "error": (
+                                f"Check '{chk_name}' on '{account.display_name}' "
+                                f"timed out after {per_check_timeout}s"
+                            ),
+                        }
+                    except Exception as exc:
+                        raw_result = {"status": "error", "error": str(exc)}
 
-                if account not in results:
-                    results[account] = {}
-                results[account][chk_name] = raw_result
+                    if account not in results:
+                        results[account] = {}
+                    results[account][chk_name] = raw_result
+            except TimeoutError:
+                pass  # batch deadline exceeded; cleanup loop below handles remaining futures
 
             # Mark any futures not yet collected as timed-out (batch deadline exceeded)
             for future, (account, chk_name) in futures.items():
@@ -1676,7 +1679,7 @@ class CheckExecutor:
                         "status": "error",
                         "error": (
                             f"Check '{chk_name}' on '{account.display_name}' "
-                            f"cancelled — batch timeout of {self.timeout}s exceeded"
+                            f"timed out — batch deadline of {self.timeout}s exceeded"
                         ),
                     }
 

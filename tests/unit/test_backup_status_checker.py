@@ -26,7 +26,9 @@ def test_vault_activity_uses_configured_vault_names_override():
             return self.client_stub
 
     session = _Session()
-    checker._vault_activity(session, profile="backup-hris")
+    from datetime import datetime, timezone, timedelta
+    since_utc = datetime.now(timezone.utc) - timedelta(hours=24)
+    checker._vault_activity(session, profile="backup-hris", since_utc=since_utc)
 
     assert session.client_stub.described == ["custom-vault-a", "custom-vault-b"]
 

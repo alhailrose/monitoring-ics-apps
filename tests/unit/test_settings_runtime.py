@@ -25,7 +25,7 @@ def test_runtime_settings_load_defaults(monkeypatch):
         == "postgresql+psycopg://monitor:monitor@localhost:5432/monitoring"
     )
     assert settings.default_region == "ap-southeast-3"
-    assert settings.max_workers == 5
+    assert settings.max_workers == 20
     assert settings.execution_timeout == 300
     assert settings.cors_origins == ["*"]
     assert settings.cors_allow_credentials is False

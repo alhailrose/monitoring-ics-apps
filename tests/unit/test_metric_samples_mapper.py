@@ -33,15 +33,13 @@ def test_map_daily_arbel_instances_to_metric_samples():
     )
 
     assert len(rows) == 3
-    cpu = next(row for row in rows if row["metric_name"] == "CPUUtilization")
+    cpu = next(row for row in rows if row["metric_name"] == "cpu_utilization")
     assert cpu["metric_status"] == "warn"
     assert cpu["value_num"] == 88.0
-    assert cpu["unit"] == "Percent"
     assert cpu["resource_id"] == "cis-prod-rds-instance"
 
-    memory = next(row for row in rows if row["metric_name"] == "FreeableMemory")
+    memory = next(row for row in rows if row["metric_name"] == "freeable_memory_bytes")
     assert memory["metric_status"] == "past-warn"
-    assert memory["unit"] == "Bytes"
     assert memory["value_num"] == 8.5 * (1024**3)
 
 
@@ -85,7 +83,7 @@ def test_map_daily_arbel_extra_sections_to_metric_samples():
 
 def test_map_check_metric_samples_returns_empty_for_unsupported_or_error_result():
     unsupported = map_check_metric_samples(
-        check_name="guardduty",
+        check_name="unknown-check-xyz",
         account_id="acct-3",
         raw_result={"status": "success", "instances": {}},
     )

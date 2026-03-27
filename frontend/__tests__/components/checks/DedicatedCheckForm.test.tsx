@@ -42,7 +42,7 @@ describe('DedicatedCheckForm — account mode (accounts prop)', () => {
   it('renders account toggle buttons when accounts prop provided', () => {
     render(
       <DedicatedCheckForm
-        mode="arbel"
+        checkGroup="arbel"
         label="Arbel Check"
         accounts={[mockAccount]}
         customers={[mockCustomer]}
@@ -55,7 +55,7 @@ describe('DedicatedCheckForm — account mode (accounts prop)', () => {
   it('renders check card buttons when multiple check names provided', () => {
     render(
       <DedicatedCheckForm
-        mode="arbel"
+        checkGroup="arbel"
         label="Arbel Check"
         accounts={[mockAccount]}
         customers={[mockCustomer]}
@@ -70,7 +70,7 @@ describe('DedicatedCheckForm — account mode (accounts prop)', () => {
   it('shows time window selector for utilization checks', () => {
     render(
       <DedicatedCheckForm
-        mode="arbel"
+        checkGroup="arbel"
         label="Arbel Check"
         accounts={[mockAccount]}
         customers={[mockCustomer]}
@@ -86,7 +86,7 @@ describe('DedicatedCheckForm — account mode (accounts prop)', () => {
   it('hides time window when non-utilization check selected', () => {
     render(
       <DedicatedCheckForm
-        mode="arbel"
+        checkGroup="arbel"
         label="Arbel Check"
         accounts={[mockAccount]}
         customers={[mockCustomer]}
@@ -101,7 +101,7 @@ describe('DedicatedCheckForm — account mode (accounts prop)', () => {
   it('does not render check select when only one check name', () => {
     render(
       <DedicatedCheckForm
-        mode="huawei"
+        checkGroup="huawei"
         label="Huawei Check"
         accounts={[mockAccount]}
         customers={[mockCustomer]}
@@ -114,7 +114,7 @@ describe('DedicatedCheckForm — account mode (accounts prop)', () => {
   it('renders run button with label', () => {
     render(
       <DedicatedCheckForm
-        mode="arbel"
+        checkGroup="arbel"
         label="Arbel Check"
         accounts={[mockAccount]}
         customers={[mockCustomer]}
@@ -127,7 +127,7 @@ describe('DedicatedCheckForm — account mode (accounts prop)', () => {
   it('run button is enabled when account pre-selected', () => {
     render(
       <DedicatedCheckForm
-        mode="arbel"
+        checkGroup="arbel"
         label="Arbel Check"
         accounts={[mockAccount]}
         customers={[mockCustomer]}
@@ -140,7 +140,7 @@ describe('DedicatedCheckForm — account mode (accounts prop)', () => {
   it('shows empty message when no accounts', () => {
     render(
       <DedicatedCheckForm
-        mode="arbel"
+        checkGroup="arbel"
         label="Arbel Check"
         accounts={[]}
         customers={[mockCustomer]}
@@ -155,7 +155,7 @@ describe('DedicatedCheckForm — customer mode (customers prop)', () => {
   it('renders customer toggle buttons when customers prop used', () => {
     render(
       <DedicatedCheckForm
-        mode="arbel"
+        checkGroup="arbel"
         label="Arbel Check"
         customers={[mockCustomer]}
         checkNames={arbelChecks}
@@ -167,7 +167,7 @@ describe('DedicatedCheckForm — customer mode (customers prop)', () => {
   it('renders description when provided', () => {
     render(
       <DedicatedCheckForm
-        mode="arbel"
+        checkGroup="arbel"
         label="Arbel Check"
         description="Runs Arbel-specific checks"
         customers={[mockCustomer]}

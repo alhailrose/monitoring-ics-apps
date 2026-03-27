@@ -43,7 +43,8 @@ def test_cost_anomaly_report_shows_latest_and_previous_day_context():
 
     report = checker.format_report(results)
 
-    assert "Latest anomaly snapshot" in report
-    assert "Previous-day context" in report
-    assert "Today anomalies: 1" in report
-    assert "Yesterday anomalies: 1" in report
+    assert "Cost Anomaly" in report
+    assert "Anomalies: 2" in report
+    assert "today: 1" in report
+    assert "yesterday: 1" in report
+    assert "Total Impact:" in report

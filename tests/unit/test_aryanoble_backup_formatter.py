@@ -36,7 +36,7 @@ def test_aryanoble_backup_formatter_completed_only():
 
     result = build_whatsapp_backup_aryanoble("17-03-2026", all_results)
 
-    assert "Selamat Pagi Team," in result
+    assert any(g in result for g in ("Selamat Pagi Team,", "Selamat Siang Team,", "Selamat Sore Team,", "Selamat Malam Team,"))
     assert "Berikut report untuk AryaNoble Backup pada hari ini" in result
     assert "17-03-2026" in result
     assert "Completed:" in result

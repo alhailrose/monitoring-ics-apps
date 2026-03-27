@@ -16,6 +16,7 @@ class _FakeCheckRepository:
         check_name=None,
         severity=None,
         account_id=None,
+        status="active",
         limit=50,
         offset=0,
     ):
@@ -33,8 +34,10 @@ class _FakeCheckRepository:
 
 
 def _make_finding():
+    customer = SimpleNamespace(id="cust-1", display_name="Connect")
     account = SimpleNamespace(
-        id="acc-1", profile_name="connect-prod", display_name="Connect Prod"
+        id="acc-1", profile_name="connect-prod", display_name="Connect Prod",
+        customer=customer,
     )
     return SimpleNamespace(
         id="fe-1",
@@ -45,7 +48,10 @@ def _make_finding():
         severity="HIGH",
         title="Privilege escalation",
         description="Suspicious iam activity",
+        status="active",
         created_at=datetime(2026, 3, 19, 10, 0, 0, tzinfo=timezone.utc),
+        last_seen_at=None,
+        resolved_at=None,
     )
 
 

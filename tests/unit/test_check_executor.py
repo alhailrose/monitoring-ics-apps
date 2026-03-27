@@ -361,7 +361,7 @@ def test_execute_single_backup_returns_whatsapp_primary_output_and_backup_overvi
         region="ap-southeast-3",
     )
 
-    def _fake_run(check_name, profile, _region, _kwargs, _creds=None):
+    def _fake_run(check_name, profile, _region, _kwargs, _creds=None, account_id=None):
         base = {
             "status": "success",
             "total_jobs": 2,
