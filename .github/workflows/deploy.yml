@@ -69,7 +69,11 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keygen -l -f ~/.ssh/deploy_key || echo "Key parse failed, trying fix..."
+          echo "Key fingerprint:"
+          ssh-keygen -l -f ~/.ssh/deploy_key || echo "Key parse failed"
+          echo "Key file size: $(wc -c < ~/.ssh/deploy_key) bytes"
+          echo "First line: $(head -1 ~/.ssh/deploy_key)"
+          echo "Last line: $(tail -1 ~/.ssh/deploy_key)"
           cat > ~/.ssh/config <<EOF
           Host bastion
             HostName ${{ secrets.EC2_BASTION_HOST }}
