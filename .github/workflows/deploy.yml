@@ -117,6 +117,7 @@ jobs:
           EXECUTION_TIMEOUT=${{ vars.EXECUTION_TIMEOUT || '300' }}
           CORS_ORIGINS=${{ vars.CORS_ORIGINS || '*' }}
           API_AUTH_ENABLED=${{ vars.API_AUTH_ENABLED || 'true' }}
+          API_KEYS=${{ secrets.API_KEYS }}
           NEXT_PUBLIC_API_URL=/api
           EOF
           scp /tmp/deploy.env ec2target:/opt/monitoring-app/.env
