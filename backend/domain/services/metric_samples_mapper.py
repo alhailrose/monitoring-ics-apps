@@ -22,13 +22,17 @@ def _status(value: object) -> str:
 
 # Map AWS CloudWatch metric names → (snake_case_name, unit)
 _AWS_METRIC_MAP: dict[str, tuple[str, str | None]] = {
-    "CPUUtilization":            ("cpu_utilization",          "percent"),
-    "ACUUtilization":            ("acu_utilization",          "percent"),
-    "BufferCacheHitRatio":       ("buffer_cache_hit_ratio",   "percent"),
-    "FreeableMemory":            ("freeable_memory_bytes",    "bytes"),
-    "FreeStorageSpace":          ("free_storage_bytes",       "bytes"),
-    "DatabaseConnections":       ("database_connections",     "count"),
-    "ServerlessDatabaseCapacity":("serverless_capacity",      "count"),
+    "CPUUtilization":              ("cpu_utilization",              "percent"),
+    "ACUUtilization":              ("acu_utilization",              "percent"),
+    "BufferCacheHitRatio":         ("buffer_cache_hit_ratio",       "percent"),
+    "FreeableMemory":              ("freeable_memory_bytes",        "bytes"),
+    "FreeStorageSpace":            ("free_storage_bytes",           "bytes"),
+    "DatabaseConnections":         ("database_connections",         "count"),
+    "ServerlessDatabaseCapacity":  ("serverless_capacity",         "count"),
+    "NetworkIn":                   ("network_in_bytes",             "bytes"),
+    "NetworkOut":                  ("network_out_bytes",            "bytes"),
+    "NetworkReceiveThroughput":    ("network_receive_bytes_per_s",  "bytes/s"),
+    "NetworkTransmitThroughput":   ("network_transmit_bytes_per_s", "bytes/s"),
 }
 
 
@@ -74,6 +78,16 @@ def _collect_rows_for_section(
             status = _status(metric_info.get("status"))
             message = str(metric_info.get("message") or "")
             value_num, unit, normalized_name = _extract_value_unit(metric_name, message)
+
+            # For metrics where message is empty (e.g. NetworkIn/NetworkOut), fall
+            # back to the avg or last value attached directly to metric_info.
+            if value_num is None:
+                raw_val = metric_info.get("avg") or metric_info.get("last")
+                if raw_val is not None:
+                    try:
+                        value_num = float(raw_val)
+                    except (TypeError, ValueError):
+                        pass
 
             rows.append(
                 {

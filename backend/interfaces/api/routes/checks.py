@@ -27,7 +27,12 @@ def _store_job(job_id: str, status: str, result=None, error: str | None = None) 
         if len(_jobs) >= _MAX_JOBS:
             oldest = next(iter(_jobs))
             del _jobs[oldest]
-        _jobs[job_id] = {"job_id": job_id, "status": status, "result": result, "error": error}
+        _jobs[job_id] = {
+            "job_id": job_id,
+            "status": status,
+            "result": result,
+            "error": error,
+        }
 
 
 def _run_job(job_id: str, payload, executor) -> None:
@@ -129,6 +134,7 @@ class ExecuteCheckResponse(BaseModel):
     execution_time_seconds: float
     results: list[CheckResultResponse]
     consolidated_outputs: dict[str, str]
+    customer_labels: dict[str, str] = Field(default_factory=dict)
     backup_overviews: dict[str, dict[str, object]] = Field(default_factory=dict)
     check_run_id: str | None = None
     consolidated_output: str | None = None
@@ -197,7 +203,9 @@ async def execute_check_async(
     Use this for large multi-customer / all-mode runs to avoid HTTP timeouts.
     """
     if payload.mode == "single" and not payload.check_name:
-        raise HTTPException(status_code=400, detail="check_name required for single mode")
+        raise HTTPException(
+            status_code=400, detail="check_name required for single mode"
+        )
 
     job_id = str(uuid4())
     _store_job(job_id, status="queued")
@@ -228,7 +236,10 @@ def list_available_checks():
 
     return {
         "checks": [
-            {"name": name, "class": getattr(cls, '__name__', getattr(cls, 'func', cls).__name__)}
+            {
+                "name": name,
+                "class": getattr(cls, "__name__", getattr(cls, "func", cls).__name__),
+            }
             for name, cls in AVAILABLE_CHECKS.items()
         ]
     }

@@ -65,4 +65,16 @@ describe('FindingsTable', () => {
     )
     expect(screen.getByText('Production')).toBeInTheDocument()
   })
+
+  it('shows when a finding was first detected', () => {
+    render(
+      <FindingsTable
+        findings={[mockFinding({ last_seen_at: '2026-03-23T10:00:00Z' })]}
+        total={1}
+        page={1}
+        pageSize={20}
+      />,
+    )
+    expect(screen.getByText(/found/i)).toBeInTheDocument()
+  })
 })

@@ -20,7 +20,7 @@ class GuardDutyChecker(BaseChecker):
     def check(self, profile, account_id):
         """Check GuardDuty findings for the account/profile"""
         try:
-            session = boto3.Session(profile_name=profile)
+            session = self._get_session(profile)
             guardduty = session.client("guardduty", region_name=self.region)
 
             detectors = guardduty.list_detectors().get("DetectorIds", [])
@@ -35,16 +35,17 @@ class GuardDutyChecker(BaseChecker):
 
             detector_id = detectors[0]
 
+            # Use WIB midnight as "today" boundary so engineers see findings for
+            # the current Indonesian calendar day, not UTC day (7h offset matters)
+            now_wib = datetime.now(WIB)
             today_start = int(
-                datetime.now()
-                .replace(hour=0, minute=0, second=0, microsecond=0)
-                .timestamp()
+                now_wib.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
                 * 1000
             )
             today_end = int(
-                datetime.now()
-                .replace(hour=23, minute=59, second=59, microsecond=999)
-                .timestamp()
+                now_wib.replace(
+                    hour=23, minute=59, second=59, microsecond=999999
+                ).timestamp()
                 * 1000
             )
 
@@ -54,6 +55,7 @@ class GuardDutyChecker(BaseChecker):
                     "Criterion": {
                         "updatedAt": {"Gte": today_start, "Lte": today_end},
                         "severity": {"Gte": 4},
+                        "service.archived": {"Eq": ["false"]},
                     }
                 },
             )
@@ -99,6 +101,7 @@ class GuardDutyChecker(BaseChecker):
                     if severity_text != "LOW":
                         details_out.append(
                             {
+                                "id": finding.get("Id", ""),
                                 "type": finding.get("Type", "N/A"),
                                 "severity": severity_text,
                                 "title": finding.get("Title", "N/A"),
@@ -140,7 +143,9 @@ class GuardDutyChecker(BaseChecker):
             return "\n".join(lines)
 
         for idx, detail in enumerate(results.get("details", [])[:5], 1):
-            lines.append(f"  {idx}. [{detail['severity']}] {detail['type']} — {detail['title']} ({detail['updated']})")
+            lines.append(
+                f"  {idx}. [{detail['severity']}] {detail['type']} — {detail['title']} ({detail['updated']})"
+            )
 
         return "\n".join(lines)
 

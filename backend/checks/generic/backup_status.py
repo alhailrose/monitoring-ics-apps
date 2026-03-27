@@ -100,8 +100,36 @@ class BackupStatusChecker(BaseChecker):
             return arn.split(":")[-1]
         return arn
 
-    def _vault_activity(self, session, profile: str) -> List[dict]:
-        """Check configured vaults for recovery point activity in last 24h."""
+    def _resolve_resource_name(self, session, arn: str, resource_type: str) -> str:
+        """Resolve a friendly name from an ARN. Falls back to the ARN label."""
+        label = self._resource_label(arn)
+        try:
+            if resource_type == "EC2":
+                ec2 = session.client("ec2", region_name=self.region)
+                resp = ec2.describe_instances(InstanceIds=[label])
+                reservations = resp.get("Reservations", [])
+                if reservations:
+                    instance = reservations[0].get("Instances", [{}])[0]
+                    for tag in instance.get("Tags", []):
+                        if tag.get("Key") == "Name" and tag.get("Value"):
+                            return tag["Value"]
+            elif resource_type == "EFS":
+                efs = session.client("efs", region_name=self.region)
+                # ARN: arn:aws:elasticfilesystem:region:account:file-system/fs-xxxx
+                fs_id = label
+                resp = efs.describe_file_systems(FileSystemId=fs_id)
+                fss = resp.get("FileSystems", [])
+                if fss:
+                    for tag in fss[0].get("Tags", []):
+                        if tag.get("Key") == "Name" and tag.get("Value"):
+                            return tag["Value"]
+        except Exception:
+            pass
+        # For RDS the ARN label already IS the db identifier (human-readable name)
+        return label
+
+    def _vault_activity(self, session, profile: str, since_utc: datetime) -> List[dict]:
+        """Check configured vaults for recovery point activity since since_utc."""
         if self.vault_names:
             vaults = [
                 {"profile": profile, "vault_name": name} for name in self.vault_names
@@ -113,7 +141,6 @@ class BackupStatusChecker(BaseChecker):
             return results
 
         client = session.client("backup", region_name=self.region)
-        since_utc = datetime.now(timezone.utc) - timedelta(hours=24)
 
         for v in vaults:
             name = v["vault_name"]
@@ -125,7 +152,7 @@ class BackupStatusChecker(BaseChecker):
                 continue
 
             rp_24h = 0
-            resources_24h: List[str] = []
+            resources_24h: List[dict] = []
             token: Optional[str] = None
             try:
                 while True:
@@ -138,9 +165,17 @@ class BackupStatusChecker(BaseChecker):
                     resp = client.list_recovery_points_by_backup_vault(**kwargs)
                     rps = resp.get("RecoveryPoints", [])
                     rp_24h += len(rps)
-                    resources_24h.extend(
-                        [r.get("ResourceArn", "") for r in rps if r.get("ResourceArn")]
-                    )
+                    for r in rps:
+                        arn = r.get("ResourceArn", "")
+                        if not arn:
+                            continue
+                        res_type = r.get("ResourceType", "")
+                        friendly_name = self._resolve_resource_name(session, arn, res_type)
+                        resources_24h.append({
+                            "arn": arn,
+                            "name": friendly_name,
+                            "type": res_type,
+                        })
                     token = resp.get("NextToken")
                     if not token:
                         break
@@ -189,7 +224,7 @@ class BackupStatusChecker(BaseChecker):
 
     def check(self, profile, account_id):
         try:
-            session = boto3.Session(profile_name=profile, region_name=self.region)
+            session = self._get_session(profile)
             # Use full previous day window in WIB (00:00–23:59 yesterday) for daily run
             now_jkt = datetime.now(JAKARTA_TZ)
             start_jkt = (now_jkt - timedelta(days=1)).replace(
@@ -204,7 +239,7 @@ class BackupStatusChecker(BaseChecker):
             expired = [j for j in jobs if j.get("State") == "EXPIRED"]
             completed = [j for j in jobs if j.get("State") == "COMPLETED"]
 
-            vaults = self._vault_activity(session, profile)
+            vaults = self._vault_activity(session, profile, since_utc)
 
             rds_24h = 0
             should_monitor_rds = (

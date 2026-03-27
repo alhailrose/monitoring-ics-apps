@@ -341,6 +341,12 @@ class HuaweiECSUtilizationChecker(BaseChecker):
         rows: list[dict[str, Any]] = []
 
         for iid in ids:
+            meta = server_map.get(iid, {})
+            # Skip instances that are not running — metrics for stopped instances
+            # are stale/zero and produce misleading hotspot alerts
+            if meta.get("status", "").upper() in ("SHUTOFF", "STOPPED", "DELETED", "ERROR"):
+                continue
+
             latest, peak, latest_ts, peak_ts, rise_start_ts, avg_12h = self._show_metric_data(
                 profile,
                 region,
@@ -352,7 +358,6 @@ class HuaweiECSUtilizationChecker(BaseChecker):
             )
             if latest is None:
                 continue
-            meta = server_map.get(iid, {})
             rows.append(
                 {
                     "instance_id": iid,

@@ -8,7 +8,6 @@ import { CheckProgress } from '@/components/checks/CheckProgress'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Shield01Icon,
@@ -52,10 +51,14 @@ interface SpecificCheckFormProps {
 export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([])
   const [selectedCheckName, setSelectedCheckName] = useState(CHECK_CARDS[0].value)
+  const handleCheckChange = (val: string) => { setSelectedCheckName(val); setSelectedAlarmNames([]) }
   const [windowHours, setWindowHours] = useState(12)
   const [alarmSearch, setAlarmSearch] = useState('')
+  const [selectedAlarmNames, setSelectedAlarmNames] = useState<string[]>([])
   const [accountSearch, setAccountSearch] = useState('')
-  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set())
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(
+    () => new Set(customers.map((c) => c.id)),
+  )
   const [results, setResults] = useState<ExecuteResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -65,6 +68,13 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
   const toggleAccount = (id: string) => {
     setSelectedAccountIds((prev) =>
       prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id],
+    )
+    setSelectedAlarmNames([]) // reset alarm filter when accounts change
+  }
+
+  const toggleAlarmName = (name: string) => {
+    setSelectedAlarmNames((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name],
     )
   }
 
@@ -84,6 +94,11 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
       else next.add(customerId)
       return next
     })
+  }
+
+  const isExpanded = (customerId: string) => {
+    if (accountSearch.trim()) return true
+    return expandedCustomers.has(customerId)
   }
 
   const allAccounts = customers.flatMap((c) => c.accounts)
@@ -111,16 +126,7 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
     return filteredCustomers
   }, [filteredCustomers, accountSearch])
 
-  const isExpanded = (customerId: string) => {
-    // When searching, always expand matching customers
-    if (accountSearch.trim()) return true
-    // When accounts are selected in a customer, expand it
-    const customer = customers.find((c) => c.id === customerId)
-    if (customer && customer.accounts.some((a) => selectedAccountIds.includes(a.id))) return true
-    return expandedCustomers.has(customerId)
-  }
-
-  // Alarm names from selected accounts only — for alarm_verification
+// Alarm names from selected accounts only — for alarm_verification
   const targetAccounts = selectedAccountIds.length > 0
     ? allAccounts.filter((a) => selectedAccountIds.includes(a.id))
     : []
@@ -148,9 +154,22 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
     derivedCustomerIds.forEach((id) => formData.append('customer_ids', id))
     selectedAccountIds.forEach((id) => formData.append('account_ids', id))
 
-    // Pass check_params (e.g. window_hours)
-    if (showTimeWindow) {
-      formData.set('check_params', JSON.stringify({ window_hours: windowHours }))
+    // Build check_params
+    const checkParams: Record<string, unknown> = {}
+    if (showTimeWindow) checkParams.window_hours = windowHours
+    // Per-account alarm name overrides for alarm_verification
+    if (isAlarmCheck && selectedAlarmNames.length > 0) {
+      const accountAlarmNames: Record<string, string[]> = {}
+      for (const acc of targetAccounts) {
+        const filtered = (acc.alarm_names ?? []).filter((n) => selectedAlarmNames.includes(n))
+        if (filtered.length > 0) accountAlarmNames[acc.id] = filtered
+      }
+      if (Object.keys(accountAlarmNames).length > 0) {
+        checkParams.account_alarm_names = accountAlarmNames
+      }
+    }
+    if (Object.keys(checkParams).length > 0) {
+      formData.set('check_params', JSON.stringify(checkParams))
     }
 
     setError(null)
@@ -185,7 +204,7 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
                 <button
                   key={c.value}
                   type="button"
-                  onClick={() => setSelectedCheckName(c.value)}
+                  onClick={() => handleCheckChange(c.value)}
                   className={cn(
                     'flex flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-all',
                     active
@@ -234,159 +253,265 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
           </div>
         )}
 
-        {/* ── Accounts grouped by customer (collapsible + search) ── */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>
-              Accounts
-              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                {selectedAccountIds.length === 0
-                  ? '— all accounts will be checked'
-                  : `— ${selectedAccountIds.length} selected`}
-              </span>
-            </Label>
-            {selectedAccountIds.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setSelectedAccountIds([])}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+        {/* ── Account selector ── */}
+        <div className="space-y-1.5">
+          <Label>Accounts</Label>
 
-          {/* Search */}
-          {hasCustomers && (
-            <Input
-              placeholder="Search accounts or customers…"
-              value={accountSearch}
-              onChange={(e) => setAccountSearch(e.target.value)}
-              className="h-8 text-xs"
-            />
-          )}
-
-          {!hasCustomers && (
+          {!hasCustomers ? (
             <p className="text-xs text-muted-foreground">
               No customers available.{' '}
               <Link href="/customers" className="underline underline-offset-2 hover:text-foreground">
                 Add one in Customers
               </Link>
             </p>
-          )}
+          ) : (
+            <div className="rounded-lg border border-border/60 overflow-hidden text-sm">
 
-          <div className="space-y-1">
-            {visibleCustomers.map((customer) => {
-              if (customer.accounts.length === 0) return null
-              const accIds = customer.accounts.map((a) => a.id)
-              const allChecked = accIds.every((id) => selectedAccountIds.includes(id))
-              const someChecked = accIds.some((id) => selectedAccountIds.includes(id))
-              const expanded = isExpanded(customer.id)
-              const selectedCount = accIds.filter((id) => selectedAccountIds.includes(id)).length
-
-              return (
-                <div key={customer.id} className="rounded-md border border-border/50 overflow-hidden">
-                  {/* Customer header — click to expand/collapse, checkbox toggles all */}
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/30 hover:bg-muted/40 transition-colors">
+              {/* ── Selected chips ── */}
+              {selectedAccountIds.length > 0 && (
+                <div className="px-3 pt-2.5 pb-2 border-b border-border/40 bg-primary/[0.03]">
+                  <div className="flex flex-wrap gap-1.5">
+                    {allAccounts
+                      .filter((a) => selectedAccountIds.includes(a.id))
+                      .map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => toggleAccount(a.id)}
+                          className="inline-flex items-center gap-1 rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                        >
+                          {a.display_name}
+                          <span className="text-primary/50 text-[10px] leading-none">×</span>
+                        </button>
+                      ))}
                     <button
                       type="button"
-                      onClick={() => toggleAllInCustomer(accIds)}
-                      className={cn(
-                        'h-3.5 w-3.5 rounded-sm shrink-0 border flex items-center justify-center',
-                        allChecked
-                          ? 'border-primary bg-primary'
-                          : someChecked
-                          ? 'border-primary/60 bg-primary/20'
-                          : 'border-border bg-background',
-                      )}
+                      onClick={() => setSelectedAccountIds([])}
+                      className="ml-auto self-center text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      {(allChecked || someChecked) && (
-                        <div className="h-1.5 w-1.5 rounded-sm bg-primary" />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleExpanded(customer.id)}
-                      className="flex-1 flex items-center gap-2 text-left"
-                    >
-                      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                        {customer.display_name}
-                      </span>
-                      {selectedCount > 0 && (
-                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
-                          {selectedCount}/{accIds.length}
-                        </Badge>
-                      )}
-                      <span className={cn(
-                        'ml-auto text-[10px] text-muted-foreground/60 transition-transform',
-                        expanded ? 'rotate-180' : '',
-                      )}>
-                        ▾
-                      </span>
+                      Clear all
                     </button>
                   </div>
+                </div>
+              )}
 
-                  {/* Account toggle buttons — shown when expanded */}
-                  {expanded && (
-                    <div className="px-3 py-2 flex flex-wrap gap-1.5 border-t border-border/30">
-                      {customer.accounts.map((acc) => {
-                        const active = selectedAccountIds.includes(acc.id)
-                        return (
+              {/* ── Search ── */}
+              <div className="relative border-b border-border/40">
+                <input
+                  placeholder="Cari akun atau customer…"
+                  value={accountSearch}
+                  onChange={(e) => setAccountSearch(e.target.value)}
+                  className="w-full bg-transparent px-3 py-2 text-xs outline-none placeholder:text-muted-foreground/40"
+                />
+                {accountSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setAccountSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
+              {/* ── Account list ── */}
+              <div className="max-h-60 overflow-y-auto">
+                {visibleCustomers.length === 0 ? (
+                  <p className="px-3 py-5 text-center text-xs text-muted-foreground">
+                    Tidak ada akun yang cocok
+                  </p>
+                ) : (
+                  visibleCustomers.map((customer) => {
+                    if (customer.accounts.length === 0) return null
+                    const accIds = customer.accounts.map((a) => a.id)
+                    const allChecked = accIds.every((id) => selectedAccountIds.includes(id))
+                    const someChecked = accIds.some((id) => selectedAccountIds.includes(id))
+                    const selectedCount = accIds.filter((id) => selectedAccountIds.includes(id)).length
+                    const expanded = isExpanded(customer.id)
+
+                    return (
+                      <div key={customer.id}>
+                        {/* Customer group header */}
+                        <div className="flex items-center gap-2 sticky top-0 z-10 border-b border-border/20 bg-muted/30 px-3 py-1.5">
+                          {/* Select-all checkbox */}
                           <button
-                            key={acc.id}
                             type="button"
-                            onClick={() => toggleAccount(acc.id)}
+                            onClick={() => toggleAllInCustomer(accIds)}
                             className={cn(
-                              'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
-                              !acc.is_active && 'opacity-50',
-                              active
-                                ? 'border-primary bg-primary/10 text-primary'
-                                : 'border-border bg-muted/20 text-muted-foreground hover:border-primary/50',
+                              'h-3.5 w-3.5 shrink-0 rounded border flex items-center justify-center transition-colors',
+                              allChecked
+                                ? 'border-primary bg-primary'
+                                : someChecked
+                                ? 'border-primary'
+                                : 'border-border/60 hover:border-border',
                             )}
                           >
-                            <span>{acc.display_name}</span>
-                            <span className="ml-1 font-mono text-[10px] opacity-60">{acc.account_id}</span>
+                            {allChecked && (
+                              <svg className="size-2 text-primary-foreground" viewBox="0 0 10 8" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M1 4l2.5 2.5L9 1" />
+                              </svg>
+                            )}
+                            {someChecked && !allChecked && (
+                              <div className="h-px w-2 bg-primary" />
+                            )}
                           </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+
+                          <span className="flex-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                            {customer.display_name}
+                          </span>
+
+                          {someChecked && (
+                            <span className="text-[10px] text-primary/70 tabular-nums">
+                              {selectedCount}/{accIds.length}
+                            </span>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(customer.id)}
+                            className="text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors select-none"
+                          >
+                            {expanded ? '▴' : '▾'}
+                          </button>
+                        </div>
+
+                        {/* Account rows */}
+                        {expanded && customer.accounts.map((acc) => {
+                          const active = selectedAccountIds.includes(acc.id)
+                          return (
+                            <button
+                              key={acc.id}
+                              type="button"
+                              onClick={() => acc.is_active ? toggleAccount(acc.id) : undefined}
+                              disabled={!acc.is_active}
+                              className={cn(
+                                'flex w-full items-center gap-2.5 border-b border-border/10 px-3 py-2 text-left last:border-0 transition-colors',
+                                !acc.is_active
+                                  ? 'cursor-not-allowed opacity-35'
+                                  : active
+                                  ? 'bg-primary/5 hover:bg-primary/8'
+                                  : 'hover:bg-muted/20',
+                              )}
+                            >
+                              {/* Row checkbox */}
+                              <div className={cn(
+                                'h-3.5 w-3.5 shrink-0 rounded border flex items-center justify-center transition-colors',
+                                active ? 'border-primary bg-primary' : 'border-border/40',
+                              )}>
+                                {active && (
+                                  <svg className="size-2 text-primary-foreground" viewBox="0 0 10 8" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M1 4l2.5 2.5L9 1" />
+                                  </svg>
+                                )}
+                              </div>
+
+                              <span className={cn(
+                                'flex-1 text-xs leading-tight',
+                                active ? 'font-medium text-foreground' : 'text-muted-foreground',
+                              )}>
+                                {acc.display_name}
+                              </span>
+
+                              <span className="shrink-0 font-mono text-[10px] text-muted-foreground/35">
+                                {acc.account_id}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+
+              {/* ── Footer ── */}
+              <div className="flex items-center justify-between border-t border-border/30 bg-muted/10 px-3 py-1.5">
+                <span className="text-[10px] text-muted-foreground">
+                  {selectedAccountIds.length === 0
+                    ? `${allAccounts.length} akun tersedia — semua akan dicek`
+                    : `${selectedAccountIds.length} dari ${allAccounts.length} dipilih`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAccountIds(allAccounts.map((a) => a.id))}
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Pilih semua
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* ── Alarm names preview (alarm_verification only) ── */}
+        {/* ── Alarm names (alarm_verification only) — selectable ── */}
         {isAlarmCheck && alarmNames.length > 0 && (
           <div className="space-y-2">
-            <Label>
-              Alarm Names
-              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                ({alarmNames.length} configured — will be verified)
-              </span>
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label>
+                Alarm Names
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                  {selectedAlarmNames.length === 0
+                    ? `— semua ${alarmNames.length} akan dicek`
+                    : `— ${selectedAlarmNames.length} dari ${alarmNames.length} dipilih`}
+                </span>
+              </Label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedAlarmNames([...alarmNames])}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Select All
+                </button>
+                {selectedAlarmNames.length > 0 && (
+                  <>
+                    <span className="text-xs text-muted-foreground">·</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAlarmNames([])}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
             <Input
               placeholder="Search alarms…"
               value={alarmSearch}
               onChange={(e) => setAlarmSearch(e.target.value)}
               className="h-8 text-xs"
             />
-            <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-2 rounded-md border border-border/60 bg-muted/20">
+            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 rounded-md border border-border/60 bg-muted/20">
               {filteredAlarmNames.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No alarms match</p>
               ) : (
-                filteredAlarmNames.map((name) => (
-                  <Badge
-                    key={name}
-                    variant="outline"
-                    className="text-[10px] font-mono px-1.5 py-px h-auto"
-                  >
-                    {name}
-                  </Badge>
-                ))
+                filteredAlarmNames.map((name) => {
+                  const selected = selectedAlarmNames.includes(name)
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => toggleAlarmName(name)}
+                      className={cn(
+                        'rounded-md border px-2 py-0.5 text-[10px] font-mono transition-colors',
+                        selected
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border/60 bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground',
+                      )}
+                    >
+                      {name}
+                    </button>
+                  )
+                })
               )}
             </div>
+            {selectedAlarmNames.length === 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Klik alarm untuk filter — kosong berarti cek semua.
+              </p>
+            )}
           </div>
         )}
 

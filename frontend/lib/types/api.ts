@@ -23,18 +23,20 @@ export interface SessionPayload {
 
 // ─── Customers & Accounts ────────────────────────────────────────────────────
 
-export type AwsAuthMode = 'assume_role' | 'sso' | 'aws_login' | 'access_key'
+export type AuthMethod = 'profile' | 'access_key' | 'assumed_role'
 
 export interface Account {
   id: string
   profile_name: string
-  account_id: string
+  account_id: string | null
   display_name: string
   is_active: boolean
-  aws_auth_mode: AwsAuthMode
+  auth_method: AuthMethod
+  aws_access_key_id: string | null
   role_arn: string | null
   external_id: string | null
-  config_extra: Record<string, unknown>
+  region: string | null
+  config_extra: Record<string, unknown> | null
   alarm_names?: string[] | null
 }
 
@@ -82,6 +84,7 @@ export interface CheckResult {
 
 export interface CheckRunSummary {
   check_run_id: string
+  customer?: { id: string; name: string; display_name: string }
   check_mode: string
   check_name: string
   created_at: string
@@ -102,7 +105,7 @@ export interface CheckRunDetailCustomer {
 }
 
 export interface CheckRunDetail extends CheckRunSummary {
-  customer: CheckRunDetailCustomer
+  customer?: CheckRunDetailCustomer
   results: CheckResult[]
 }
 
@@ -121,17 +124,22 @@ export type FindingSeverity =
   | 'INFO'
   | 'ALARM'
 
+export type FindingStatus = 'active' | 'resolved'
+
 export interface Finding {
   id: string
   check_run_id: string
-  customer: { id: string; display_name: string }
+  customer?: { id: string; display_name: string }
   account: CheckResultAccount
   check_name: string
   finding_key: string
   severity: FindingSeverity
   title: string
   description: string
+  status?: FindingStatus
   created_at: string
+  last_seen_at?: string | null
+  resolved_at?: string | null
 }
 
 // ─── Metrics ─────────────────────────────────────────────────────────────────
@@ -141,7 +149,7 @@ export type MetricStatus = 'ok' | 'warn' | 'error'
 export interface MetricSample {
   id: string
   check_run_id: string
-  customer: { id: string; display_name: string }
+  customer?: { id: string; display_name: string }
   account: CheckResultAccount
   check_name: string
   metric_name: string
@@ -192,6 +200,7 @@ export interface DashboardSummary {
 // ─── Check Execution ─────────────────────────────────────────────────────────
 
 export interface ExecuteResponse {
+  mode: string
   check_runs: Array<{
     customer_id: string
     check_run_id: string
@@ -200,6 +209,7 @@ export interface ExecuteResponse {
   execution_time_seconds: number
   results: CheckResult[]
   consolidated_outputs: Record<string, string>
+  customer_labels: Record<string, string>
   backup_overviews: Record<string, unknown>
 }
 

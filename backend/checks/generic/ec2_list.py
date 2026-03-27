@@ -79,7 +79,7 @@ class EC2ListChecker(BaseChecker):
 
     def check(self, profile, account_id):
         try:
-            session = boto3.Session(profile_name=profile, region_name=self.region)
+            session = self._get_session(profile)
             plans = self._list_savings_plans(session)
             instances = self._list_instances(session)
             return {

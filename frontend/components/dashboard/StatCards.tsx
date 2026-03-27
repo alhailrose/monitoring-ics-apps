@@ -5,7 +5,7 @@ import { StatusBadge } from '@/components/common/StatusBadge'
 import { SeverityBadge } from '@/components/common/SeverityBadge'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Alert01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons'
-import { cn } from '@/lib/utils'
+import { cn, formatDateShort } from '@/lib/utils'
 import { isOverdue } from '@/lib/schedule-utils'
 import type { DashboardSummary, CheckStatus, FindingSeverity, MetricStatus } from '@/lib/types/api'
 import type { ReportSchedule } from '@/lib/schedule-utils'
@@ -41,6 +41,8 @@ export function StatCards({ summary, reportSchedules, currentCustomerId }: StatC
   }
 
   const overdueCount = reportSchedules.filter(isOverdue).length
+  const windowDays = Math.max(summary.window_hours / 24, 1)
+  const workloadSamplesPerDay = summary.metrics.total / windowDays
 
   return (
     <div className="space-y-3">
@@ -55,7 +57,7 @@ export function StatCards({ summary, reportSchedules, currentCustomerId }: StatC
             <p className="text-xs text-muted-foreground mt-1">
               Latest:{' '}
               {summary.runs.latest_created_at
-                ? new Date(summary.runs.latest_created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+                ? formatDateShort(summary.runs.latest_created_at)
                 : '—'}
             </p>
           </CardContent>
@@ -103,13 +105,14 @@ export function StatCards({ summary, reportSchedules, currentCustomerId }: StatC
           </CardContent>
         </Card>
 
-        {/* Card 4: Metrics */}
+        {/* Card 4: Workload Metrics */}
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Metrics</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Workload Metrics</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{summary.metrics.total}</p>
+            <p className="text-3xl font-bold">{workloadSamplesPerDay.toFixed(1)}/hari</p>
+            <p className="text-xs text-muted-foreground mt-1">{summary.metrics.total} sampel dalam {summary.window_hours} jam</p>
             <div className="flex flex-wrap gap-2 mt-2">
               {METRIC_STATUSES.map((s) => {
                 const count = summary.metrics.by_status[s]

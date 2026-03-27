@@ -14,7 +14,7 @@ class HealthChecker(BaseChecker):
     def check(self, profile, account_id):
         """Check AWS Health events"""
         try:
-            session = boto3.Session(profile_name=profile)
+            session = self._get_session(profile)
             health = session.client('health', region_name='us-east-1')
             
             response = health.describe_events()

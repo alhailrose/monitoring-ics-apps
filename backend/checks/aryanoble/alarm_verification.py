@@ -179,7 +179,7 @@ class AlarmVerificationChecker(BaseChecker):
             }
 
         try:
-            session = boto3.Session(profile_name=profile, region_name=self.region)
+            session = self._get_session(profile)
             cw = session.client("cloudwatch", region_name=self.region)
             now_utc = datetime.now(timezone.utc)
             history_start = now_utc - timedelta(hours=24)

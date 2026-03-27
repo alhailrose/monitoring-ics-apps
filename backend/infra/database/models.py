@@ -106,6 +106,11 @@ class Account(Base):
     config_extra: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     region: Mapped[str | None] = mapped_column(Text, nullable=True)
     alarm_names: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    auth_method: Mapped[str] = mapped_column(String(16), nullable=False, default="profile")
+    aws_access_key_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    aws_secret_access_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    role_arn: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utc_now, nullable=False
     )
@@ -234,6 +239,9 @@ class FindingEvent(Base):
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utc_now, nullable=False
     )

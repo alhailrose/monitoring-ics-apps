@@ -1,7 +1,5 @@
 """Findings query endpoints."""
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
@@ -31,7 +29,10 @@ class FindingItemResponse(BaseModel):
     severity: str
     title: str
     description: str | None = None
+    status: str
     created_at: str
+    last_seen_at: str | None = None
+    resolved_at: str | None = None
 
 
 class FindingsListResponse(BaseModel):
@@ -45,6 +46,7 @@ def list_findings(
     check_name: str | None = Query(None),
     severity: str | None = Query(None),
     account_id: str | None = Query(None),
+    status: str | None = Query("active"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     repo=Depends(get_check_repository),
@@ -54,6 +56,7 @@ def list_findings(
         check_name=check_name,
         severity=severity,
         account_id=account_id,
+        status=status if status and status != "all" else None,
         limit=limit,
         offset=offset,
     )
@@ -79,7 +82,10 @@ def list_findings(
                 "severity": finding.severity,
                 "title": finding.title,
                 "description": finding.description,
+                "status": finding.status,
                 "created_at": finding.created_at.isoformat(),
+                "last_seen_at": finding.last_seen_at.isoformat() if finding.last_seen_at else None,
+                "resolved_at": finding.resolved_at.isoformat() if finding.resolved_at else None,
             }
         )
 

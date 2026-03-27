@@ -9,6 +9,7 @@ import { AuthErrorBadge } from '@/components/common/AuthErrorBadge'
 import { cn } from '@/lib/utils'
 import type { CheckResult } from '@/lib/types/api'
 
+
 const CheckDetailView = dynamic(
   () => import('@/components/checks/CheckDetailView').then((m) => m.CheckDetailView),
   { ssr: false },
@@ -213,6 +214,7 @@ export function CustomerResultCard({ customerId, results }: CustomerResultCardPr
           </tbody>
         </table>
       </div>
+
     </div>
   )
 }

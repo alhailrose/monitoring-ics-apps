@@ -39,6 +39,7 @@ def test_execute_accepts_customer_ids_list():
     data = r.json()
     assert "check_runs" in data
     assert data["check_runs"][0]["customer_id"] == "cust-1"
+    assert "customer_labels" in data
 
 
 def test_execute_rejects_empty_customer_ids():

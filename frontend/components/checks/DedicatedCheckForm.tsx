@@ -41,15 +41,19 @@ const TIME_WINDOWS = [
 ]
 
 interface DedicatedCheckFormProps {
-  /** The dedicated check mode to run — used when `accounts` is NOT provided */
-  mode: string
+  /**
+   * Backend mode sent when running in customer-mode (accounts NOT provided).
+   * e.g. "arbel", "huawei", "all".
+   * NOT used in account-mode — account-mode always sends mode=single to the backend.
+   */
+  checkGroup: string
   /** Human-readable label for the check */
   label: string
   /** Description shown above the form */
   description?: string
   /**
    * Flat list of accounts to show as toggle buttons.
-   * When provided, the form uses mode=single + account_ids instead of mode + customer_ids.
+   * When provided, the form runs mode=single + account_ids (ignores checkGroup).
    */
   accounts?: Account[]
   /**
@@ -61,7 +65,7 @@ interface DedicatedCheckFormProps {
 }
 
 export function DedicatedCheckForm({
-  mode,
+  checkGroup,
   label,
   description,
   accounts,
@@ -113,8 +117,8 @@ export function DedicatedCheckForm({
         .map((c) => c.id)
       derivedCustomerIds.forEach((id) => formData.append('customer_ids', id))
     } else {
-      // Customer-based: use the mode prop, pass customer_ids
-      formData.set('mode', mode)
+      // Customer-based: use checkGroup as the backend mode, pass customer_ids
+      formData.set('mode', checkGroup)
       if (selectedCheckName) formData.set('check_name', selectedCheckName)
       selectedCustomerIds.forEach((id) => formData.append('customer_ids', id))
     }
@@ -214,7 +218,32 @@ export function DedicatedCheckForm({
         {/* Account toggle buttons — when accounts prop provided */}
         {useAccountMode && (
           <div className="space-y-1.5">
-            <Label>Accounts</Label>
+            <div className="flex items-center justify-between">
+              <Label>Accounts</Label>
+              {accounts && accounts.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAccountIds(accounts.map((a) => a.id))}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Select All
+                  </button>
+                  {selectedAccountIds.length > 0 && (
+                    <>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAccountIds([])}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             {!accounts || accounts.length === 0 ? (
               <p className="text-xs text-muted-foreground">No accounts available</p>
             ) : (
@@ -252,7 +281,32 @@ export function DedicatedCheckForm({
         {/* Customer toggle buttons — when customers prop used */}
         {!useAccountMode && (
           <div className="space-y-1.5">
-            <Label>Customers</Label>
+            <div className="flex items-center justify-between">
+              <Label>Customers</Label>
+              {customers.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCustomerIds(customers.map((c) => c.id))}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Select All
+                  </button>
+                  {selectedCustomerIds.length > 0 && (
+                    <>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCustomerIds([])}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             {customers.length === 0 ? (
               <p className="text-xs text-muted-foreground">No customers available</p>
             ) : (

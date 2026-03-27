@@ -211,6 +211,9 @@ accounts:
       - aryanoble-prod-Ubuntu20.04-openvpn-disk-above-80
     daily_arbel:
       service_type: ec2
+      alarm_regions:
+        - ap-southeast-3
+        - ap-southeast-1
       instances:
         webserver: i-053c5b7302686e05d
         database: i-0a22fd1fc782f71dc
@@ -228,6 +231,7 @@ accounts:
       alarm_thresholds:
         webserver:
           - "aryanoble-prod-Window2019Base-webserver Disk C < 20%"
+          - "aryanoble-prod-Window2019Base-webserver Disk D < 10%"
           - "aryanoble-prod-Window2019Base-webserver Disk D < 20%"
           - "aryanoble-prod-Window2019Base-webserver-mem-above-80"
         database:

@@ -44,7 +44,7 @@ export default async function MetricsPage({
     <div className="space-y-6 p-6">
       <PageHeader
         title="Metrics"
-        description="Trend data collected from check runs"
+        description="Workload trend per hari berdasarkan hasil pengecekan"
         actions={
           <div className="flex items-center gap-2">
             <CustomerSelector customers={customers} customerId={customerId} allowAll />

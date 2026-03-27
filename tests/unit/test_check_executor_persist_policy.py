@@ -1,3 +1,4 @@
+from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 
 
@@ -232,21 +233,27 @@ def test_execute_api_mode_writes_normalized_finding_events_for_backup():
                     "state": "FAILED",
                     "resource_label": "db-prod",
                     "reason": "Backup window missed",
-                    "created_wib": "2026-03-19 02:10 WIB",
+                    "created_wib": datetime(
+                        2026, 3, 19, 2, 10, tzinfo=timezone(timedelta(hours=7))
+                    ),
                 },
                 {
                     "job_id": "job-2",
                     "state": "EXPIRED",
                     "resource_label": "db-replica",
                     "reason": "Retention exceeded",
-                    "created_wib": "2026-03-19 03:15 WIB",
+                    "created_wib": datetime(
+                        2026, 3, 19, 3, 15, tzinfo=timezone(timedelta(hours=7))
+                    ),
                 },
                 {
                     "job_id": "job-3",
                     "state": "COMPLETED",
                     "resource_label": "db-archive",
                     "reason": "",
-                    "created_wib": "2026-03-19 04:20 WIB",
+                    "created_wib": datetime(
+                        2026, 3, 19, 4, 20, tzinfo=timezone(timedelta(hours=7))
+                    ),
                 },
             ],
             "_formatted_output": "ok",
@@ -264,8 +271,58 @@ def test_execute_api_mode_writes_normalized_finding_events_for_backup():
     args = check_repo.add_finding_events.call_args.kwargs
     assert args["check_run_id"] == "run-2"
     assert args["account_id"] == account.id
-    assert len(args["events"]) == 3
+    assert len(args["events"]) == 2
     assert args["events"][0]["check_name"] == "backup"
+
+
+def test_execute_api_mode_syncs_backup_findings_even_when_no_failures():
+    from backend.domain.services.check_executor import CheckExecutor
+
+    account = _make_account("prof-a")
+    customer = _make_customer("cust-1", [account])
+
+    customer_repo = MagicMock()
+    customer_repo.get_customer.return_value = customer
+
+    check_repo = MagicMock()
+    check_run = MagicMock()
+    check_run.id = "run-2b"
+    check_repo.create_check_run.return_value = check_run
+
+    executor = CheckExecutor(
+        check_repo=check_repo,
+        customer_repo=customer_repo,
+        region="ap-southeast-3",
+    )
+
+    with patch("backend.domain.services.check_executor._run_single_check") as mock_run:
+        mock_run.return_value = {
+            "status": "success",
+            "failed_jobs": 0,
+            "expired_jobs": 0,
+            "completed_jobs": 2,
+            "job_details": [
+                {
+                    "job_id": "job-3",
+                    "state": "COMPLETED",
+                    "resource_label": "db-archive",
+                },
+            ],
+            "_formatted_output": "ok",
+        }
+        executor.execute(
+            customer_ids=["cust-1"],
+            mode="single",
+            check_name="backup",
+            send_slack=False,
+            run_source="api",
+            persist_mode="normalized",
+        )
+
+    check_repo.add_finding_events.assert_called_once()
+    args = check_repo.add_finding_events.call_args.kwargs
+    assert args["check_name"] == "backup"
+    assert args["events"] == []
 
 
 def test_execute_api_mode_writes_normalized_metric_samples_for_daily_arbel():

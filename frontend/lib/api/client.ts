@@ -40,3 +40,23 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
 
   return res.json() as Promise<T>
 }
+
+export async function apiFetchText(path: string, options: FetchOptions = {}): Promise<string> {
+  const { token, ...rest } = options
+  const headers: Record<string, string> = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((rest.headers as Record<string, string>) ?? {}),
+  }
+
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${path}`, {
+    ...rest,
+    headers,
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new ApiError(res.status, body)
+  }
+
+  return res.text()
+}

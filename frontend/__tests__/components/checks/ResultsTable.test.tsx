@@ -3,6 +3,7 @@ import { ResultsTable } from '@/components/checks/ResultsTable'
 import type { ExecuteResponse } from '@/lib/types/api'
 
 const mockData: ExecuteResponse = {
+  mode: 'all',
   check_runs: [{ customer_id: 'cust-1', check_run_id: 'run-1', slack_sent: false }],
   execution_time_seconds: 3.14,
   results: [
@@ -25,6 +26,7 @@ const mockData: ExecuteResponse = {
     },
   ],
   consolidated_outputs: {},
+  customer_labels: {},
   backup_overviews: {},
 }
 
@@ -43,8 +45,8 @@ describe('ResultsTable', () => {
 
   it('renders status badges', () => {
     render(<ResultsTable data={mockData} />)
-    expect(screen.getByText('OK')).toBeInTheDocument()
-    expect(screen.getByText('ERROR')).toBeInTheDocument()
+    expect(screen.getAllByText('OK').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('ERROR').length).toBeGreaterThan(0)
   })
 
   it('renders AuthErrorBadge when error_class is present', () => {
@@ -54,16 +56,15 @@ describe('ResultsTable', () => {
 
   it('expands detail on row click', () => {
     render(<ResultsTable data={mockData} />)
-    fireEvent.click(screen.getByText('Production Account').closest('tr')!)
+    fireEvent.click(screen.getAllByText('▾ detail')[0])
     expect(screen.getByText('Detailed guardduty output here')).toBeInTheDocument()
   })
 
   it('collapses detail on second click', () => {
     render(<ResultsTable data={mockData} />)
-    const row = screen.getByText('Production Account').closest('tr')!
-    fireEvent.click(row)
+    fireEvent.click(screen.getAllByText('▾ detail')[0])
     expect(screen.getByText('Detailed guardduty output here')).toBeInTheDocument()
-    fireEvent.click(row)
+    fireEvent.click(screen.getByText('▴ close'))
     expect(screen.queryByText('Detailed guardduty output here')).not.toBeInTheDocument()
   })
 
@@ -74,6 +75,24 @@ describe('ResultsTable', () => {
     }
     render(<ResultsTable data={dataWithConsolidated} />)
     expect(screen.getByText('Consolidated Reports')).toBeInTheDocument()
+  })
+
+  it('uses customer label map for consolidated report title', () => {
+    const dataWithConsolidated: ExecuteResponse = {
+      ...mockData,
+      customer_labels: {
+        '6baf8339-d5cd-46c8-ad0d-5304eaa5d886': 'KSNI',
+      },
+      consolidated_outputs: {
+        '6baf8339-d5cd-46c8-ad0d-5304eaa5d886': [
+          'DAILY MONITORING REPORT - KSNI GROUP',
+          'Date: March 26, 2026',
+          'Scope: 16 AWS Accounts | Region: ap-southeast-3',
+        ].join('\n'),
+      },
+    }
+    render(<ResultsTable data={dataWithConsolidated} />)
+    expect(screen.getByText('Report — KSNI')).toBeInTheDocument()
   })
 
   it('does not render consolidated section when empty', () => {

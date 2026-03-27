@@ -87,7 +87,7 @@ export default async function HuaweiCheckPage() {
           </CardHeader>
           <CardContent>
             <DedicatedCheckForm
-              mode="huawei"
+              checkGroup="huawei"
               label="Huawei Check"
               accounts={accounts}
               customers={huaweiCustomers}

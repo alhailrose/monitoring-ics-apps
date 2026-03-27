@@ -18,8 +18,15 @@ class HistoryResultsSummaryResponse(BaseModel):
     error: int
 
 
+class HistoryItemCustomerResponse(BaseModel):
+    id: str
+    name: str
+    display_name: str
+
+
 class HistoryItemResponse(BaseModel):
     check_run_id: str
+    customer: HistoryItemCustomerResponse
     check_mode: str
     check_name: str | None = None
     created_at: str

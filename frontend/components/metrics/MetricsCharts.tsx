@@ -9,8 +9,10 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ReferenceLine,
 } from 'recharts'
 import type { MetricTimeseriesItem } from '@/lib/api/metrics'
+import { formatDateShort } from '@/lib/utils'
 
 const LINE_COLORS = [
   '#60a5fa', // blue-400
@@ -23,21 +25,80 @@ const LINE_COLORS = [
   '#4ade80', // green-400
 ]
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+// Friendly label map for common metric names
+const METRIC_LABELS: Record<string, string> = {
+  cpu_utilization_percent:      'CPU Utilization (%)',
+  memory_utilization_percent:   'Memory Utilization (%)',
+  disk_utilization_percent:     'Disk Utilization (%)',
+  network_utilization_percent:  'Network Utilization (%)',
+  free_storage_bytes:           'Free Storage',
+  free_memory_bytes:            'Free Memory',
+  used_storage_bytes:           'Used Storage',
+  used_memory_bytes:            'Used Memory',
+  network_in_bytes:             'Network In',
+  network_out_bytes:            'Network Out',
+  network_receive_bytes_per_s:  'Network Receive (Avg)',
+  network_transmit_bytes_per_s: 'Network Transmit (Avg)',
+  iops_read:                    'IOPS Read',
+  iops_write:                   'IOPS Write',
+  cpu_credit_usage:             'CPU Credit Usage',
+  cpu_credit_balance:           'CPU Credit Balance',
+  db_connections:               'DB Connections',
+  read_latency_ms:              'Read Latency (ms)',
+  write_latency_ms:             'Write Latency (ms)',
+  cost_anomaly_amount:          'Cost Anomaly (USD)',
+  alarm_count:                  'Active Alarms',
+  finding_count:                'Findings',
+  notification_count:           'Notifications',
+  backup_job_count:             'Backup Jobs',
 }
 
-function formatValue(value: number | null, unit?: string) {
+function getMetricLabel(name: string): string {
+  if (METRIC_LABELS[name]) return METRIC_LABELS[name]
+  // Fallback: replace underscores, title-case
+  return name
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+type MetricType = 'percent' | 'bytes' | 'ms' | 'usd' | 'count'
+
+function inferMetricType(name: string): MetricType {
+  if (name.includes('percent') || name.includes('utilization') || name.includes('ratio')) return 'percent'
+  if (name.includes('bytes') || name.includes('network_in') || name.includes('network_out') ||
+      name.includes('network_receive') || name.includes('network_transmit')) return 'bytes'
+  if (name.includes('latency_ms') || name.includes('_ms')) return 'ms'
+  if (name.includes('cost') || name.includes('amount') || name.includes('usd')) return 'usd'
+  return 'count'
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(2)} GB`
+  if (bytes >= 1_048_576)     return `${(bytes / 1_048_576).toFixed(2)} MB`
+  if (bytes >= 1_024)         return `${(bytes / 1_024).toFixed(2)} KB`
+  return `${bytes} B`
+}
+
+function formatValue(value: number | null, type: MetricType): string {
   if (value === null || value === undefined) return '—'
   const rounded = Math.round(value * 100) / 100
-  return unit ? `${rounded} ${unit}` : String(rounded)
+  switch (type) {
+    case 'percent': return `${rounded}%`
+    case 'bytes':   return formatBytes(rounded)
+    case 'ms':      return `${rounded} ms`
+    case 'usd':     return `$${rounded}`
+    default:        return String(rounded)
+  }
 }
 
-// Detect unit from metric name
-function inferUnit(metricName: string): string | undefined {
-  if (metricName.includes('percent') || metricName.includes('utilization') || metricName.includes('ratio') || metricName.includes('free_percent')) return '%'
-  if (metricName.includes('bytes')) return 'bytes'
-  return undefined
+function yTickFormatter(type: MetricType) {
+  return (value: number) => {
+    if (type === 'percent') return `${value}%`
+    if (type === 'bytes')   return formatBytes(value)
+    if (type === 'ms')      return `${value}ms`
+    if (type === 'usd')     return `$${value}`
+    return String(value)
+  }
 }
 
 interface MetricChartProps {
@@ -47,22 +108,25 @@ interface MetricChartProps {
 }
 
 function MetricChart({ metricName, data, accounts }: MetricChartProps) {
-  const unit = inferUnit(metricName)
-  const label = metricName.replace(/_/g, ' ')
+  const type = inferMetricType(metricName)
+  const label = getMetricLabel(metricName)
+  const isPercent = type === 'percent'
 
   return (
     <div className="rounded-lg border border-border/40 bg-card p-4">
-      <p className="mb-3 text-sm font-medium capitalize text-foreground">{label}</p>
+      <p className="mb-3 text-sm font-medium text-foreground">{label}</p>
       <ResponsiveContainer width="100%" height={180}>
         <LineChart data={data} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
           <XAxis
             dataKey="date"
-            tickFormatter={formatDate}
+            tickFormatter={formatDateShort}
             tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
             tickLine={false}
           />
           <YAxis
+            domain={isPercent ? [0, 100] : ['auto', 'auto']}
+            tickFormatter={yTickFormatter(type)}
             tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
             tickLine={false}
             axisLine={false}
@@ -74,9 +138,18 @@ function MetricChart({ metricName, data, accounts }: MetricChartProps) {
               borderRadius: '6px',
               fontSize: 12,
             }}
-            formatter={(value: number) => [formatValue(value, unit), '']}
-            labelFormatter={formatDate}
+            formatter={(value: number) => [formatValue(value, type), '']}
+            labelFormatter={formatDateShort}
           />
+          {isPercent && (
+            <ReferenceLine
+              y={80}
+              stroke="hsl(var(--destructive))"
+              strokeDasharray="4 3"
+              strokeWidth={1}
+              opacity={0.5}
+            />
+          )}
           {accounts.length > 1 && (
             <Legend
               wrapperStyle={{ fontSize: 11, paddingTop: 8 }}

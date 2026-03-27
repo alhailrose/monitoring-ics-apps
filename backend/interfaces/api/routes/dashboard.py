@@ -8,6 +8,41 @@ from backend.interfaces.api.dependencies import get_check_repository
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
+# ── Customers overview ────────────────────────────────────────────────────────
+
+class CustomerOverviewResults(BaseModel):
+    ok: int
+    warn: int
+    error: int
+
+
+class CustomerOverviewItem(BaseModel):
+    customer_id: str
+    customer_name: str
+    health: str          # "ok" | "warn" | "error"
+    active_findings: int
+    findings_by_severity: dict[str, int]
+    results_24h: CustomerOverviewResults
+    last_run_at: str | None = None
+
+
+class CustomersOverviewResponse(BaseModel):
+    items: list[CustomerOverviewItem]
+
+
+@router.get("/customers-overview", response_model=CustomersOverviewResponse)
+def get_customers_overview(repo=Depends(get_check_repository)):
+    items = repo.get_customers_overview()
+    serialized = []
+    for item in items:
+        last_run = item.get("last_run_at")
+        serialized.append({
+            **item,
+            "last_run_at": last_run.isoformat() if last_run else None,
+        })
+    return {"items": serialized}
+
+
 class DashboardRunsResponse(BaseModel):
     total: int
     single: int

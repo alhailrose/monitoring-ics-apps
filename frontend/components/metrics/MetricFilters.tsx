@@ -10,24 +10,19 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-const STATUS_OPTIONS = [
-  { value: 'all', label: 'All Statuses' },
-  { value: 'ok', label: 'OK' },
-  { value: 'warn', label: 'Warn' },
-  { value: 'error', label: 'Error' },
+const DAYS_OPTIONS = [
+  { value: '7',  label: '7 days' },
+  { value: '14', label: '14 days' },
+  { value: '30', label: '30 days' },
+  { value: '90', label: '90 days' },
 ]
 
 // Map check name → display label for metric checks
 const CHECK_LABELS: Record<string, string> = {
-  'ec2_utilization':  'Utilization (EC2)',
-  'daily-arbel-rds':  'Utilization (RDS)',
-  'daily-arbel-ec2':  'Utilization (EC2 Arbel)',
-  'daily-arbel':      'Arbel (RDS + EC2)',
-  'cost':             'Cost Anomalies',
-  'cloudwatch':       'CloudWatch Alarms',
-  'guardduty':        'GuardDuty',
-  'notifications':    'Notifications',
-  'backup':           'Backup',
+  'ec2_utilization':  'EC2 Utilization',
+  'daily-arbel-rds':  'RDS Utilization (Arbel)',
+  'daily-arbel-ec2':  'EC2 Utilization (Arbel)',
+  'daily-arbel':      'Arbel Utilization (RDS + EC2)',
 }
 
 // Checks that actually produce metric_samples rows
@@ -36,11 +31,6 @@ const METRIC_CHECKS = new Set([
   'daily-arbel-rds',
   'daily-arbel-ec2',
   'daily-arbel',
-  'cost',
-  'cloudwatch',
-  'guardduty',
-  'notifications',
-  'backup',
 ])
 
 interface MetricFiltersProps {
@@ -53,8 +43,8 @@ export function MetricFilters({ customerId: _customerId = '', customerChecks }: 
   const searchParams = useSearchParams()
   const pathname = usePathname()
 
-  const currentStatus = searchParams.get('metric_status') ?? 'all'
   const currentCheck = searchParams.get('check_name') ?? ''
+  const currentDays  = searchParams.get('days') ?? '14'
 
   // Build options from customer's actual checks list, filtered to metric-producing ones
   const checkOptions = customerChecks && customerChecks.length > 0
@@ -76,12 +66,12 @@ export function MetricFilters({ customerId: _customerId = '', customerChecks }: 
 
   return (
     <div className="flex items-center gap-2">
-      <Select value={currentStatus} onValueChange={(v) => updateParam('metric_status', v)}>
-        <SelectTrigger className="w-36" aria-label="Filter by status">
-          <SelectValue placeholder="All Statuses" />
+      <Select value={currentDays} onValueChange={(v) => updateParam('days', v)}>
+        <SelectTrigger className="w-28" aria-label="Time range">
+          <SelectValue placeholder="14 days" />
         </SelectTrigger>
         <SelectContent>
-          {STATUS_OPTIONS.map((o) => (
+          {DAYS_OPTIONS.map((o) => (
             <SelectItem key={o.value} value={o.value}>
               {o.label}
             </SelectItem>

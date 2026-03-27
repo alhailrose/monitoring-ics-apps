@@ -38,9 +38,9 @@ describe('StatCards', () => {
     expect(screen.getByText('7')).toBeInTheDocument()
   })
 
-  it('renders metrics total', () => {
+  it('renders workload metrics per-day summary', () => {
     render(<StatCards summary={mockSummary} reportSchedules={[]} />)
-    expect(screen.getByText('50')).toBeInTheDocument()
+    expect(screen.getByText('50.0/hari')).toBeInTheDocument()
   })
 
   it('shows overdue banner when schedules are overdue', () => {

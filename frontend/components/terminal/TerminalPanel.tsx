@@ -130,13 +130,12 @@ export function TerminalPanel() {
   useEffect(() => {
     connect()
 
-    const handleResize = () => {
-      fitAddonRef.current?.fit()
-    }
-    window.addEventListener('resize', handleResize)
+    const el = containerRef.current
+    const ro = el ? new ResizeObserver(() => fitAddonRef.current?.fit()) : null
+    if (el && ro) ro.observe(el)
 
     return () => {
-      window.removeEventListener('resize', handleResize)
+      ro?.disconnect()
       wsRef.current?.close()
       termRef.current?.dispose()
     }
@@ -167,7 +166,7 @@ export function TerminalPanel() {
       {/* Terminal container */}
       <div
         ref={containerRef}
-        className="flex-1 bg-[#0a0a0a] p-2 overflow-hidden"
+        className="flex-1 bg-[#0a0a0a] overflow-hidden"
       />
     </div>
   )

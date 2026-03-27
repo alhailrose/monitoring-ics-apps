@@ -2,7 +2,7 @@
 
 import logging
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from backend.checks.common.base import BaseChecker
 from backend.checks.common.aws_errors import is_credential_error
 
@@ -20,16 +20,16 @@ class CostAnomalyChecker(BaseChecker):
     def check(self, profile, account_id):
         """Check cost anomalies"""
         try:
-            session = boto3.Session(profile_name=profile)
+            session = self._get_session(profile)
             ce = session.client("ce", region_name="us-east-1")
 
             # Get anomaly monitors
             monitors = ce.get_anomaly_monitors()
             monitor_list = monitors.get("AnomalyMonitors", [])
 
-            # Get anomalies from yesterday and today (last 2 days)
-            today = datetime.now().strftime("%Y-%m-%d")
-            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            # Get anomalies from yesterday and today (UTC — Cost Explorer uses UTC dates)
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
 
             all_anomalies = []
             for monitor in monitor_list:
@@ -123,9 +123,12 @@ class CostAnomalyChecker(BaseChecker):
         return "\n".join(lines)
 
     def count_issues(self, result: dict) -> int:
-        """Count cost anomalies from a single profile's result."""
+        """Count cost anomalies — prefer today's count, fall back to total."""
         if result.get("status") == "error":
             return 0
+        today_count = result.get("today_anomaly_count", 0) or 0
+        if today_count > 0:
+            return int(today_count)
         return int(result.get("total_anomalies", 0) or 0)
 
     def render_section(self, all_results: dict, errors: list) -> list[str]:

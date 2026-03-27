@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { MoreHorizontalIcon, PencilEdit01Icon, Delete01Icon } from '@hugeicons/core-free-icons'
+import { MoreHorizontalIcon, PencilEdit01Icon, Delete01Icon, Search01Icon } from '@hugeicons/core-free-icons'
 import { cn } from '@/lib/utils'
 import type { Account, ProfileHealth } from '@/lib/types/api'
 
@@ -23,6 +23,7 @@ interface AccountRowProps {
   role: string
   onEdit: (a: Account) => void
   onDelete: (id: string) => void
+  onDetails: (a: Account) => void
 }
 
 export function AccountRow({
@@ -32,6 +33,7 @@ export function AccountRow({
   role,
   onEdit,
   onDelete,
+  onDetails,
 }: AccountRowProps) {
   const health = healthMap[account.profile_name]
 
@@ -62,7 +64,7 @@ export function AccountRow({
 
       {/* Auth mode — hidden on mobile */}
       <div className="hidden sm:flex justify-center">
-        <AuthModeBadge mode={account.aws_auth_mode} />
+        <AuthModeBadge mode={account.auth_method} />
       </div>
 
       {/* Session status — hidden on mobile */}
@@ -90,6 +92,11 @@ export function AccountRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuItem onClick={() => onDetails(account)}>
+                <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4 mr-2" />
+                Details
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onEdit(account)}>
                 <HugeiconsIcon icon={PencilEdit01Icon} strokeWidth={2} className="size-4 mr-2" />
                 Edit

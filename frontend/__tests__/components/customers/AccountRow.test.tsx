@@ -8,9 +8,11 @@ const mockAccount: Account = {
   account_id: '123456789012',
   display_name: 'Production',
   is_active: true,
-  aws_auth_mode: 'sso',
+  auth_method: 'profile',
   role_arn: null,
   external_id: null,
+        aws_access_key_id: null,
+        region: null,
   config_extra: {},
 }
 

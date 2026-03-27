@@ -98,7 +98,32 @@ export function BundledCheckForm({ customers }: BundledCheckFormProps) {
 
         {/* Customer toggle buttons */}
         <div className="space-y-1.5">
-          <Label>Customers</Label>
+          <div className="flex items-center justify-between">
+            <Label>Customers</Label>
+            {customers.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCustomerIds(customers.map((c) => c.id))}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Select All
+                </button>
+                {selectedCustomerIds.length > 0 && (
+                  <>
+                    <span className="text-xs text-muted-foreground">·</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCustomerIds([])}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           {customers.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               No customers available.{' '}

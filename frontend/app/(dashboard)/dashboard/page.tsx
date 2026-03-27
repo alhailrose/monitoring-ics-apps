@@ -1,7 +1,7 @@
 // Server Component — fetches all dashboard data server-side
 import { getToken } from '@/lib/server-token'
 import { getCustomers } from '@/lib/api/customers'
-import { getDashboardSummary } from '@/lib/api/dashboard'
+import { getDashboardSummary, getCustomersOverview } from '@/lib/api/dashboard'
 import { getHistory, getRunDetail } from '@/lib/api/history'
 import { getFindings } from '@/lib/api/findings'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -10,6 +10,8 @@ import { WindowSelector } from '@/components/common/WindowSelector'
 import { StatCards } from '@/components/dashboard/StatCards'
 import { RecentHistory } from '@/components/dashboard/RecentHistory'
 import { AccountOverview } from '@/components/dashboard/AccountOverview'
+import { CustomersOverviewGrid } from '@/components/dashboard/CustomersOverviewGrid'
+import Link from 'next/link'
 import type { ReportSchedule } from '@/lib/schedule-utils'
 
 interface PageProps {
@@ -21,13 +23,33 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const { customer_id, window_hours } = await searchParams
 
   const customers = await getCustomers(token).catch(() => [])
-  const customerId = customer_id ?? customers[0]?.id ?? ''
+  const customerId = customer_id ?? ''
   const windowHours = Math.min(Math.max(Number(window_hours ?? 24), 1), 720)
 
+  // ── Global overview (no customer selected) ────────────────────────────────
+  if (!customerId) {
+    const overviewItems = await getCustomersOverview(token).catch(() => [])
+    return (
+      <div className="space-y-6 p-6 max-w-full">
+        <PageHeader
+          title="Dashboard"
+          description="All customers at a glance"
+          actions={
+            customers.length > 0 ? (
+              <CustomerSelector customers={customers} customerId="" allowAll />
+            ) : undefined
+          }
+        />
+        <CustomersOverviewGrid items={overviewItems} />
+      </div>
+    )
+  }
+
+  // ── Per-customer dashboard ─────────────────────────────────────────────────
   const [summary, historyData, findingsData] = await Promise.all([
-    customerId ? getDashboardSummary(customerId, windowHours, token).catch(() => null) : Promise.resolve(null),
-    customerId ? getHistory({ customer_id: customerId, limit: 5 }, token).catch(() => null) : Promise.resolve(null),
-    customerId ? getFindings({ customer_id: customerId, limit: 100 }, token).catch(() => null) : Promise.resolve(null),
+    getDashboardSummary(customerId, windowHours, token).catch(() => null),
+    getHistory({ customer_id: customerId, limit: 5 }, token).catch(() => null),
+    getFindings({ customer_id: customerId, limit: 100 }, token).catch(() => null),
   ])
 
   const latestRun = historyData?.items?.[0] ?? null
@@ -35,7 +57,6 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     ? await getRunDetail(latestRun.check_run_id, token).catch(() => null)
     : null
 
-  // Build report schedules from customer data (no backend endpoint yet — derived client-side)
   const reportSchedules: ReportSchedule[] = customers.map((c) => ({
     customerId: c.id,
     customerName: c.display_name,
@@ -45,16 +66,26 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     reportSentWithLastRun: false,
   }))
 
+  const selectedCustomer = customers.find((c) => c.id === customerId)
+
   return (
     <div className="space-y-6 p-6 max-w-full">
+      {selectedCustomer && (
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ← All Customers
+        </Link>
+      )}
       <PageHeader
-        title="Dashboard"
+        title={selectedCustomer ? selectedCustomer.display_name : 'Dashboard'}
         description="Overview of your cloud monitoring activity"
         actions={
           customers.length > 0 ? (
             <div className="flex items-center gap-2">
               <WindowSelector windowHours={windowHours} />
-              <CustomerSelector customers={customers} customerId={customerId} />
+              <CustomerSelector customers={customers} customerId={customerId} allowAll />
             </div>
           ) : undefined
         }

@@ -1,7 +1,7 @@
 """AWS User Notifications checker"""
 
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from backend.checks.common.base import BaseChecker
 from backend.checks.common.aws_errors import is_credential_error
 
@@ -18,11 +18,11 @@ class NotificationChecker(BaseChecker):
     def check(self, profile, account_id):
         """Check AWS User Notifications (Notification Center) - last 12 hours"""
         try:
-            session = boto3.Session(profile_name=profile)
+            session = self._get_session(profile)
             client = session.client("notifications", region_name=self.region)
 
-            # Get notifications from last 12 hours
-            now = datetime.now()
+            # Get notifications from last 12 hours (UTC-aware)
+            now = datetime.now(timezone.utc)
             twelve_hours_ago = now - timedelta(hours=12)
 
             recent_events = client.list_managed_notification_events(
@@ -144,5 +144,30 @@ class NotificationChecker(BaseChecker):
             lines.append(
                 f"Status: {total_recent} new notifications detected in last 12h"
             )
+
+            lines.append("")
+            lines.append("Recent notifications by account:")
+            for profile, result in all_results.items():
+                if result.get("status") != "success":
+                    continue
+                recent_count = int(result.get("recent_count", 0) or 0)
+                if recent_count <= 0:
+                    continue
+
+                lines.append(f"  * {profile}: {recent_count} new notification(s)")
+                events = result.get("recent_events") or []
+                if not isinstance(events, list):
+                    continue
+
+                for event in events[:3]:
+                    notif_event = event.get("notificationEvent", {})
+                    event_type = notif_event.get("sourceEventMetadata", {}).get(
+                        "eventType", "N/A"
+                    )
+                    headline = notif_event.get("messageComponents", {}).get(
+                        "headline", "N/A"
+                    )
+                    created = event.get("creationTime", "N/A")
+                    lines.append(f"    - [{created}] {event_type}: {headline}")
 
         return lines

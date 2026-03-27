@@ -45,6 +45,7 @@ export function FindingFilters({ customerId: _customerId = '', customerChecks }:
 
   const severity = searchParams.get('severity') ?? 'ALL'
   const checkName = searchParams.get('check_name') ?? 'ALL'
+  const status = searchParams.get('status') ?? 'active'
 
   const checkOptions = [
     { value: 'ALL', label: 'All Checks' },
@@ -68,6 +69,17 @@ export function FindingFilters({ customerId: _customerId = '', customerChecks }:
 
   return (
     <div className="flex items-center gap-2">
+      <Select value={status} onValueChange={(v) => update('status', v)}>
+        <SelectTrigger className="w-28" aria-label="Filter by status">
+          <SelectValue placeholder="Active" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="active">Active</SelectItem>
+          <SelectItem value="resolved">Resolved</SelectItem>
+          <SelectItem value="all">All</SelectItem>
+        </SelectContent>
+      </Select>
+
       <Select value={severity} onValueChange={(v) => update('severity', v)}>
         <SelectTrigger className="w-36" aria-label="Filter by severity">
           <SelectValue placeholder="Severity" />

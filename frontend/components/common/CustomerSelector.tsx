@@ -36,7 +36,8 @@ export function CustomerSelector({ customers, customerId, allowAll = false }: Cu
     params.delete('metric_status')
     params.delete('severity')
     params.delete('page')
-    router.replace(`${pathname}?${params.toString()}`)
+    const qs = params.toString()
+    router.push(qs ? `${pathname}?${qs}` : pathname)
   }
 
   const value = customerId || (allowAll ? ALL_VALUE : '')

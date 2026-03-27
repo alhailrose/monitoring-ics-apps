@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { CustomerSelector } from '@/components/common/CustomerSelector'
 import { FindingsTable } from '@/components/findings/FindingsTable'
 import { FindingFilters } from '@/components/findings/FindingFilters'
-import type { FindingSeverity } from '@/lib/types/api'
+import type { FindingSeverity, FindingStatus } from '@/lib/types/api'
 
 const PAGE_SIZE = 20
 
@@ -14,6 +14,7 @@ interface SearchParams {
   customer_id?: string
   severity?: string
   check_name?: string
+  status?: string
   page?: string
 }
 
@@ -36,12 +37,14 @@ export default async function FindingsPage({
     ? params.check_name : undefined
   const severity = params.severity && params.severity.toUpperCase() !== 'ALL'
     ? params.severity as FindingSeverity : undefined
+  const status = (params.status === 'all' ? 'all' : (params.status as FindingStatus | undefined)) ?? 'active'
 
   const findingsData = await getFindings(
     {
       customer_id: customerId || undefined,
       severity,
       check_name: checkName,
+      status,
       limit: PAGE_SIZE,
       offset,
     },

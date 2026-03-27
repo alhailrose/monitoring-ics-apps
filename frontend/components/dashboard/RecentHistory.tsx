@@ -2,20 +2,13 @@ import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/common/EmptyState'
 import { StatusBadge } from '@/components/common/StatusBadge'
+import { formatDate } from '@/lib/utils'
 import type { CheckRunSummary } from '@/lib/types/api'
 
 interface RecentHistoryProps {
   runs: CheckRunSummary[]
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 export function RecentHistory({ runs }: RecentHistoryProps) {
   return (

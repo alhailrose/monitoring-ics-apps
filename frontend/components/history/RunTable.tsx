@@ -24,6 +24,13 @@ const COLUMNS = [
     ),
   },
   {
+    key: 'customer',
+    header: 'Customer',
+    render: (r: CheckRunSummary) => (
+      <span className="text-sm font-medium">{r.customer?.display_name ?? '—'}</span>
+    ),
+  },
+  {
     key: 'duration',
     header: 'Duration',
     render: (r: CheckRunSummary) => (

@@ -19,6 +19,7 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { CustomerSheet } from '@/components/customers/CustomerSheet'
 import { AccountSheet } from '@/components/customers/AccountSheet'
+import { AccountDetailsSheet } from '@/components/customers/AccountDetailsSheet'
 import { AccountRow } from '@/components/customers/AccountRow'
 import { deleteCustomer, deleteAccount } from '@/app/(dashboard)/customers/actions'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -106,6 +107,7 @@ export function CustomerList({ customers, role }: CustomerListProps) {
     customerId: string
     accountId: string
   } | null>(null)
+  const [detailsAccountTarget, setDetailsAccountTarget] = useState<Account | null>(null)
   const [isPending, startTransition] = useTransition()
   const [sessionsHealth, setSessionsHealth] = useState<SessionsHealth | null>(null)
   const [healthLoading, setHealthLoading] = useState(true)
@@ -251,6 +253,14 @@ export function CustomerList({ customers, role }: CustomerListProps) {
         const total = customer.accounts.length
         const maxCheckChips = 4
 
+        // Session health summary for this customer
+        const customerExpired = customer.accounts.filter(
+          (a) => healthMap[a.profile_name]?.status === 'expired',
+        ).length
+        const customerUnknown = !healthLoading && !healthError && customer.accounts.some(
+          (a) => a.auth_method === 'profile' && !healthMap[a.profile_name],
+        )
+
         return (
           <Collapsible key={customer.id} defaultOpen={false}>
             <Card className="border-border/60 overflow-hidden transition-shadow hover:shadow-sm">
@@ -308,6 +318,20 @@ export function CustomerList({ customers, role }: CustomerListProps) {
                             <span className="text-foreground font-medium">{active}</span>
                             <span className="text-muted-foreground/60">/{total}</span> accounts
                           </span>
+                          {healthLoading && (
+                            <Skeleton className="h-3.5 w-14 rounded-full" />
+                          )}
+                          {!healthLoading && customerExpired > 0 && (
+                            <span className="flex items-center gap-1 text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-full px-1.5 py-px">
+                              <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3" />
+                              {customerExpired} session{customerExpired !== 1 ? 's' : ''} expired
+                            </span>
+                          )}
+                          {!healthLoading && customerExpired === 0 && customerUnknown && (
+                            <span className="text-[10px] text-muted-foreground/50">
+                              session status unknown
+                            </span>
+                          )}
                           {customer.checks.length > 0 && (
                             <span className="flex items-center gap-1 flex-wrap">
                               {customer.checks.slice(0, maxCheckChips).map((c) => (
@@ -415,6 +439,7 @@ export function CustomerList({ customers, role }: CustomerListProps) {
                           onDelete={(id) =>
                             setDeleteAccountTarget({ customerId: customer.id, accountId: id })
                           }
+                          onDetails={(a) => setDetailsAccountTarget(a)}
                         />
                       ))}
                     </>
@@ -439,6 +464,12 @@ export function CustomerList({ customers, role }: CustomerListProps) {
       })}
 
       {/* ── Sheets & dialogs ─────────────────────────────────────────────────── */}
+      <AccountDetailsSheet
+        account={detailsAccountTarget}
+        open={!!detailsAccountTarget}
+        onClose={() => setDetailsAccountTarget(null)}
+      />
+
       {role === 'super_user' && (
         <>
           <CustomerSheet open={createOpen} onClose={() => setCreateOpen(false)} />
@@ -453,6 +484,7 @@ export function CustomerList({ customers, role }: CustomerListProps) {
             onClose={() => setAddAccountTarget(null)}
           />
           <AccountSheet
+            key={editAccountTarget?.account?.id ?? 'edit-account'}
             customerId={editAccountTarget?.customerId ?? ''}
             account={editAccountTarget?.account}
             open={!!editAccountTarget}

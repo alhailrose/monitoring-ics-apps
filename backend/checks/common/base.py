@@ -26,6 +26,19 @@ class BaseChecker(ABC):
     def __init__(self, region="ap-southeast-3", **kwargs):
         self.region = region
         self.timestamp = datetime.now()
+        self._injected_creds: dict | None = None  # set by executor for non-profile auth
+
+    def _get_session(self, profile: str):
+        """Return a boto3 Session using injected credentials if available, else AWS profile."""
+        import boto3
+        if self._injected_creds is not None:
+            return boto3.Session(
+                aws_access_key_id=self._injected_creds["aws_access_key_id"],
+                aws_secret_access_key=self._injected_creds["aws_secret_access_key"],
+                aws_session_token=self._injected_creds.get("aws_session_token"),
+                region_name=self.region,
+            )
+        return boto3.Session(profile_name=profile, region_name=self.region)
 
     @abstractmethod
     def check(self, profile, account_id) -> dict[str, Any]:
@@ -70,6 +83,13 @@ class BaseChecker(ABC):
         Automatically detects credential/token errors and provides
         user-friendly messages. Preserves the standard result shape.
         """
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "[auth] _error_result in %s for '%s': %r",
+            type(self).__name__,
+            profile,
+            exc,
+        )
         info = classify_aws_error(exc, profile)
         return {
             "status": "error",

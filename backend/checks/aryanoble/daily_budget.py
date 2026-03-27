@@ -65,7 +65,7 @@ class DailyBudgetChecker(BaseChecker):
             now_utc = datetime.now(timezone.utc)
             now_wib = now_utc.astimezone(timezone(timedelta(hours=7)))
 
-            session = boto3.Session(profile_name=profile, region_name=self.region)
+            session = self._get_session(profile)
             budgets = session.client("budgets", region_name="us-east-1")
 
             items = []

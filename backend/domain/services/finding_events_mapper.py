@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 from backend.domain.finding_events import (
     FINDING_EVENT_CHECK_ARBEL_EC2,
     FINDING_EVENT_CHECK_ARBEL_RDS,
@@ -27,6 +30,11 @@ def _normalize_severity(value: str | None, fallback: str) -> str:
     return fallback
 
 
+def _stable_hash(value: object) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
+
+
 def _map_guardduty(account_id: str, raw_result: dict) -> list[dict]:
     details = raw_result.get("details")
     if not isinstance(details, list):
@@ -38,11 +46,16 @@ def _map_guardduty(account_id: str, raw_result: dict) -> list[dict]:
             continue
         finding_type = str(detail.get("type") or "guardduty")
         title = str(detail.get("title") or finding_type)
+        finding_id = str(detail.get("id") or "").strip()
+        if not finding_id:
+            finding_id = (
+                f"guardduty:{_stable_hash({'type': finding_type, 'title': title})}"
+            )
         events.append(
             {
                 "check_name": FINDING_EVENT_CHECK_GUARDDUTY,
                 "account_id": account_id,
-                "finding_key": finding_type,
+                "finding_key": finding_id,
                 "severity": _normalize_severity(detail.get("severity"), "MEDIUM"),
                 "title": title,
                 "description": str(detail.get("updated") or ""),
@@ -90,11 +103,26 @@ def _map_notifications(account_id: str, raw_result: dict) -> list[dict]:
         message_components = _as_dict(notif_event.get("messageComponents"))
         event_type = str(source_metadata.get("eventType") or "notification")
         headline = str(message_components.get("headline") or event_type)
+
+        event_id = (
+            str(event.get("arn") or "").strip()
+            or str(event.get("eventArn") or "").strip()
+            or str(notif_event.get("notificationEventArn") or "").strip()
+            or str(event.get("creationTime") or "").strip()
+        )
+        if event_id:
+            finding_key = f"{event_type}:{event_id}"
+        else:
+            finding_key = f"{event_type}:{_stable_hash(event)}"
+
+        if len(finding_key) > 240:
+            finding_key = f"{event_type}:{_stable_hash(event_id)}"
+
         events.append(
             {
                 "check_name": FINDING_EVENT_CHECK_NOTIFICATIONS,
                 "account_id": account_id,
-                "finding_key": event_type,
+                "finding_key": finding_key,
                 "severity": "INFO",
                 "title": headline,
                 "description": str(event.get("creationTime") or ""),
@@ -115,21 +143,19 @@ def _map_backup(account_id: str, raw_result: dict) -> list[dict]:
             continue
 
         state = str(detail.get("state") or "UNKNOWN").upper()
-        if state not in {"FAILED", "EXPIRED", "COMPLETED"}:
+        if state not in {"FAILED", "EXPIRED"}:
             continue
 
         job_id = str(detail.get("job_id") or f"unknown-{index}")
         resource_label = str(detail.get("resource_label") or "resource")
         reason = str(detail.get("reason") or "")
         created = str(detail.get("created_wib") or detail.get("created") or "")
-        severity = "ALARM" if state in {"FAILED", "EXPIRED"} else "INFO"
-
         events.append(
             {
                 "check_name": FINDING_EVENT_CHECK_BACKUP,
                 "account_id": account_id,
                 "finding_key": f"backup-job:{state}:{job_id}",
-                "severity": severity,
+                "severity": "ALARM",
                 "title": f"Backup job {state} for {resource_label}",
                 "description": f"reason={reason} created={created}".strip(),
                 "raw_payload": detail,
@@ -167,22 +193,26 @@ def _map_utilization(account_id: str, raw_result: dict) -> list[dict]:
         if disk_free is not None:
             parts.append(f"disk free {disk_free:.1f}%")
 
-        events.append({
-            "check_name": FINDING_EVENT_CHECK_UTILIZATION,
-            "account_id": account_id,
-            "finding_key": f"ec2_utilization:{instance_id}",
-            "severity": "CRITICAL" if status == "CRITICAL" else "MEDIUM",
-            "title": f"{status.capitalize()} utilization: {name}",
-            "description": ", ".join(parts),
-            "raw_payload": inst,
-        })
+        events.append(
+            {
+                "check_name": FINDING_EVENT_CHECK_UTILIZATION,
+                "account_id": account_id,
+                "finding_key": f"ec2_utilization:{instance_id}",
+                "severity": "CRITICAL" if status == "CRITICAL" else "MEDIUM",
+                "title": f"{status.capitalize()} utilization: {name}",
+                "description": ", ".join(parts),
+                "raw_payload": inst,
+            }
+        )
     return events
 
 
 _ARBEL_WARN_STATUSES = {"warn", "past-warn"}
 
 
-def _map_arbel_section(check_name: str, account_id: str, section_instances: dict) -> list[dict]:
+def _map_arbel_section(
+    check_name: str, account_id: str, section_instances: dict
+) -> list[dict]:
     """Collect findings from one arbel section (primary or extra)."""
     events = []
     for role, instance_info in section_instances.items():
@@ -200,15 +230,17 @@ def _map_arbel_section(check_name: str, account_id: str, section_instances: dict
             if status not in _ARBEL_WARN_STATUSES:
                 continue
             message = str(metric_info.get("message") or "")
-            events.append({
-                "check_name": check_name,
-                "account_id": account_id,
-                "finding_key": f"arbel:{instance_id}:{metric_name}",
-                "severity": "MEDIUM",
-                "title": f"Metric warning: {metric_name} ({instance_name})",
-                "description": message,
-                "raw_payload": metric_info,
-            })
+            events.append(
+                {
+                    "check_name": check_name,
+                    "account_id": account_id,
+                    "finding_key": f"arbel:{instance_id}:{metric_name}",
+                    "severity": "MEDIUM",
+                    "title": f"Metric warning: {metric_name} ({instance_name})",
+                    "description": message,
+                    "raw_payload": metric_info,
+                }
+            )
     return events
 
 

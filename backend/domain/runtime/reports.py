@@ -531,8 +531,18 @@ def generate_whatsapp_message(all_results):
     return "\n".join(lines)
 
 
-def build_whatsapp_backup_aryanoble(date_str, all_results):
-    """Build Aryanoble-specific WhatsApp backup report with Completed/Failed/Expired sections."""
+def build_whatsapp_backup_aryanoble(date_str, all_results, group_name: str = "AryaNoble"):
+    """Build WhatsApp backup report with Completed/Failed/Expired sections."""
+
+    now_jkt = datetime.now(timezone(timedelta(hours=7)))
+    if 5 <= now_jkt.hour < 11:
+        greeting = "Selamat Pagi"
+    elif 11 <= now_jkt.hour < 15:
+        greeting = "Selamat Siang"
+    elif 15 <= now_jkt.hour < 18:
+        greeting = "Selamat Sore"
+    else:
+        greeting = "Selamat Malam"
 
     # Exclude arbel-master from reporting
     EXCLUDED_PROFILES = ["arbel-master"]
@@ -558,19 +568,22 @@ def build_whatsapp_backup_aryanoble(date_str, all_results):
         failed_jobs = backup_result.get("failed_jobs", 0)
         expired_jobs = backup_result.get("expired_jobs", 0)
         completed_jobs = backup_result.get("completed_jobs", 0)
-        issues = backup_result.get("issues", [])
 
-        # Check for vault issues (no activity or errors)
-        has_vault_issues = any("vault" in issue.lower() for issue in issues)
+        # Check vault activity correctly: vault is OK if recovery_points_24h > 0
+        vaults = backup_result.get("vaults") or []
+        failed_vaults = [v for v in vaults if v.get("recovery_points_24h", 0) == 0]
+        has_vault_failures = len(vaults) > 0 and len(failed_vaults) > 0
+        has_vault_activity = any(v.get("recovery_points_24h", 0) > 0 for v in vaults)
 
-        # Categorize account
-        if failed_jobs > 0 or has_vault_issues:
+        # Categorize account — Failed
+        if failed_jobs > 0 or has_vault_failures:
             failed_accounts.append(
                 {
                     "display_name": display_name,
                     "account_id": account_id,
                     "profile": profile,
                     "backup_result": backup_result,
+                    "failed_vaults": failed_vaults,
                 }
             )
 
@@ -588,14 +601,8 @@ def build_whatsapp_backup_aryanoble(date_str, all_results):
         if (
             failed_jobs == 0
             and expired_jobs == 0
-            and not has_vault_issues
-            and (
-                completed_jobs > 0
-                or any(
-                    "recovery_points_24h" in str(v)
-                    for v in backup_result.get("vaults", [])
-                )
-            )
+            and not has_vault_failures
+            and (completed_jobs > 0 or has_vault_activity)
         ):
             completed_accounts.append(
                 {"display_name": display_name, "account_id": account_id}
@@ -603,8 +610,8 @@ def build_whatsapp_backup_aryanoble(date_str, all_results):
 
     # Build report
     lines = [
-        "Selamat Pagi Team,",
-        "Berikut report untuk AryaNoble Backup pada hari ini",
+        f"{greeting} Team,",
+        f"Berikut report untuk {group_name} Backup pada hari ini",
         date_str,
         "",
         "Completed:",
@@ -621,6 +628,15 @@ def build_whatsapp_backup_aryanoble(date_str, all_results):
     if failed_accounts:
         for acc in failed_accounts:
             lines.append(f"- {acc['display_name']} - {acc['account_id']}")
+
+            # Show vault failures for vault-based accounts
+            for vault in acc.get("failed_vaults", []):
+                vault_name = vault.get("vault_name", "unknown vault")
+                if vault.get("error"):
+                    reason = f"Vault error: {vault['error']}"
+                else:
+                    reason = "Tidak ada backup yang diterima vault hari ini"
+                lines.append(f"  Vault: {vault_name} — {reason}")
 
             # Add job details for failed jobs
             job_details = acc["backup_result"].get("job_details", [])

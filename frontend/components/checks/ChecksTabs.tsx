@@ -187,7 +187,7 @@ export function ChecksTabs({ customers }: ChecksTabsProps) {
               <CardDescription>Select which check to run and which customers to target.</CardDescription>
             </CardHeader>
             <CardContent>
-              <DedicatedCheckForm mode="arbel" label="Arbel Check" accounts={arbelAccounts} customers={arbelCustomers} checkNames={ARBEL_CHECKS} />
+              <DedicatedCheckForm checkGroup="arbel" label="Arbel Check" accounts={arbelAccounts} customers={arbelCustomers} checkNames={ARBEL_CHECKS} />
             </CardContent>
           </Card>
         </div>
@@ -229,7 +229,7 @@ export function ChecksTabs({ customers }: ChecksTabsProps) {
               <CardDescription>Select customers with Huawei Cloud accounts to monitor.</CardDescription>
             </CardHeader>
             <CardContent>
-              <DedicatedCheckForm mode="huawei" label="Huawei Check" accounts={huaweiAccounts} customers={huaweiCustomers} checkNames={HUAWEI_CHECKS} />
+              <DedicatedCheckForm checkGroup="huawei" label="Huawei Check" accounts={huaweiAccounts} customers={huaweiCustomers} checkNames={HUAWEI_CHECKS} />
             </CardContent>
           </Card>
         </div>

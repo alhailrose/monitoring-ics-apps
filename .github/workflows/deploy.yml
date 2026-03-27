@@ -1,0 +1,131 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Build & Push images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # SSH ke monitoring-app via bastion (ProxyJump)
+      # EC2_HOST        = private IP monitoring-app (mis. 10.0.10.X)
+      # EC2_BASTION_HOST = public IP bastion (16.78.250.215)
+      - name: Copy compose & nginx to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          proxy_host: ${{ secrets.EC2_BASTION_HOST }}
+          proxy_username: ${{ secrets.EC2_USER }}
+          proxy_key: ${{ secrets.EC2_SSH_KEY }}
+          source: "infra/docker/docker-compose.prod.yml,infra/docker/nginx.prod.conf"
+          target: "/opt/monitoring-app"
+          strip_components: 2
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          proxy_host: ${{ secrets.EC2_BASTION_HOST }}
+          proxy_username: ${{ secrets.EC2_USER }}
+          proxy_key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/monitoring-app
+
+            # Write .env for this deployment
+            cat > .env << EOF
+            GITHUB_REPOSITORY=${{ github.repository }}
+            IMAGE_TAG=${{ github.sha }}
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            DEFAULT_REGION=${{ vars.DEFAULT_REGION || 'ap-southeast-3' }}
+            MAX_WORKERS=${{ vars.MAX_WORKERS || '5' }}
+            EXECUTION_TIMEOUT=${{ vars.EXECUTION_TIMEOUT || '300' }}
+            CORS_ORIGINS=${{ vars.CORS_ORIGINS || '*' }}
+            API_AUTH_ENABLED=${{ vars.API_AUTH_ENABLED || 'true' }}
+            NEXT_PUBLIC_API_URL=/api
+            EOF
+
+            # Login to GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull new images
+            docker compose -f docker-compose.prod.yml pull
+
+            # Run DB migration before restarting
+            docker run --rm \
+              --env DATABASE_URL=${{ secrets.DATABASE_URL }} \
+              ghcr.io/${{ github.repository }}/backend:${{ github.sha }} \
+              alembic upgrade head
+
+            # Restart services
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # Cleanup old images
+            docker image prune -f
+
+      - name: Smoke test
+        run: |
+          sleep 10
+          curl -f http://${{ secrets.EC2_HOST }}/health || exit 1
+          echo "Smoke test passed"

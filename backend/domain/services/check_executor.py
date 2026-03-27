@@ -215,9 +215,10 @@ def _build_creds_for_account(account, region: str | None = None) -> dict:
                 region_name=effective_region,
             )
         else:
-            base_session = boto3.Session(
-                profile_name=account.profile_name, region_name=effective_region
-            )
+            # No access key stored — fall back to boto3 default credential chain.
+            # On EC2 this picks up the Instance Profile automatically.
+            # Locally, set AWS_PROFILE or AWS_ACCESS_KEY_ID env vars.
+            base_session = boto3.Session(region_name=effective_region)
         sts = base_session.client("sts", region_name="us-east-1")
         assume_kwargs: dict = {
             "RoleArn": role_arn,

@@ -26,6 +26,7 @@ import {
   CheckListIcon,
   MonitorDotIcon,
   TaskIcon,
+  UserSettings01Icon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types/api"
@@ -38,6 +39,7 @@ const navItems = [
   { title: "History", url: "/history", icon: Clock01Icon },
   { title: "Findings", url: "/findings", icon: Alert01Icon },
   { title: "Metrics", url: "/metrics", icon: Chart01Icon },
+  { title: "Reports", url: "/reports", icon: TaskIcon },
 ]
 
 const opsItems = [
@@ -126,7 +128,34 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* Operations group ends here */}
+        {/* Settings — only visible to super_user */}
+        {user.role === 'super_user' && (
+          <>
+            <SidebarSeparator />
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase tracking-widest text-[10px]">
+                Settings
+              </SidebarGroupLabel>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname.startsWith('/settings/users')}
+                    tooltip="User Management"
+                    className={cn(
+                      pathname.startsWith('/settings/users') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                    )}
+                  >
+                    <Link href="/settings/users">
+                      <HugeiconsIcon icon={UserSettings01Icon} strokeWidth={2} />
+                      <span>Users</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroup>
+          </>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border pt-2">

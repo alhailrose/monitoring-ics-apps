@@ -4,7 +4,7 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { PaginatedTable } from '@/components/common/PaginatedTable'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { cn, formatDateFull } from '@/lib/utils'
 import type { MetricSample, MetricStatus } from '@/lib/types/api'
 
 const METRIC_STATUS_STYLES: Record<MetricStatus, string> = {
@@ -21,12 +21,6 @@ function MetricStatusBadge({ status }: { status: MetricStatus }) {
   )
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
 
 interface MetricsTableProps {
   metrics: MetricSample[]
@@ -40,7 +34,7 @@ const ALL_COLUMNS = [
     key: 'customer',
     header: 'Customer',
     render: (m: MetricSample) => (
-      <span className="text-xs text-muted-foreground">{m.customer.display_name}</span>
+      <span className="text-xs text-muted-foreground">{m.customer?.display_name}</span>
     ),
   },
   {
@@ -91,7 +85,7 @@ const ALL_COLUMNS = [
     key: 'created_at',
     header: 'Collected At',
     render: (m: MetricSample) => (
-      <span className="text-xs text-muted-foreground">{formatDate(m.created_at)}</span>
+      <span className="text-xs text-muted-foreground">{formatDateFull(m.created_at)}</span>
     ),
   },
 ]
@@ -108,7 +102,7 @@ export function MetricsTable({ metrics, total, page, pageSize }: MetricsTablePro
   }
 
   // Show Customer column only when results span multiple customers
-  const multiCustomer = new Set(metrics.map((m) => m.customer.id)).size > 1
+  const multiCustomer = new Set(metrics.map((m) => m.customer?.id).filter(Boolean)).size > 1
   const columns = multiCustomer
     ? ALL_COLUMNS
     : ALL_COLUMNS.filter((c) => c.key !== 'customer')

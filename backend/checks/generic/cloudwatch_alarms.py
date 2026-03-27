@@ -17,7 +17,7 @@ class CloudWatchAlarmChecker(BaseChecker):
     def check(self, profile, account_id):
         """Check CloudWatch alarms currently in ALARM state"""
         try:
-            session = boto3.Session(profile_name=profile)
+            session = self._get_session(profile)
             cloudwatch = session.client("cloudwatch", region_name=self.region)
 
             alarms = cloudwatch.describe_alarms(StateValue="ALARM")

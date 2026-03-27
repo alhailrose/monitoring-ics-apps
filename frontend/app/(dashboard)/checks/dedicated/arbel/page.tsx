@@ -105,7 +105,7 @@ export default async function ArbelCheckPage() {
           </CardHeader>
           <CardContent>
             <DedicatedCheckForm
-              mode="arbel"
+              checkGroup="arbel"
               label="Arbel Check"
               accounts={accounts}
               customers={arbelCustomers}

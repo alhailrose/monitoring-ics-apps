@@ -1,7 +1,7 @@
 """WebSocket terminal — spawns a PTY shell on the server and relays it to the browser.
 
 Auth: JWT passed as query param `?token=<jwt>` (browsers cannot set custom headers
-on WebSocket connections). Only `super_user` role is allowed.
+on WebSocket connections). Any authenticated user may access the terminal.
 
 Protocol:
   - Client sends raw text/bytes  → written to PTY stdin
@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 _SHELL = os.environ.get("SHELL", "/bin/bash")
 
 
-def _verify_token_super_user(token: str) -> None:
-    """Verify JWT from query param and assert super_user role."""
+def _verify_token(token: str) -> None:
+    """Verify JWT from query param — any authenticated user may access the terminal."""
     if not token:
         raise ValueError("token required")
     settings = get_settings()
@@ -47,9 +47,7 @@ def _verify_token_super_user(token: str) -> None:
             jwt_secret=settings.jwt_secret,
             jwt_expire_hours=settings.jwt_expire_hours,
         )
-        payload = auth_svc.decode_token(token)
-        if payload.role != "super_user":
-            raise ValueError("super_user role required for terminal access")
+        auth_svc.decode_token(token)
     except InvalidTokenError as exc:
         raise ValueError(str(exc)) from exc
     finally:
@@ -78,13 +76,13 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
     """Spawn a PTY shell and relay I/O over WebSocket."""
     # --- Auth before accept ---
     try:
-        _verify_token_super_user(token)
+        _verify_token(token)
     except ValueError as exc:
         await websocket.close(code=4001, reason=str(exc))
         return
 
     await websocket.accept()
-    logger.info("terminal: session opened by verified super_user")
+    logger.info("terminal: session opened by verified user")
 
     # --- Spawn shell in a PTY ---
     master_fd, slave_fd = pty.openpty()

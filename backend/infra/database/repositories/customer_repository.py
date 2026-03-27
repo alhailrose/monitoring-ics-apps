@@ -96,6 +96,11 @@ class CustomerRepository:
         config_extra: dict | None = None,
         region: str | None = None,
         alarm_names: list[str] | None = None,
+        auth_method: str = "profile",
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key_enc: str | None = None,
+        role_arn: str | None = None,
+        external_id: str | None = None,
     ) -> Account:
         account = Account(
             customer_id=customer_id,
@@ -105,6 +110,11 @@ class CustomerRepository:
             config_extra=config_extra,
             region=region,
             alarm_names=alarm_names,
+            auth_method=auth_method,
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key_enc=aws_secret_access_key_enc,
+            role_arn=role_arn,
+            external_id=external_id,
         )
         self.session.add(account)
         self.session.flush()

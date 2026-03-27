@@ -16,14 +16,14 @@ export const MOCK_CUSTOMERS: Customer[] = [
     report_mode: 'summary',
     label: null,
     accounts: [
-      { id: 'acc-1', profile_name: 'connect-prod', account_id: '620463044477', display_name: 'CONNECT Prod (Non CIS)', is_active: true, aws_auth_mode: 'sso', role_arn: null, external_id: null, config_extra: {} },
-      { id: 'acc-2', profile_name: 'cis-erha', account_id: '451916275465', display_name: 'CIS ERHA', is_active: true, aws_auth_mode: 'sso', role_arn: null, external_id: null, config_extra: {} },
-      { id: 'acc-3', profile_name: 'dermies-max', account_id: '637423567244', display_name: 'DERMIES MAX', is_active: true, aws_auth_mode: 'sso', role_arn: null, external_id: null, config_extra: {} },
-      { id: 'acc-4', profile_name: 'erha-buddy', account_id: '486250145105', display_name: 'ERHA BUDDY', is_active: true, aws_auth_mode: 'sso', role_arn: null, external_id: null, config_extra: {} },
-      { id: 'acc-5', profile_name: 'public-web', account_id: '211125667194', display_name: 'PUBLIC WEB', is_active: true, aws_auth_mode: 'sso', role_arn: null, external_id: null, config_extra: {} },
-      { id: 'acc-6', profile_name: 'dwh', account_id: '084056488725', display_name: 'DWH', is_active: true, aws_auth_mode: 'sso', role_arn: null, external_id: null, config_extra: {} },
-      { id: 'acc-7', profile_name: 'HRIS', account_id: '493314732063', display_name: 'HRIS', is_active: true, aws_auth_mode: 'sso', role_arn: null, external_id: null, config_extra: {} },
-      { id: 'acc-8', profile_name: 'sfa', account_id: '546158667544', display_name: 'SFA', is_active: true, aws_auth_mode: 'sso', role_arn: null, external_id: null, config_extra: {} },
+      { id: 'acc-1', profile_name: 'connect-prod', account_id: '620463044477', display_name: 'CONNECT Prod (Non CIS)', is_active: true, auth_method: 'profile', role_arn: null, external_id: null, aws_access_key_id: null, region: null, config_extra: {} },
+      { id: 'acc-2', profile_name: 'cis-erha', account_id: '451916275465', display_name: 'CIS ERHA', is_active: true, auth_method: 'profile', role_arn: null, external_id: null, aws_access_key_id: null, region: null, config_extra: {} },
+      { id: 'acc-3', profile_name: 'dermies-max', account_id: '637423567244', display_name: 'DERMIES MAX', is_active: true, auth_method: 'profile', role_arn: null, external_id: null, aws_access_key_id: null, region: null, config_extra: {} },
+      { id: 'acc-4', profile_name: 'erha-buddy', account_id: '486250145105', display_name: 'ERHA BUDDY', is_active: true, auth_method: 'profile', role_arn: null, external_id: null, aws_access_key_id: null, region: null, config_extra: {} },
+      { id: 'acc-5', profile_name: 'public-web', account_id: '211125667194', display_name: 'PUBLIC WEB', is_active: true, auth_method: 'profile', role_arn: null, external_id: null, aws_access_key_id: null, region: null, config_extra: {} },
+      { id: 'acc-6', profile_name: 'dwh', account_id: '084056488725', display_name: 'DWH', is_active: true, auth_method: 'profile', role_arn: null, external_id: null, aws_access_key_id: null, region: null, config_extra: {} },
+      { id: 'acc-7', profile_name: 'HRIS', account_id: '493314732063', display_name: 'HRIS', is_active: true, auth_method: 'profile', role_arn: null, external_id: null, aws_access_key_id: null, region: null, config_extra: {} },
+      { id: 'acc-8', profile_name: 'sfa', account_id: '546158667544', display_name: 'SFA', is_active: true, auth_method: 'profile', role_arn: null, external_id: null, aws_access_key_id: null, region: null, config_extra: {} },
     ],
   },
   {
@@ -36,7 +36,7 @@ export const MOCK_CUSTOMERS: Customer[] = [
     report_mode: 'summary',
     label: null,
     accounts: [
-      { id: 'acc-3', profile_name: 'nabati-prod', account_id: '345678901234', display_name: 'Nabati Production', is_active: true, aws_auth_mode: 'access_key', role_arn: null, external_id: null, config_extra: {} },
+      { id: 'acc-3', profile_name: 'nabati-prod', account_id: '345678901234', display_name: 'Nabati Production', is_active: true, auth_method: 'access_key', role_arn: null, external_id: null, aws_access_key_id: null, region: null, config_extra: {} },
     ],
   },
 ]

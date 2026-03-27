@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from backend.config.settings import get_settings
 from backend.interfaces.api.dependencies import get_customer_service, require_role
 
 router = APIRouter(prefix="/customers", tags=["customers"])
@@ -40,6 +41,11 @@ class AddAccountRequest(BaseModel):
     config_extra: dict | None = None
     region: str | None = None
     alarm_names: list[str] | None = None
+    auth_method: str = Field(default="profile", pattern="^(profile|access_key|assumed_role)$")
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    role_arn: str | None = None
+    external_id: str | None = None
 
 
 class UpdateAccountRequest(BaseModel):
@@ -48,6 +54,11 @@ class UpdateAccountRequest(BaseModel):
     config_extra: dict | None = None
     region: str | None = None
     alarm_names: list[str] | None = None
+    auth_method: str | None = Field(default=None, pattern="^(profile|access_key|assumed_role)$")
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None  # None = don't update
+    role_arn: str | None = None
+    external_id: str | None = None
 
 
 class UpsertAccountCheckConfigRequest(BaseModel):
@@ -128,6 +139,12 @@ def add_account(
             config_extra=payload.config_extra,
             region=payload.region,
             alarm_names=payload.alarm_names,
+            auth_method=payload.auth_method,
+            aws_access_key_id=payload.aws_access_key_id,
+            aws_secret_access_key=payload.aws_secret_access_key,
+            role_arn=payload.role_arn,
+            external_id=payload.external_id,
+            app_secret=get_settings().jwt_secret,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -142,7 +159,9 @@ def update_account(
     updates = payload.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-    result = service.update_account(account_id, **updates)
+    result = service.update_account(
+        account_id, app_secret=get_settings().jwt_secret, **updates
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="Account not found")
     return result
@@ -202,6 +221,74 @@ def discover_account_alarms(account_id: str, service=Depends(get_customer_servic
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to discover alarms: {exc}")
+
+
+@router.post("/accounts/{account_id}/discover-full", dependencies=[Depends(require_role("super_user"))])
+def discover_account_full(account_id: str, service=Depends(get_customer_service)):
+    """Discover AWS account ID, alarms, EC2, and RDS resources. Saves to DB."""
+    try:
+        result = service.discover_account_full(account_id)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Discovery failed: {exc}")
+
+
+@router.get("/accounts/{account_id}/discovery-snapshot")
+def get_discovery_snapshot(account_id: str, service=Depends(get_customer_service)):
+    """Return last saved discovery snapshot from DB (no AWS call)."""
+    account = service.repo.get_account(account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    snapshot = (account.config_extra or {}).get("_discovery")
+    if snapshot is None:
+        return {"snapshot": None}
+    return {
+        "snapshot": {
+            **snapshot,
+            "aws_account_id": account.account_id,
+            "alarm_names": account.alarm_names or [],
+        }
+    }
+
+
+@router.post("/accounts/{account_id}/test-connection", dependencies=[Depends(require_role("super_user"))])
+def test_account_connection(account_id: str, service=Depends(get_customer_service)):
+    """Test AWS connectivity for an account using its stored credentials."""
+    import boto3
+    from backend.domain.services.check_executor import _build_creds_for_account
+
+    account_data = service.repo.get_account(account_id)
+    if account_data is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    try:
+        creds = _build_creds_for_account(account_data)
+        if creds is None:
+            # profile auth — use profile directly
+            session = boto3.Session(profile_name=account_data.profile_name)
+        else:
+            session = boto3.Session(
+                aws_access_key_id=creds["aws_access_key_id"],
+                aws_secret_access_key=creds["aws_secret_access_key"],
+                aws_session_token=creds.get("aws_session_token"),
+            )
+        sts = session.client("sts", region_name="us-east-1")
+        identity = sts.get_caller_identity()
+        return {
+            "ok": True,
+            "account_id": identity.get("Account"),
+            "arn": identity.get("Arn"),
+            "auth_method": getattr(account_data, "auth_method", "profile"),
+            "key_id_stored": getattr(account_data, "aws_access_key_id", None),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "auth_method": getattr(account_data, "auth_method", "profile"),
+            "key_id_stored": getattr(account_data, "aws_access_key_id", None),
+        }
 
 
 @router.post("/{customer_id}/reimport")

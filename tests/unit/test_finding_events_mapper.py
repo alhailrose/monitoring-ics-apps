@@ -6,6 +6,7 @@ def test_map_guardduty_details_to_finding_events():
         "status": "success",
         "details": [
             {
+                "id": "abcd-1234",
                 "type": "Recon:EC2/PortProbeUnprotectedPort",
                 "severity": "HIGH",
                 "title": "Port probe detected",
@@ -26,7 +27,7 @@ def test_map_guardduty_details_to_finding_events():
     assert event["account_id"] == "acct-1"
     assert event["severity"] == "HIGH"
     assert event["title"] == "Port probe detected"
-    assert event["finding_key"] == "Recon:EC2/PortProbeUnprotectedPort"
+    assert event["finding_key"] == "abcd-1234"
 
 
 def test_map_cloudwatch_details_to_finding_events():
@@ -81,7 +82,7 @@ def test_map_notifications_recent_events_to_finding_events():
     assert event["check_name"] == "notifications"
     assert event["severity"] == "INFO"
     assert event["title"] == "Security update available"
-    assert event["finding_key"] == "AWS_RISK"
+    assert event["finding_key"].startswith("AWS_RISK:")
 
 
 def test_map_check_findings_returns_empty_for_unsupported_check():
@@ -129,10 +130,11 @@ def test_map_notifications_handles_malformed_nested_payloads_safely():
     )
 
     assert len(events) == 2
-    assert events[0]["finding_key"] == "notification"
+    assert events[0]["finding_key"].startswith("notification:")
     assert events[0]["title"] == "notification"
-    assert events[1]["finding_key"] == "notification"
+    assert events[1]["finding_key"].startswith("notification:")
     assert events[1]["title"] == "notification"
+    assert events[0]["finding_key"] != events[1]["finding_key"]
 
 
 def test_map_backup_job_details_to_finding_events():
@@ -169,10 +171,8 @@ def test_map_backup_job_details_to_finding_events():
         raw_result=raw,
     )
 
-    assert len(events) == 3
+    assert len(events) == 2
     assert events[0]["severity"] == "ALARM"
     assert events[0]["finding_key"] == "backup-job:FAILED:job-1"
     assert events[1]["severity"] == "ALARM"
     assert events[1]["finding_key"] == "backup-job:EXPIRED:job-2"
-    assert events[2]["severity"] == "INFO"
-    assert events[2]["finding_key"] == "backup-job:COMPLETED:job-3"
