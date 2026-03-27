@@ -9,6 +9,7 @@ services:
       EXECUTION_TIMEOUT: ${EXECUTION_TIMEOUT:-300}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       API_AUTH_ENABLED: ${API_AUTH_ENABLED:-true}
+      API_KEYS: ${API_KEYS}
       JWT_SECRET: ${JWT_SECRET}
     volumes:
       # Mount ~/.aws dari EC2 host — config + SSO cache
