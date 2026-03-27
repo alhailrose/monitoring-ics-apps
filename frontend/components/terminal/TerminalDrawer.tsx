@@ -56,7 +56,7 @@ function LoginHint() {
           ) : (
             <div className="space-y-1.5">
               {sessions.map(s => {
-                const cmd = `aws sso login --profile ${s} --use-device-code`
+                const cmd = `aws sso login --sso-session ${s} --use-device-code`
                 return (
                   <div key={s} className="flex items-center gap-2 group">
                     <code className="flex-1 font-mono text-[11px] text-emerald-300 bg-emerald-950/30 border border-emerald-900/40 px-2 py-1 rounded truncate">

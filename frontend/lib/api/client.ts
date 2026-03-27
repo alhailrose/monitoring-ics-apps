@@ -26,7 +26,8 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
     ...((rest.headers as Record<string, string>) ?? {}),
   }
 
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${path}`, {
+  const base = process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL
+  const res = await fetch(`${base}${path}`, {
     ...rest,
     headers,
   })
@@ -48,7 +49,8 @@ export async function apiFetchText(path: string, options: FetchOptions = {}): Pr
     ...((rest.headers as Record<string, string>) ?? {}),
   }
 
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${path}`, {
+  const base = process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL
+  const res = await fetch(`${base}${path}`, {
     ...rest,
     headers,
   })

@@ -13,14 +13,24 @@ export default async function LoginPage() {
       <div className="flex min-h-svh flex-col lg:grid lg:grid-cols-[1.1fr_0.9fr]">
         <LoginHero />
 
-        <section className="relative flex items-center justify-center bg-gradient-to-b from-background via-background to-background/70 px-6 py-10 md:px-10 lg:min-h-svh">
-          <div className="absolute inset-0 bg-white/85 backdrop-blur-sm lg:bg-transparent" />
-          <div className="relative z-10 w-full max-w-md space-y-8">
-            <div className="rounded-2xl border border-border/40 bg-card/95 p-6 shadow-2xl shadow-black/5">
+        <section className="flex min-h-svh flex-col items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-6 py-10 md:px-10 lg:bg-background lg:bg-none">
+          {/* Mobile-only branding header */}
+          <div className="mb-6 flex w-full max-w-md items-center gap-3 lg:hidden">
+            <div className="rounded-lg bg-white px-2.5 py-1.5 shadow">
+              <img src="/brand/ics-logo.png" alt="ICS" className="h-7 w-auto" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-white/60">ICS Monitoring Hub</p>
+              <p className="text-sm font-semibold text-white">Infrastructure Command Suite</p>
+            </div>
+          </div>
+
+          <div className="w-full max-w-md space-y-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur lg:border-border/40 lg:bg-card/95 lg:shadow-black/5">
               <LoginForm />
             </div>
-            <div className="rounded-xl border border-dashed border-border/70 bg-card/70 px-4 py-3 text-xs text-muted-foreground">
-              <p className="mb-1 font-semibold text-foreground">Butuh akses tambahan?</p>
+            <div className="rounded-xl border border-dashed border-white/20 bg-white/5 px-4 py-3 text-xs text-white/50 backdrop-blur lg:border-border/70 lg:bg-card/70 lg:text-muted-foreground">
+              <p className="mb-1 font-semibold text-white/80 lg:text-foreground">Butuh akses tambahan?</p>
               <p>Hubungi ICS Operations Admin untuk aktivasi ruang kendali baru atau reset MFA agar tetap sinkron.</p>
             </div>
           </div>
