@@ -201,7 +201,7 @@ export function AccountSheet({ customerId, account, open, onClose }: AccountShee
     formData.set('alarm_names', alarmNames.join('\n'))
     formData.set('auth_method', authMethod)
     startTransition(async () => {
-      const res = isEdit
+      const res: { error?: string; id?: string } = isEdit
         ? await updateAccount(customerId, account.id, formData)
         : await addAccount(customerId, formData)
       if (res.error) {

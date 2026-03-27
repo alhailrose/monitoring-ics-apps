@@ -37,6 +37,7 @@ describe('AccountRow', () => {
         role="user"
         onEdit={noop}
         onDelete={noop}
+        onDetails={noop}
       />,
     )
     expect(screen.getByText('Production')).toBeInTheDocument()
@@ -51,6 +52,7 @@ describe('AccountRow', () => {
         role="user"
         onEdit={noop}
         onDelete={noop}
+        onDetails={noop}
       />,
     )
     expect(screen.getByText('sso')).toBeInTheDocument()
@@ -64,6 +66,7 @@ describe('AccountRow', () => {
         role="user"
         onEdit={noop}
         onDelete={noop}
+        onDetails={noop}
       />,
     )
     // No dropdown trigger button for non-super_user
@@ -78,6 +81,7 @@ describe('AccountRow', () => {
         role="super_user"
         onEdit={noop}
         onDelete={noop}
+        onDetails={noop}
       />,
     )
     expect(screen.getByRole('button')).toBeInTheDocument()
@@ -92,6 +96,7 @@ describe('AccountRow', () => {
         role="user"
         onEdit={noop}
         onDelete={noop}
+        onDetails={noop}
       />,
     )
     expect(container.firstChild).toHaveClass('opacity-45')
@@ -106,6 +111,7 @@ describe('AccountRow', () => {
         role="user"
         onEdit={noop}
         onDelete={noop}
+        onDetails={noop}
       />,
     )
     expect(screen.getByText('inactive')).toBeInTheDocument()
@@ -119,6 +125,7 @@ describe('AccountRow', () => {
         role="user"
         onEdit={noop}
         onDelete={noop}
+        onDetails={noop}
       />,
     )
     // SessionStatusBadge renders for 'ok' status
@@ -134,6 +141,7 @@ describe('AccountRow', () => {
         role="user"
         onEdit={noop}
         onDelete={noop}
+        onDetails={noop}
       />,
     )
     // Skeleton renders an element with animate-pulse
