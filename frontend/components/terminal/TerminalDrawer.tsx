@@ -166,8 +166,8 @@ export function TerminalDrawer() {
     fitAddonRef.current = fitAddon
     hasConnectedOnce.current = true
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1'
-    const wsBase = apiUrl.replace(/^http/, 'ws').replace(/\/api\/v1\/?$/, '')
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsBase = `${protocol}//${window.location.host}`
     const ws = new WebSocket(`${wsBase}/api/v1/terminal?token=${token}`)
     ws.binaryType = 'arraybuffer'
     wsRef.current = ws
