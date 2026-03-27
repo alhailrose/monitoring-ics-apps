@@ -29,3 +29,17 @@ def list_sso_sessions():
             if section.startswith("sso-session "):
                 sessions.append(section.removeprefix("sso-session ").strip())
     return {"sso_sessions": sorted(sessions)}
+
+
+@router.get("/login-session-profiles")
+def list_login_session_profiles():
+    """Return profile names that use login_session (IAM Identity Center) auth."""
+    profiles: list[str] = []
+    if AWS_CONFIG_PATH.exists():
+        parser = ConfigParser()
+        parser.read(str(AWS_CONFIG_PATH))
+        for section in parser.sections():
+            if parser.has_option(section, "login_session"):
+                name = section.removeprefix("profile ").strip()
+                profiles.append(name)
+    return {"login_session_profiles": sorted(profiles)}

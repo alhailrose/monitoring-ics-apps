@@ -12,24 +12,55 @@ import { apiFetch } from '@/lib/api/client'
 import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 
+function CopyableCommand({ cmd, color = 'emerald' }: { cmd: string; color?: 'emerald' | 'violet' }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    navigator.clipboard.writeText(cmd)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  const colorClass = color === 'violet'
+    ? 'text-violet-300 bg-violet-950/30 border-violet-900/40'
+    : 'text-emerald-300 bg-emerald-950/30 border-emerald-900/40'
+  return (
+    <div className="flex items-center gap-2 group">
+      <code className={`flex-1 font-mono text-[11px] border px-2 py-1 rounded truncate ${colorClass}`}>
+        {cmd}
+      </code>
+      <button
+        onClick={copy}
+        className="shrink-0 text-slate-500 hover:text-slate-200 transition-colors opacity-0 group-hover:opacity-100 p-0.5"
+        aria-label="Copy command"
+      >
+        {copied
+          ? <span className={`text-[10px] font-bold ${color === 'violet' ? 'text-violet-400' : 'text-emerald-400'}`}>✓</span>
+          : <HugeiconsIcon icon={Copy01Icon} strokeWidth={2} className="size-3.5" />
+        }
+      </button>
+    </div>
+  )
+}
+
 function LoginHint() {
   const [open, setOpen] = useState(false)
-  const [sessions, setSessions] = useState<string[]>([])
-  const [copied, setCopied] = useState<string | null>(null)
+  const [ssoSessions, setSsoSessions] = useState<string[]>([])
+  const [loginProfiles, setLoginProfiles] = useState<string[]>([])
 
   useEffect(() => {
     fetch('/api/terminal-token')
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then(({ token }) => apiFetch<{ sso_sessions: string[] }>('/profiles/sso-sessions', { token }))
-      .then(d => setSessions(d.sso_sessions))
+      .then(({ token }) => Promise.all([
+        apiFetch<{ sso_sessions: string[] }>('/profiles/sso-sessions', { token }),
+        apiFetch<{ login_session_profiles: string[] }>('/profiles/login-session-profiles', { token }),
+      ]))
+      .then(([sso, login]) => {
+        setSsoSessions(sso.sso_sessions)
+        setLoginProfiles(login.login_session_profiles)
+      })
       .catch(() => {})
   }, [])
 
-  const copy = (text: string) => {
-    navigator.clipboard.writeText(text)
-    setCopied(text)
-    setTimeout(() => setCopied(null), 1500)
-  }
+  const hasAny = ssoSessions.length > 0 || loginProfiles.length > 0
 
   return (
     <div className="border-b border-border/30 bg-[#0d1117] text-xs select-none">
@@ -38,43 +69,39 @@ function LoginHint() {
         className="flex items-center gap-2 w-full px-3 py-1.5 text-slate-300 hover:text-white transition-colors"
       >
         <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5 shrink-0 text-sky-400" />
-        <span className="font-semibold tracking-wide">AWS SSO Login</span>
+        <span className="font-semibold tracking-wide">AWS Login</span>
         <span className="ml-auto text-slate-500 text-[10px]">{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
-        <div className="px-3 pb-3 space-y-2">
-          <p className="text-slate-400 leading-relaxed">
-            Gunakan{' '}
-            <code className="text-sky-300 bg-sky-950/50 px-1 py-0.5 rounded">--use-device-code</code>
-            {' '}— terminal akan tampilkan URL + kode, buka di browser lalu masukkan kodenya.
-          </p>
-          {sessions.length === 0 ? (
+        <div className="px-3 pb-3 space-y-3">
+          {!hasAny && (
             <p className="text-amber-400/80 italic">
-              ~/.aws/config belum ada atau tidak ada sso-session. Buat dulu via terminal di bawah.
+              ~/.aws/config belum ada atau tidak ada sso-session / login_session profile.
             </p>
-          ) : (
+          )}
+
+          {ssoSessions.length > 0 && (
             <div className="space-y-1.5">
-              {sessions.map(s => {
-                const cmd = `aws sso login --sso-session ${s} --use-device-code`
-                return (
-                  <div key={s} className="flex items-center gap-2 group">
-                    <code className="flex-1 font-mono text-[11px] text-emerald-300 bg-emerald-950/30 border border-emerald-900/40 px-2 py-1 rounded truncate">
-                      {cmd}
-                    </code>
-                    <button
-                      onClick={() => copy(cmd)}
-                      className="shrink-0 text-slate-500 hover:text-slate-200 transition-colors opacity-0 group-hover:opacity-100 p-0.5"
-                      aria-label="Copy command"
-                    >
-                      {copied === cmd
-                        ? <span className="text-emerald-400 text-[10px] font-bold">✓</span>
-                        : <HugeiconsIcon icon={Copy01Icon} strokeWidth={2} className="size-3.5" />
-                      }
-                    </button>
-                  </div>
-                )
-              })}
+              <p className="text-slate-400">
+                <span className="text-emerald-400 font-semibold">SSO session</span>
+                {' '}— salin perintah, jalankan di terminal, buka URL di browser lalu masukkan kodenya.
+              </p>
+              {ssoSessions.map(s => (
+                <CopyableCommand key={s} cmd={`aws sso login --sso-session ${s} --use-device-code`} color="emerald" />
+              ))}
+            </div>
+          )}
+
+          {loginProfiles.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-slate-400">
+                <span className="text-violet-400 font-semibold">login_session profile</span>
+                {' '}— jalankan di terminal, buka URL di browser, lalu paste kode balik ke terminal.
+              </p>
+              {loginProfiles.map(p => (
+                <CopyableCommand key={p} cmd={`aws login --remote --profile ${p}`} color="violet" />
+              ))}
             </div>
           )}
         </div>
