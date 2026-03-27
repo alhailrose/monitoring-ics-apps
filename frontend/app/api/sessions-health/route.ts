@@ -8,7 +8,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+  const apiUrl = process.env.BACKEND_URL ?? 'http://localhost:8000/api/v1'
   const res = await fetch(`${apiUrl}/sessions/health`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
