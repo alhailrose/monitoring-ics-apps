@@ -75,7 +75,7 @@ def create_app() -> FastAPI:
     # Auth routes are public — no api_dependencies applied
     application.include_router(auth_router, prefix="/api/v1")
 
-    api_dependencies = [Depends(deps.require_api_key)]
+    api_dependencies = [Depends(deps.require_auth)]
     application.include_router(
         customers_router,
         prefix="/api/v1",
