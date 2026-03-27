@@ -38,7 +38,7 @@ export function LoginHero() {
             </p>
           </div>
         </div>
-        <p className="text-[11px] text-white/60">Made by Bagus Ganteng 😎</p>
+        <p className="text-center text-[11px] text-white/60 lg:text-left">Made by Bagus Ganteng 😎</p>
       </div>
     </aside>
   )
