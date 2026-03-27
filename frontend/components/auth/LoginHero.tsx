@@ -2,7 +2,7 @@ import Image from 'next/image'
 
 export function LoginHero() {
   return (
-    <aside className="relative flex min-h-svh flex-col overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900">
+    <aside className="relative flex flex-col overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 lg:min-h-svh">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -left-32 top-24 h-96 w-96 rounded-full bg-indigo-500/30 blur-[160px]" />
         <div className="absolute -right-16 bottom-16 h-80 w-80 rounded-full bg-sky-400/30 blur-[140px]" />

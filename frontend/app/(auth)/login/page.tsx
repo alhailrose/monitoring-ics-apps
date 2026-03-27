@@ -13,7 +13,7 @@ export default async function LoginPage() {
       <div className="flex min-h-svh flex-col lg:grid lg:grid-cols-[1.1fr_0.9fr]">
         <LoginHero />
 
-        <section className="relative flex min-h-svh items-center justify-center bg-gradient-to-b from-background via-background to-background/70 px-6 py-10 md:px-10">
+        <section className="relative flex items-center justify-center bg-gradient-to-b from-background via-background to-background/70 px-6 py-10 md:px-10 lg:min-h-svh">
           <div className="absolute inset-0 bg-white/85 backdrop-blur-sm lg:bg-transparent" />
           <div className="relative z-10 w-full max-w-md space-y-8">
             <div className="rounded-2xl border border-border/40 bg-card/95 p-6 shadow-2xl shadow-black/5">

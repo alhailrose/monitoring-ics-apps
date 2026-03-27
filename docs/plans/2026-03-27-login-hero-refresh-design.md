@@ -29,4 +29,4 @@
 - No functional auth changes; existing tests remain valid after layout updates.
 
 ## Verification Log
-- 2026-03-27: Launched `npm run dev` (Next.js auto-switched to port 3001) to confirm the refreshed hero page renders without build/runtime errors. Full visual check will be completed in-browser when a GUI is available.
+- 2026-03-27 15:10 UTC: Launched `npm run dev` (Next.js auto-switched to port 3001), fetched `/login` via `curl` to confirm the hero markup renders ahead of the form/support card, and inspected the rendered HTML/CSS order to ensure the hero collapses to content height on mobile while preserving the split layout on desktop. No runtime errors observed.
