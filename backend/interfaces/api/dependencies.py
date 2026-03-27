@@ -100,8 +100,19 @@ def require_auth(
     """
     settings = get_settings()
 
+    # -- Auth disabled bypass (matches require_api_key behaviour) --
+    if not settings.api_auth_enabled:
+        return TokenPayload(user_id="anonymous", username="anonymous", role="super_user")
+
     # -- JWT path --
     if token:
+        # First check if it's a valid API key (before trying JWT decode)
+        if settings.api_auth_enabled and token in settings.api_keys:
+            logger.warning(
+                "API key auth is deprecated — migrate to JWT via POST /api/v1/auth/login"
+            )
+            return TokenPayload(user_id="api-key", username="api-key", role="super_user")
+
         session = _get_session_factory()()
         try:
             repo = UserRepository(session)
@@ -121,13 +132,9 @@ def require_auth(
         finally:
             session.close()
 
-    # -- Legacy API key fallback --
+    # -- Legacy API key fallback (X-API-Key header) --
     if settings.api_auth_enabled:
         provided_key = request.headers.get(settings.api_key_header)
-        if not provided_key:
-            auth_header = request.headers.get("authorization", "")
-            if auth_header.lower().startswith("bearer "):
-                provided_key = auth_header.split(" ", 1)[1].strip()
         if provided_key and provided_key in settings.api_keys:
             logger.warning(
                 "API key auth is deprecated — migrate to JWT via POST /api/v1/auth/login"
