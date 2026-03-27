@@ -158,7 +158,7 @@ export function ChecksTabs({ customers }: ChecksTabsProps) {
                 <Badge className="text-[10px] bg-primary/10 text-primary border-primary/20">Dedicated</Badge>
               </div>
               <CardDescription className="text-xs">
-                Purpose-built for Arya Noble's AWS environment.
+                Purpose-built for Arya Noble&apos;s AWS environment.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

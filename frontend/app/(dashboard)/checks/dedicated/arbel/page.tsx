@@ -76,7 +76,7 @@ export default async function ArbelCheckPage() {
                 </Badge>
               </div>
               <CardDescription className="text-xs">
-                Arbel checks are purpose-built for Arya Noble's AWS environment.
+                Arbel checks are purpose-built for Arya Noble&apos;s AWS environment.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
