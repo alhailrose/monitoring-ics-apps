@@ -88,6 +88,10 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
     master_fd, slave_fd = pty.openpty()
     _resize_pty(master_fd, rows=24, cols=80)  # initial size
 
+    env = os.environ.copy()
+    env.setdefault("TERM", "xterm-256color")
+    env.setdefault("COLORTERM", "truecolor")
+
     proc = subprocess.Popen(
         [_SHELL, "-l"],
         stdin=slave_fd,
@@ -95,6 +99,7 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
         stderr=slave_fd,
         close_fds=True,
         preexec_fn=os.setsid,
+        env=env,
     )
     os.close(slave_fd)  # parent doesn't need the slave end
 
