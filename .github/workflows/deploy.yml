@@ -90,6 +90,14 @@ jobs:
             UserKnownHostsFile /dev/null
           EOF
 
+      # Test bastion then EC2 connectivity
+      - name: Test SSH connectivity
+        run: |
+          echo "=== Test bastion ==="
+          ssh -v bastion "echo bastion_ok" 2>&1 | grep -E "debug1.*Connecting|debug1.*connect|Authenticated|publickey|Permission|identity" | head -15
+          echo "=== Test ec2target ==="
+          ssh -v ec2target "echo ec2_ok" 2>&1 | grep -E "debug1.*Connecting|debug1.*connect|Authenticated|publickey|Permission|identity" | head -15
+
       # Copy compose & nginx to EC2
       - name: Copy compose & nginx to EC2
         run: |
