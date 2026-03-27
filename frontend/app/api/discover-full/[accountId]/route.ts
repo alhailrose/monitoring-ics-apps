@@ -10,7 +10,7 @@ export async function POST(
   const token = cookieStore.get('access_token')?.value
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const apiUrl = process.env.API_URL ?? 'http://localhost:8000/api/v1'
+  const apiUrl = process.env.BACKEND_URL ?? 'http://localhost:8000/api/v1'
   try {
     const res = await fetch(`${apiUrl}/customers/accounts/${accountId}/discover-full`, {
       method: 'POST',

@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const query = req.nextUrl.searchParams.toString()
-  const apiUrl = process.env.API_URL ?? 'http://localhost:8000/api/v1'
+  const apiUrl = process.env.BACKEND_URL ?? 'http://localhost:8000/api/v1'
   const target = `${apiUrl}/metrics/workload-monthly-report/csv${query ? `?${query}` : ''}`
 
   try {
