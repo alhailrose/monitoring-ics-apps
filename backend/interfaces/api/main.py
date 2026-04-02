@@ -21,6 +21,7 @@ from backend.interfaces.api.routes.profiles import router as profiles_router
 from backend.interfaces.api.routes.sessions import router as sessions_router
 from backend.interfaces.api.routes.terminal import router as terminal_router
 from backend.interfaces.api.routes.users import router as users_router
+from backend.interfaces.api.routes.settings import router as settings_router
 from backend.config.settings import get_settings
 
 
@@ -118,6 +119,11 @@ def create_app() -> FastAPI:
     )
     application.include_router(
         users_router,
+        prefix="/api/v1",
+        dependencies=api_dependencies,
+    )
+    application.include_router(
+        settings_router,
         prefix="/api/v1",
         dependencies=api_dependencies,
     )

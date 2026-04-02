@@ -28,6 +28,7 @@ import {
   TaskIcon,
   UserSettings01Icon,
   Mail01Icon,
+  Terminal01Icon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types/api"
@@ -165,6 +166,21 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
                     <Link href="/settings/invites">
                       <HugeiconsIcon icon={Mail01Icon} strokeWidth={2} />
                       <span>Invites</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname.startsWith('/settings/aws-config')}
+                    tooltip="AWS Config Template"
+                    className={cn(
+                      pathname.startsWith('/settings/aws-config') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                    )}
+                  >
+                    <Link href="/settings/aws-config">
+                      <HugeiconsIcon icon={Terminal01Icon} strokeWidth={2} />
+                      <span>AWS Config</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
