@@ -1,7 +1,7 @@
 'use client'
 // Client component — xterm.js requires browser APIs
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -13,11 +13,109 @@ import {
 } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { RefreshIcon, Settings01Icon } from '@hugeicons/core-free-icons'
+import { RefreshIcon, Settings01Icon, Copy01Icon, CheckmarkCircle01Icon } from '@hugeicons/core-free-icons'
 import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 
 type Status = 'connecting' | 'connected' | 'disconnected'
+
+// ─── SSO login overlay ────────────────────────────────────────────────────────
+
+interface SsoLoginInfo {
+  url: string
+  code: string
+}
+
+// Strip ANSI escape codes from terminal output
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '')
+}
+
+function SsoOverlay({
+  info,
+  onDismiss,
+}: {
+  info: SsoLoginInfo
+  onDismiss: () => void
+}) {
+  const [copiedUrl, setCopiedUrl] = useState(false)
+  const [copiedCode, setCopiedCode] = useState(false)
+
+  const copy = async (text: string, which: 'url' | 'code') => {
+    await navigator.clipboard.writeText(text)
+    if (which === 'url') {
+      setCopiedUrl(true)
+      setTimeout(() => setCopiedUrl(false), 2000)
+    } else {
+      setCopiedCode(true)
+      setTimeout(() => setCopiedCode(false), 2000)
+    }
+  }
+
+  return (
+    <div className="absolute bottom-4 right-4 z-50 w-80 rounded-lg border border-yellow-500/30 bg-[#1a1a0a] shadow-xl p-4 space-y-3">
+      <div className="flex items-start justify-between">
+        <p className="text-xs font-semibold text-yellow-400">AWS SSO Login</p>
+        <button onClick={onDismiss} className="text-muted-foreground hover:text-foreground text-xs leading-none">✕</button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Buka URL di browser, lalu masukkan kode verifikasi:
+      </p>
+
+      {/* URL */}
+      <div className="space-y-1">
+        <p className="text-[10px] text-muted-foreground uppercase tracking-widest">URL</p>
+        <div className="flex items-center gap-2">
+          <a
+            href={info.url}
+            target="_blank"
+            rel="noreferrer"
+            className="flex-1 text-xs text-blue-400 underline truncate hover:text-blue-300"
+          >
+            {info.url}
+          </a>
+          <button
+            onClick={() => copy(info.url, 'url')}
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+            title="Copy URL"
+          >
+            <HugeiconsIcon
+              icon={copiedUrl ? CheckmarkCircle01Icon : Copy01Icon}
+              strokeWidth={2}
+              className={`size-3.5 ${copiedUrl ? 'text-green-400' : ''}`}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* Code */}
+      <div className="space-y-1">
+        <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Kode Verifikasi</p>
+        <div className="flex items-center gap-2">
+          <span className="flex-1 font-mono text-lg font-bold tracking-[0.2em] text-yellow-300">
+            {info.code}
+          </span>
+          <button
+            onClick={() => copy(info.code, 'code')}
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+            title="Copy kode"
+          >
+            <HugeiconsIcon
+              icon={copiedCode ? CheckmarkCircle01Icon : Copy01Icon}
+              strokeWidth={2}
+              className={`size-3.5 ${copiedCode ? 'text-green-400' : ''}`}
+            />
+          </button>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground">Kode berlaku ±5 menit</p>
+    </div>
+  )
+}
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: Status }) {
   if (status === 'connected') {
@@ -40,6 +138,8 @@ function StatusBadge({ status }: { status: Status }) {
     </Badge>
   )
 }
+
+// ─── AWS Config dialog ────────────────────────────────────────────────────────
 
 function AwsConfigDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [content, setContent] = useState('')
@@ -90,7 +190,7 @@ function AwsConfigDialog({ open, onClose }: { open: boolean; onClose: () => void
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">
             Edit konfigurasi AWS milikmu. Setelah disimpan, jalankan{' '}
-            <code className="bg-muted px-1 rounded">aws login --remote --profile &lt;profile&gt;</code>{' '}
+            <code className="bg-muted px-1 rounded">aws sso login --profile &lt;profile&gt;</code>{' '}
             di terminal untuk login SSO.
           </p>
 
@@ -120,18 +220,44 @@ function AwsConfigDialog({ open, onClose }: { open: boolean; onClose: () => void
   )
 }
 
+// ─── Main terminal panel ──────────────────────────────────────────────────────
+
+// Patterns to detect AWS SSO device auth output
+const SSO_URL_RE = /https:\/\/device\.sso\.[a-z0-9-]+\.amazonaws\.com\/[^\s\r\n]*/
+const SSO_CODE_RE = /[A-Z]{4}-[A-Z]{4}/
+
 export function TerminalPanel() {
   const [status, setStatus] = useState<Status>('connecting')
   const [configOpen, setConfigOpen] = useState(false)
+  const [ssoInfo, setSsoInfo] = useState<SsoLoginInfo | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  // Buffer to accumulate terminal output for SSO detection
+  const outputBufRef = useRef('')
+
+  const detectSso = useCallback((chunk: string) => {
+    outputBufRef.current += chunk
+    // Keep last 2KB to avoid unbounded growth
+    if (outputBufRef.current.length > 2048) {
+      outputBufRef.current = outputBufRef.current.slice(-2048)
+    }
+    const clean = stripAnsi(outputBufRef.current)
+    const urlMatch = clean.match(SSO_URL_RE)
+    const codeMatch = clean.match(SSO_CODE_RE)
+    if (urlMatch && codeMatch) {
+      setSsoInfo({ url: urlMatch[0], code: codeMatch[0] })
+      // Clear buffer so we don't re-trigger
+      outputBufRef.current = ''
+    }
+  }, [])
 
   const connect = async () => {
     setStatus('connecting')
+    setSsoInfo(null)
+    outputBufRef.current = ''
 
-    // Get token from server-side route (httpOnly cookie → token)
     const res = await fetch('/api/terminal-token')
     if (!res.ok) {
       setStatus('disconnected')
@@ -139,12 +265,10 @@ export function TerminalPanel() {
     }
     const { token } = await res.json()
 
-    // Dynamically import xterm to avoid SSR issues
     const { Terminal } = await import('@xterm/xterm')
     const { FitAddon } = await import('@xterm/addon-fit')
     const { WebLinksAddon } = await import('@xterm/addon-web-links')
 
-    // Dispose existing terminal
     if (termRef.current) {
       termRef.current.dispose()
       termRef.current = null
@@ -157,6 +281,7 @@ export function TerminalPanel() {
     const term = new Terminal({
       fontSize: 13,
       cursorBlink: true,
+      copyOnSelect: true,           // auto-copy on mouse select
       theme: { background: '#0a0a0a' },
     })
     const fitAddon = new FitAddon()
@@ -173,7 +298,6 @@ export function TerminalPanel() {
     termRef.current = term
     fitAddonRef.current = fitAddon
 
-    // Build WebSocket URL from NEXT_PUBLIC_API_URL
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1'
     const wsUrl = apiUrl
       .replace(/^http/, 'ws')
@@ -186,9 +310,12 @@ export function TerminalPanel() {
 
     ws.onmessage = (e) => {
       if (e.data instanceof ArrayBuffer) {
-        term.write(new Uint8Array(e.data))
+        const bytes = new Uint8Array(e.data)
+        term.write(bytes)
+        detectSso(new TextDecoder().decode(bytes))
       } else {
         term.write(e.data as string)
+        detectSso(e.data as string)
       }
     }
 
@@ -231,7 +358,7 @@ export function TerminalPanel() {
   }, [])
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex flex-col h-full">
       {/* Top bar */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/50 bg-muted/20 shrink-0">
         <span className="text-xs font-mono text-muted-foreground">bash — server</span>
@@ -266,6 +393,11 @@ export function TerminalPanel() {
         ref={containerRef}
         className="flex-1 bg-[#0a0a0a] overflow-hidden"
       />
+
+      {/* SSO login overlay */}
+      {ssoInfo && (
+        <SsoOverlay info={ssoInfo} onDismiss={() => setSsoInfo(null)} />
+      )}
 
       <AwsConfigDialog open={configOpen} onClose={() => setConfigOpen(false)} />
     </div>
