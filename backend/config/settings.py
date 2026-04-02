@@ -51,6 +51,7 @@ class Settings:
     smtp_from: str = ""
     app_base_url: str = "http://localhost:3000"
     invite_expire_hours: int = 72
+    alert_forwarder_url: str = ""
 
 
 @lru_cache(maxsize=1)
@@ -95,4 +96,5 @@ def get_settings() -> Settings:
         smtp_from=os.getenv("SMTP_FROM", ""),
         app_base_url=os.getenv("APP_BASE_URL", "http://localhost:3000"),
         invite_expire_hours=int(os.getenv("INVITE_EXPIRE_HOURS", "72")),
+        alert_forwarder_url=os.getenv("ALERT_FORWARDER_URL", ""),
     )

@@ -16,6 +16,7 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM}
       APP_BASE_URL: ${APP_BASE_URL:-https://msmonitoring.bagusganteng.app}
+      ALERT_FORWARDER_URL: ${ALERT_FORWARDER_URL:-}
     volumes:
       # Mount ~/.aws dari EC2 host — config + SSO cache
       # Jalankan `aws sso login --profile <sso-session>` di terminal jika token expired

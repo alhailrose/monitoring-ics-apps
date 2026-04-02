@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { NavUser } from "@/components/nav-user"
+import { useAlarms } from "@/components/providers/AlarmContext"
 import {
   Sidebar,
   SidebarContent,
@@ -29,6 +30,7 @@ import {
   UserSettings01Icon,
   Mail01Icon,
   Terminal01Icon,
+  AlarmClockIcon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types/api"
@@ -55,6 +57,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 
 export function AppSidebar({ user, ...props }: AppSidebarProps) {
   const pathname = usePathname()
+  const { count: alarmCount } = useAlarms()
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -127,6 +130,29 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
                 </SidebarMenuItem>
               )
             })}
+            {/* Alarms — always visible, badge when active */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname.startsWith('/alarms')}
+                tooltip="Alarms"
+                className={cn(
+                  pathname.startsWith('/alarms') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                )}
+              >
+                <Link href="/alarms" className="flex items-center justify-between w-full">
+                  <span className="flex items-center gap-2">
+                    <HugeiconsIcon icon={AlarmClockIcon} strokeWidth={2} />
+                    <span>Alarms</span>
+                  </span>
+                  {alarmCount > 0 && (
+                    <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                      {alarmCount > 99 ? '99+' : alarmCount}
+                    </span>
+                  )}
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
 
