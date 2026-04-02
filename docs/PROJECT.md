@@ -19,7 +19,7 @@ Keduanya menjalankan check yang sama dari `backend/checks/` sebagai lokasi kanon
 - Endpoint dashboard summary tersedia: `GET /api/v1/dashboard/summary`.
 - Runtime web aktif tetap di `web/`; `apps/web/` masih scaffold migrasi bertahap.
 - Deploy single server saat ini menggunakan `postgres + api + nginx` (tanpa worker/redis terpisah).
-- Rilis dipisah per target dengan workflow gate `deploy-manual` + checklist bukti di `docs/operations/release-checklist.md`.
+- Rilis dipisah per target dengan workflow `deploy-backend`/`deploy-frontend` + checklist bukti di `docs/operations/release-checklist.md`.
 
 ---
 

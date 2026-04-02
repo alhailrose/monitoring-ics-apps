@@ -43,6 +43,14 @@ class Settings:
     api_key_header: str = "X-API-Key"
     jwt_secret: str = "change-me-in-production"
     jwt_expire_hours: int = 8
+    google_client_id: str = ""
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    app_base_url: str = "http://localhost:3000"
+    invite_expire_hours: int = 72
 
 
 @lru_cache(maxsize=1)
@@ -79,4 +87,12 @@ def get_settings() -> Settings:
         api_key_header=os.getenv("API_KEY_HEADER", "X-API-Key"),
         jwt_secret=os.getenv("JWT_SECRET", "change-me-in-production"),
         jwt_expire_hours=int(os.getenv("JWT_EXPIRE_HOURS", "8")),
+        google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
+        smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
+        smtp_port=int(os.getenv("SMTP_PORT", "587")),
+        smtp_user=os.getenv("SMTP_USER", ""),
+        smtp_password=os.getenv("SMTP_PASSWORD", ""),
+        smtp_from=os.getenv("SMTP_FROM", ""),
+        app_base_url=os.getenv("APP_BASE_URL", "http://localhost:3000"),
+        invite_expire_hours=int(os.getenv("INVITE_EXPIRE_HOURS", "72")),
     )

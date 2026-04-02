@@ -5,6 +5,13 @@ set -e
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg unzip
 
+# ── Swap 2GB ──────────────────────────────────────────────────────────────────
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
 # ── Docker ────────────────────────────────────────────────────────────────────
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg

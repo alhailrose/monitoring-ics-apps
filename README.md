@@ -18,10 +18,13 @@ CLI terpusat untuk memantau kesehatan, keamanan, dan biaya AWS (GuardDuty, Cloud
 
 - Incremental app scaffold tersedia di `apps/web`, `apps/api`, `apps/tui` (kompatibilitas, non-breaking).
 - Frontend tetap Vite di folder `web/` selama masa transisi.
-- CI dipisah per target deployment:
-  - API: `.github/workflows/ci-api.yml`
-  - TUI: `.github/workflows/ci-tui.yml`
-- Kebijakan artifact frontend: `web/node_modules` dan `web/dist` tidak lagi disimpan di git; artifact build web dipublish oleh CI Web.
+- CI dipisah per target deployable:
+  - Backend: `.github/workflows/ci-backend.yml`
+  - Frontend: `.github/workflows/ci-frontend.yml`
+- CD dipisah per target deployable:
+  - Backend: `.github/workflows/deploy-backend.yml`
+  - Frontend: `.github/workflows/deploy-frontend.yml`
+- Kebijakan artifact frontend: `web/node_modules` dan `web/dist` tidak lagi disimpan di git; artifact build web dipublish oleh CI Frontend.
 
 ## Dual Interface Platform (TUI + API/Web)
 

@@ -27,6 +27,7 @@ import {
   MonitorDotIcon,
   TaskIcon,
   UserSettings01Icon,
+  Mail01Icon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types/api"
@@ -149,6 +150,21 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
                     <Link href="/settings/users">
                       <HugeiconsIcon icon={UserSettings01Icon} strokeWidth={2} />
                       <span>Users</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname.startsWith('/settings/invites')}
+                    tooltip="Undangan"
+                    className={cn(
+                      pathname.startsWith('/settings/invites') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                    )}
+                  >
+                    <Link href="/settings/invites">
+                      <HugeiconsIcon icon={Mail01Icon} strokeWidth={2} />
+                      <span>Invites</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

@@ -39,18 +39,28 @@ class User(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    username: Mapped[str] = mapped_column(
-        String(128), unique=True, nullable=False, index=True
-    )
-    hashed_password: Mapped[str] = mapped_column(String(256), nullable=False)
+    username: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    hashed_password: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(256), unique=True, nullable=True, index=True)
+    google_sub: Mapped[str | None] = mapped_column(String(256), unique=True, nullable=True, index=True)
+    auth_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="password")
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utc_now, nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+
+class Invite(Base):
+    __tablename__ = "invites"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+    token: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
+    invited_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    accepted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
 
 class Customer(Base):

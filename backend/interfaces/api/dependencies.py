@@ -11,11 +11,13 @@ from backend.config.settings import get_settings
 from backend.infra.database.repositories.customer_repository import CustomerRepository
 from backend.infra.database.repositories.check_repository import CheckRepository
 from backend.infra.database.repositories.user_repository import UserRepository
+from backend.infra.database.repositories.invite_repository import InviteRepository
 from backend.infra.database.session import build_session_factory
 from backend.domain.services.customer_service import CustomerService
 from backend.domain.services.check_executor import CheckExecutor
 from backend.domain.services.session_health import SessionHealthService
 from backend.domain.services.auth_service import AuthService, InvalidTokenError, TokenPayload
+from backend.domain.services.invite_service import InviteService
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +148,27 @@ def require_auth(
         detail="Not authenticated",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+def get_invite_service():
+    session = _get_session()
+    settings = get_settings()
+    try:
+        user_repo = UserRepository(session)
+        invite_repo = InviteRepository(session)
+        yield InviteService(
+            invite_repo=invite_repo,
+            user_repo=user_repo,
+            smtp_host=settings.smtp_host,
+            smtp_port=settings.smtp_port,
+            smtp_user=settings.smtp_user,
+            smtp_password=settings.smtp_password,
+            smtp_from=settings.smtp_from,
+            app_base_url=settings.app_base_url,
+            invite_expire_hours=settings.invite_expire_hours,
+        )
+    finally:
+        session.close()
 
 
 def require_role(required_role: str):

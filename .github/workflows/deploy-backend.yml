@@ -1,0 +1,158 @@
+name: Deploy Backend
+
+on:
+  workflow_run:
+    workflows: ["CI Backend"]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Build & Push backend image
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      IMAGE_RETENTION_COUNT: "8"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/backend:${{ env.DEPLOY_SHA }}
+            ghcr.io/${{ github.repository }}/backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy backend to EC2
+    needs: build-and-push
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      IMAGE_RETENTION_COUNT: "8"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat > ~/.ssh/config <<EOF
+          Host bastion
+            HostName ${{ secrets.EC2_BASTION_HOST }}
+            User ${{ secrets.EC2_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+          Host ec2target
+            HostName ${{ secrets.EC2_HOST }}
+            User ${{ secrets.EC2_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            ProxyJump bastion
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+          EOF
+
+      - name: Copy compose and nginx config
+        run: |
+          ssh ec2target "mkdir -p /opt/monitoring-app"
+          scp infra/docker/docker-compose.prod.yml infra/docker/nginx.prod.conf ec2target:/opt/monitoring-app/
+
+      - name: Sync backend image tag in runtime env
+        run: |
+          ssh ec2target "
+            set -e
+            ENV_FILE=/opt/monitoring-app/.env
+            touch \$ENV_FILE
+            LEGACY_TAG=\$(grep '^IMAGE_TAG=' \$ENV_FILE | tail -n1 | cut -d= -f2- || true)
+
+            if ! grep -q '^GITHUB_REPOSITORY=' \$ENV_FILE; then
+              echo 'GITHUB_REPOSITORY=${{ github.repository }}' >> \$ENV_FILE
+            fi
+            if ! grep -q '^BACKEND_IMAGE_TAG=' \$ENV_FILE; then
+              if [ -n \"\$LEGACY_TAG\" ]; then
+                echo \"BACKEND_IMAGE_TAG=\$LEGACY_TAG\" >> \$ENV_FILE
+              else
+                echo 'BACKEND_IMAGE_TAG=latest' >> \$ENV_FILE
+              fi
+            fi
+            if ! grep -q '^FRONTEND_IMAGE_TAG=' \$ENV_FILE; then
+              if [ -n \"\$LEGACY_TAG\" ]; then
+                echo \"FRONTEND_IMAGE_TAG=\$LEGACY_TAG\" >> \$ENV_FILE
+              else
+                echo 'FRONTEND_IMAGE_TAG=latest' >> \$ENV_FILE
+              fi
+            fi
+
+            sed -i 's/^BACKEND_IMAGE_TAG=.*/BACKEND_IMAGE_TAG=${{ env.DEPLOY_SHA }}/' \$ENV_FILE
+
+            # Google OAuth + SMTP (inject if not already set)
+            grep -q '^GOOGLE_CLIENT_ID=' \$ENV_FILE || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> \$ENV_FILE
+            grep -q '^SMTP_USER=' \$ENV_FILE || echo 'SMTP_USER=${{ secrets.SMTP_USER }}' >> \$ENV_FILE
+            grep -q '^SMTP_PASSWORD=' \$ENV_FILE || echo 'SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}' >> \$ENV_FILE
+            grep -q '^SMTP_FROM=' \$ENV_FILE || echo 'SMTP_FROM=${{ secrets.SMTP_FROM }}' >> \$ENV_FILE
+            grep -q '^APP_BASE_URL=' \$ENV_FILE || echo 'APP_BASE_URL=https://msmonitoring.bagusganteng.app' >> \$ENV_FILE
+          "
+
+      - name: Deploy backend on EC2
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ssh ec2target "
+            set -e
+            cd /opt/monitoring-app
+            echo '${GHCR_TOKEN}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose -f docker-compose.prod.yml pull backend
+            docker run --rm \
+              --env-file .env \
+              ghcr.io/${{ github.repository }}/backend:${{ env.DEPLOY_SHA }} \
+              alembic upgrade head
+            docker compose -f docker-compose.prod.yml up -d backend
+            REPO='ghcr.io/${{ github.repository }}/backend'
+            KEEP_COUNT='${{ env.IMAGE_RETENTION_COUNT }}'
+            REMOVE_START=\$((KEEP_COUNT + 1))
+            docker image ls \$REPO --format '{{.Repository}}:{{.Tag}}' \
+              | sed '/:<none>$/d' \
+              | awk '!seen[\$0]++' \
+              | tail -n +\$REMOVE_START \
+              | xargs -r docker image rm || true
+            docker image prune -f
+          "
+
+      - name: Smoke test backend
+        run: |
+          sleep 8
+          ssh ec2target "curl -sf http://127.0.0.1/health/readiness" >/dev/null
+          echo "Backend smoke test passed"

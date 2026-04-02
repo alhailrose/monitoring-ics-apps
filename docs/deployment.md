@@ -236,50 +236,50 @@ git push origin main
 ```
 
 Atau manual trigger via:
-**GitHub → Actions → Deploy → Run workflow**
+**GitHub → Actions → Deploy Backend / Deploy Frontend → Run workflow**
 
 ### 3. Pantau progress
 
 GitHub → Actions → pilih run yang sedang berjalan
 
-Urutan job:
+Urutan job (split, CI-gated):
 ```
-CI (backend tests + frontend build)
-  └── Deploy
-        ├── build-and-push (build Docker images → push ke GHCR)
+CI Backend / CI Frontend
+  └── Deploy Backend / Deploy Frontend
+        ├── build-and-push (build Docker image target → push ke GHCR)
         └── deploy
               ├── Copy compose files ke EC2
-              ├── Pull images dari GHCR
-              ├── Alembic migration (alembic upgrade head)
-              ├── docker compose up -d
-              └── Smoke test (curl /health)
+              ├── Update image tag target di .env
+              ├── Pull image target dari GHCR
+              ├── Backend only: Alembic migration (alembic upgrade head)
+              ├── docker compose up -d service target
+              └── Smoke test target
 ```
 
 ---
 
 ## Deployment Selanjutnya (CI/CD)
 
-Setiap push ke branch `main` akan otomatis:
+Setiap push ke branch `main` akan otomatis (berdasarkan path yang berubah):
 
-1. **CI** — jalankan unit tests backend + typecheck + build frontend
-2. Jika CI pass → **Deploy** — build images baru, push ke GHCR, deploy ke EC2
+1. **CI Backend** untuk perubahan backend
+2. **CI Frontend** untuk perubahan frontend
+3. **Deploy Backend** otomatis **setelah CI Backend sukses**
+4. **Deploy Frontend** otomatis **setelah CI Frontend sukses**
 
 ```
 push to main
     │
-    ├── CI job (tests + build check)
-    │     └── pass
+    ├── backend/** berubah
+    │     ├── CI Backend
+    │     └── (on success) Deploy Backend
     │
-    └── Deploy job
-          ├── Build backend image (Docker layer cache)
-          ├── Build frontend image (Docker layer cache)
-          ├── Push ke ghcr.io/alhailrose/monitoring-ics-apps/backend:<sha>
-          ├── Push ke ghcr.io/alhailrose/monitoring-ics-apps/frontend:<sha>
-          ├── SSH via bastion → monitoring-app
-          ├── alembic upgrade head
-          ├── docker compose pull + up -d
-          └── Smoke test: curl /health
+    └── web/** berubah
+          ├── CI Frontend
+          └── (on success) Deploy Frontend
 ```
+
+Retensi image di server: setiap deploy akan mempertahankan 8 tag terbaru per service (`backend`/`frontend`) dan membersihkan sisanya.
 
 **Estimasi waktu per deployment:** ~5-8 menit (dengan layer cache)
 
@@ -309,8 +309,10 @@ monitoring-ics-apps/
 │       └── bastion-nginx.conf.tpl  # Template nginx config untuk bastion
 │
 ├── .github/workflows/
-│   ├── ci.yml                      # CI: unit tests + frontend build (tiap PR/push)
-│   └── deploy.yml                  # CD: build images + deploy ke EC2 (push ke main)
+│   ├── ci-backend.yml              # CI backend (path-based)
+│   ├── ci-frontend.yml             # CI frontend (path-based)
+│   ├── deploy-backend.yml          # CD backend (path-based)
+│   └── deploy-frontend.yml         # CD frontend (path-based)
 │
 ├── monitoring_schema.sql           # DDL schema untuk production DB (jalankan sekali)
 └── monitoring_config_export.sql    # Data config: customers, accounts (jalankan sekali)
@@ -328,9 +330,11 @@ ssh -i ~/.ssh/ics-ms-ssh-key -J ubuntu@16.78.250.215 ubuntu@10.0.10.X
 
 cd /opt/monitoring-app
 
-# Ganti IMAGE_TAG di .env ke SHA commit sebelumnya
-# Cek SHA di: GitHub → Actions → pilih run sebelumnya
-sed -i 's/IMAGE_TAG=.*/IMAGE_TAG=<previous-sha>/' .env
+# Ganti tag sesuai target rollback
+# Backend:
+sed -i 's/BACKEND_IMAGE_TAG=.*/BACKEND_IMAGE_TAG=<previous-backend-sha>/' .env
+# Frontend:
+sed -i 's/FRONTEND_IMAGE_TAG=.*/FRONTEND_IMAGE_TAG=<previous-frontend-sha>/' .env
 
 # Pull dan restart
 docker compose -f docker-compose.prod.yml pull

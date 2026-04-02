@@ -1,4 +1,4 @@
-name: CI Web
+name: CI Frontend
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
       - "web/**"
       - "apps/web/**"
       - "scripts/ci/web-quality.sh"
-      - ".github/workflows/ci-web.yml"
+      - ".github/workflows/ci-frontend.yml"
   push:
     branches:
       - main
@@ -14,7 +14,7 @@ on:
       - "web/**"
       - "apps/web/**"
       - "scripts/ci/web-quality.sh"
-      - ".github/workflows/ci-web.yml"
+      - ".github/workflows/ci-frontend.yml"
 
 jobs:
   quality-gates:

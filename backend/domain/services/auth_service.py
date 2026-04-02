@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import time
+import urllib.request
+from base64 import urlsafe_b64decode
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -11,6 +15,21 @@ from jose import JWTError, jwt
 from backend.infra.database.repositories.user_repository import UserRepository
 
 ALGORITHM = "HS256"
+_GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+_ALLOWED_DOMAIN = "icscompute.com"
+
+# Simple in-memory JWKS cache (key: url, value: (certs_dict, fetched_at))
+_jwks_cache: dict[str, tuple[dict, float]] = {}
+
+
+def _fetch_google_public_keys() -> dict:
+    cache = _jwks_cache.get(_GOOGLE_CERTS_URL)
+    if cache and time.time() - cache[1] < 3600:
+        return cache[0]
+    with urllib.request.urlopen(_GOOGLE_CERTS_URL, timeout=10) as resp:
+        data = json.loads(resp.read())
+    _jwks_cache[_GOOGLE_CERTS_URL] = (data, time.time())
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -24,6 +43,14 @@ class InvalidCredentialsError(Exception):
 
 class InvalidTokenError(Exception):
     """Raised when a JWT is missing, malformed, expired, or tampered."""
+
+
+class DomainNotAllowedError(Exception):
+    """Raised when Google account is not from the allowed domain."""
+
+
+class InviteRequiredError(Exception):
+    """Raised when user has no accepted invite."""
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +114,52 @@ class AuthService:
             "exp": expires_at,
         }
         token = jwt.encode(payload, self._secret, algorithm=ALGORITHM)
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "expires_at": expires_at.isoformat(),
+        }
+
+    # -- Google OAuth login --
+
+    def login_google(self, id_token: str, google_client_id: str) -> dict:
+        """Verify a Google id_token and return a signed JWT response.
+
+        Raises:
+            DomainNotAllowedError: if the account is not @icscompute.com
+            InviteRequiredError: if no accepted invite exists for this email
+        """
+        try:
+            jwks = _fetch_google_public_keys()
+            payload = jwt.decode(
+                id_token,
+                jwks,
+                algorithms=["RS256"],
+                audience=google_client_id,
+            )
+        except Exception as exc:
+            raise InvalidTokenError("Invalid Google token") from exc
+
+        hd = payload.get("hd", "")
+        email: str = payload.get("email", "")
+        if hd != _ALLOWED_DOMAIN and not email.endswith(f"@{_ALLOWED_DOMAIN}"):
+            raise DomainNotAllowedError(f"Only @{_ALLOWED_DOMAIN} accounts are allowed")
+
+        google_sub: str = payload.get("sub", "")
+
+        # Look up user by google_sub first, then by email
+        user = self._repo.get_by_google_sub(google_sub) or self._repo.get_by_email(email)
+        if not user or not user.is_active:
+            raise InviteRequiredError("No active account. Ask an admin for an invite.")
+
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=self._expire_hours)
+        token_payload = {
+            "sub": user.id,
+            "username": user.username,
+            "role": user.role,
+            "exp": expires_at,
+        }
+        token = jwt.encode(token_payload, self._secret, algorithm=ALGORITHM)
         return {
             "access_token": token,
             "token_type": "bearer",

@@ -1,0 +1,152 @@
+name: Deploy Frontend
+
+on:
+  workflow_run:
+    workflows: ["CI Frontend"]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Build & Push frontend image
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      IMAGE_RETENTION_COUNT: "8"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/frontend:${{ env.DEPLOY_SHA }}
+            ghcr.io/${{ github.repository }}/frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy frontend to EC2
+    needs: build-and-push
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      IMAGE_RETENTION_COUNT: "8"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat > ~/.ssh/config <<EOF
+          Host bastion
+            HostName ${{ secrets.EC2_BASTION_HOST }}
+            User ${{ secrets.EC2_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+          Host ec2target
+            HostName ${{ secrets.EC2_HOST }}
+            User ${{ secrets.EC2_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            ProxyJump bastion
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+          EOF
+
+      - name: Copy compose and nginx config
+        run: |
+          ssh ec2target "mkdir -p /opt/monitoring-app"
+          scp infra/docker/docker-compose.prod.yml infra/docker/nginx.prod.conf ec2target:/opt/monitoring-app/
+
+      - name: Sync frontend image tag in runtime env
+        run: |
+          ssh ec2target "
+            set -e
+            ENV_FILE=/opt/monitoring-app/.env
+            touch \$ENV_FILE
+            LEGACY_TAG=\$(grep '^IMAGE_TAG=' \$ENV_FILE | tail -n1 | cut -d= -f2- || true)
+
+            if ! grep -q '^GITHUB_REPOSITORY=' \$ENV_FILE; then
+              echo 'GITHUB_REPOSITORY=${{ github.repository }}' >> \$ENV_FILE
+            fi
+            if ! grep -q '^BACKEND_IMAGE_TAG=' \$ENV_FILE; then
+              if [ -n \"\$LEGACY_TAG\" ]; then
+                echo \"BACKEND_IMAGE_TAG=\$LEGACY_TAG\" >> \$ENV_FILE
+              else
+                echo 'BACKEND_IMAGE_TAG=latest' >> \$ENV_FILE
+              fi
+            fi
+            if ! grep -q '^FRONTEND_IMAGE_TAG=' \$ENV_FILE; then
+              if [ -n \"\$LEGACY_TAG\" ]; then
+                echo \"FRONTEND_IMAGE_TAG=\$LEGACY_TAG\" >> \$ENV_FILE
+              else
+                echo 'FRONTEND_IMAGE_TAG=latest' >> \$ENV_FILE
+              fi
+            fi
+
+            sed -i 's/^FRONTEND_IMAGE_TAG=.*/FRONTEND_IMAGE_TAG=${{ env.DEPLOY_SHA }}/' \$ENV_FILE
+
+            # Google OAuth (inject if not already set)
+            grep -q '^GOOGLE_CLIENT_ID=' \$ENV_FILE || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> \$ENV_FILE
+            grep -q '^GOOGLE_CLIENT_SECRET=' \$ENV_FILE || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> \$ENV_FILE
+            grep -q '^GOOGLE_REDIRECT_URI=' \$ENV_FILE || echo 'GOOGLE_REDIRECT_URI=https://msmonitoring.bagusganteng.app/auth/google/callback' >> \$ENV_FILE
+          "
+
+      - name: Deploy frontend on EC2
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ssh ec2target "
+            set -e
+            cd /opt/monitoring-app
+            echo '${GHCR_TOKEN}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose -f docker-compose.prod.yml pull frontend
+            docker compose -f docker-compose.prod.yml up -d frontend nginx
+            REPO='ghcr.io/${{ github.repository }}/frontend'
+            KEEP_COUNT='${{ env.IMAGE_RETENTION_COUNT }}'
+            REMOVE_START=\$((KEEP_COUNT + 1))
+            docker image ls \$REPO --format '{{.Repository}}:{{.Tag}}' \
+              | sed '/:<none>$/d' \
+              | awk '!seen[\$0]++' \
+              | tail -n +\$REMOVE_START \
+              | xargs -r docker image rm || true
+            docker image prune -f
+          "
+
+      - name: Smoke test frontend
+        run: |
+          sleep 8
+          ssh ec2target "curl -sf http://127.0.0.1/" >/dev/null
+          echo "Frontend smoke test passed"

@@ -1,8 +1,9 @@
-name: CI API
+name: CI Backend
 
 on:
   pull_request:
     paths:
+      - "backend/**"
       - "apps/api/**"
       - "src/app/api/**"
       - "src/app/api/dependencies.py"
@@ -17,11 +18,12 @@ on:
       - "scripts/ci/api-quality.sh"
       - "pyproject.toml"
       - "uv.lock"
-      - ".github/workflows/ci-api.yml"
+      - ".github/workflows/ci-backend.yml"
   push:
     branches:
       - main
     paths:
+      - "backend/**"
       - "apps/api/**"
       - "src/app/api/**"
       - "src/app/api/dependencies.py"
@@ -36,7 +38,7 @@ on:
       - "scripts/ci/api-quality.sh"
       - "pyproject.toml"
       - "uv.lock"
-      - ".github/workflows/ci-api.yml"
+      - ".github/workflows/ci-backend.yml"
 
 jobs:
   quality-gates:

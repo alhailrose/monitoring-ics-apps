@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY}/backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY}/backend:${BACKEND_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -23,7 +23,7 @@ services:
       start_period: 20s
 
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:${FRONTEND_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}

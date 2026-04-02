@@ -42,9 +42,8 @@ Reference contract: `docs/architecture/target-structure-contract.md`
   - `apps/api/main.py` (compatibility wrapper to `backend.interfaces.api.main`)
   - `apps/tui/main.py` (compatibility wrapper to `backend.interfaces.cli.main`)
 - Added split CI pipelines with path-based triggers:
-  - `.github/workflows/ci-web.yml`
-  - `.github/workflows/ci-api.yml`
-  - `.github/workflows/ci-tui.yml`
-- Added deployment approval/rollback gate:
-  - `.github/workflows/deploy-manual.yml`
-  - `docs/operations/deployment-flow.md`
+  - `.github/workflows/ci-frontend.yml`
+  - `.github/workflows/ci-backend.yml`
+- Added split CD pipelines with CI-success gate (`workflow_run`):
+  - `.github/workflows/deploy-frontend.yml`
+  - `.github/workflows/deploy-backend.yml`

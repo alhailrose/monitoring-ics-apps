@@ -24,7 +24,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from backend.config.settings import get_settings
-from backend.domain.services.auth_service import AuthService, InvalidTokenError
+from backend.domain.services.auth_service import AuthService, InvalidTokenError, TokenPayload
 from backend.infra.database.repositories.user_repository import UserRepository
 from backend.interfaces.api.dependencies import _get_session_factory
 
@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 _SHELL = os.environ.get("SHELL", "/bin/bash")
 
 
-def _verify_token(token: str) -> None:
-    """Verify JWT from query param — any authenticated user may access the terminal."""
+def _decode_token(token: str) -> TokenPayload:
+    """Verify JWT and return the decoded payload."""
     if not token:
         raise ValueError("token required")
     settings = get_settings()
@@ -47,7 +47,7 @@ def _verify_token(token: str) -> None:
             jwt_secret=settings.jwt_secret,
             jwt_expire_hours=settings.jwt_expire_hours,
         )
-        auth_svc.decode_token(token)
+        return auth_svc.decode_token(token)
     except InvalidTokenError as exc:
         raise ValueError(str(exc)) from exc
     finally:
@@ -76,19 +76,26 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
     """Spawn a PTY shell and relay I/O over WebSocket."""
     # --- Auth before accept ---
     try:
-        _verify_token(token)
+        payload = _decode_token(token)
     except ValueError as exc:
         await websocket.close(code=4001, reason=str(exc))
         return
 
     await websocket.accept()
-    logger.info("terminal: session opened by verified user")
+    username = payload.username
+    logger.info("terminal: session opened by user=%s", username)
 
     # --- Spawn shell in a PTY ---
     master_fd, slave_fd = pty.openpty()
     _resize_pty(master_fd, rows=24, cols=80)  # initial size
 
+    # Per-user AWS credential isolation
+    aws_user_dir = os.path.expanduser(f"~/.aws/users/{username}")
+    os.makedirs(f"{aws_user_dir}/sso/cache", exist_ok=True)
+
     env = os.environ.copy()
+    env["AWS_CONFIG_FILE"] = f"{aws_user_dir}/config"
+    env["AWS_SSO_CACHE_PATH"] = f"{aws_user_dir}/sso/cache"
     env.setdefault("TERM", "xterm-256color")
     env.setdefault("COLORTERM", "truecolor")
 
