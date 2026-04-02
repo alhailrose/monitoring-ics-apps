@@ -11,6 +11,11 @@ services:
       API_AUTH_ENABLED: ${API_AUTH_ENABLED:-true}
       API_KEYS: ${API_KEYS}
       JWT_SECRET: ${JWT_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      APP_BASE_URL: ${APP_BASE_URL:-https://msmonitoring.bagusganteng.app}
     volumes:
       # Mount ~/.aws dari EC2 host — config + SSO cache
       # Jalankan `aws sso login --profile <sso-session>` di terminal jika token expired
@@ -29,6 +34,9 @@ services:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
       BACKEND_URL: http://nginx/api/v1
       JWT_SECRET: ${JWT_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://msmonitoring.bagusganteng.app/auth/google/callback}
     depends_on:
       backend:
         condition: service_healthy
