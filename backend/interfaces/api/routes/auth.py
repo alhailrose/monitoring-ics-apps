@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 from backend.interfaces.api.dependencies import (
     get_auth_service,
@@ -49,7 +49,7 @@ class GoogleLoginRequest(BaseModel):
 
 
 class InviteRequest(BaseModel):
-    email: EmailStr
+    email: str
     role: str = "user"
 
 
