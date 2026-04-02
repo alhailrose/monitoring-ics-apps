@@ -29,7 +29,7 @@ import {
   TaskIcon,
   UserSettings01Icon,
   Mail01Icon,
-  Terminal01Icon,
+  ComputerTerminal01Icon,
   AlarmClockIcon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
@@ -205,7 +205,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
                     )}
                   >
                     <Link href="/settings/aws-config">
-                      <HugeiconsIcon icon={Terminal01Icon} strokeWidth={2} />
+                      <HugeiconsIcon icon={ComputerTerminal01Icon} strokeWidth={2} />
                       <span>AWS Config</span>
                     </Link>
                   </SidebarMenuButton>
