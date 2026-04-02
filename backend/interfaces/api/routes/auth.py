@@ -128,18 +128,24 @@ def login_google(
 def accept_invite_google(
     body: GoogleLoginRequest,
     invite_token: str,
-    auth_svc=Depends(get_auth_service),
-    invite_svc=Depends(get_invite_service),
 ):
-    """First Google login after receiving an invite — creates the user account."""
+    """First Google login after receiving an invite — creates the user account.
+
+    Uses a single DB session so the newly created user is visible to login_google.
+    """
+    import json
+    import base64
     from backend.config.settings import get_settings
-    import json, base64
+    from backend.infra.database.session import build_session_factory
+    from backend.infra.database.repositories.user_repository import UserRepository
+    from backend.infra.database.repositories.invite_repository import InviteRepository
+    from backend.domain.services.invite_service import InviteService as _InviteService
+    from backend.domain.services.auth_service import AuthService as _AuthService
 
     settings = get_settings()
+
+    # Decode id_token payload (without verification) to extract email/sub for invite check
     try:
-        from jose import jwt as jose_jwt
-        jwks_data = auth_svc._repo  # noqa: SLF001 — access only to get settings
-        # Decode without verification to extract claims (verification happens below)
         parts = body.id_token.split(".")
         padded = parts[1] + "=" * (4 - len(parts[1]) % 4)
         claims = json.loads(base64.urlsafe_b64decode(padded))
@@ -153,16 +159,41 @@ def accept_invite_google(
     if not email.endswith("@icscompute.com") and hd != "icscompute.com":
         raise HTTPException(status_code=403, detail="Only @icscompute.com accounts allowed")
 
+    # Use a single session so the created user is visible to login_google
+    session = build_session_factory(settings.database_url)()
     try:
-        invite_svc.accept_invite(token=invite_token, google_sub=google_sub, email=email)
-    except InviteError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        user_repo = UserRepository(session)
+        invite_repo = InviteRepository(session)
+        svc = _InviteService(
+            invite_repo=invite_repo,
+            user_repo=user_repo,
+            smtp_host=settings.smtp_host,
+            smtp_port=settings.smtp_port,
+            smtp_user=settings.smtp_user,
+            smtp_password=settings.smtp_password,
+            smtp_from=settings.smtp_from,
+            app_base_url=settings.app_base_url,
+            invite_expire_hours=settings.invite_expire_hours,
+        )
+        try:
+            svc.accept_invite(token=invite_token, google_sub=google_sub, email=email)
+        except InviteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
-    # Now login normally
-    try:
-        return auth_svc.login_google(body.id_token, settings.google_client_id)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail="Account created but login failed")
+        # Commit so login_google (same session) can find the new user
+        session.commit()
+
+        auth_svc = _AuthService(
+            user_repo=user_repo,
+            jwt_secret=settings.jwt_secret,
+            jwt_expire_hours=settings.jwt_expire_hours,
+        )
+        try:
+            return auth_svc.login_google(body.id_token, settings.google_client_id)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Account created but login failed")
+    finally:
+        session.close()
 
 
 @router.post(
