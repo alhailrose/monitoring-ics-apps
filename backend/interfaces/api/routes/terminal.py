@@ -90,19 +90,26 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
     _resize_pty(master_fd, rows=24, cols=80)  # initial size
 
     # Per-user AWS credential isolation
+    import shutil
     aws_user_dir = os.path.expanduser(f"~/.aws/users/{username}")
     os.makedirs(f"{aws_user_dir}/sso/cache", exist_ok=True)
 
-    # Auto-apply template if user has no config yet
     _template = os.path.expanduser("~/.aws/aws-config.template")
+    _system_config = os.path.expanduser("~/.aws/config")
     _user_config = f"{aws_user_dir}/config"
-    if not os.path.exists(_user_config) and os.path.exists(_template):
-        import shutil
-        shutil.copy(_template, _user_config)
-        logger.info("terminal: applied aws template to user=%s", username)
+
+    if not os.path.exists(_user_config):
+        if os.path.exists(_template):
+            # Template saved by admin → apply to this user
+            shutil.copy(_template, _user_config)
+            logger.info("terminal: applied aws template to user=%s", username)
+        elif os.path.exists(_system_config):
+            # No template yet → copy system config so existing profiles still work
+            shutil.copy(_system_config, _user_config)
+            logger.info("terminal: copied system aws config to user=%s", username)
 
     env = os.environ.copy()
-    env["AWS_CONFIG_FILE"] = f"{aws_user_dir}/config"
+    env["AWS_CONFIG_FILE"] = _user_config
     env["AWS_SSO_CACHE_PATH"] = f"{aws_user_dir}/sso/cache"
     env.setdefault("TERM", "xterm-256color")
     env.setdefault("COLORTERM", "truecolor")
