@@ -1,7 +1,7 @@
 """add google auth columns and invites table
 
-Revision ID: a1b2c3d4e5f6
-Revises: 9b4de82e1b11
+Revision ID: fa3b91c2d847
+Revises: f5a6b7c8d9e0
 Create Date: 2026-04-02 10:00:00.000000
 
 """
@@ -11,8 +11,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "a1b2c3d4e5f6"
-down_revision: Union[str, None] = "9b4de82e1b11"
+revision: str = "fa3b91c2d847"
+down_revision: Union[str, None] = "f5a6b7c8d9e0"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
