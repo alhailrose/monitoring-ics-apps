@@ -79,8 +79,8 @@ export function AccountRow({
       </div>
 
       {/* Actions */}
-      {role === 'super_user' ? (
-        <div className="flex justify-end w-8">
+      <div className="flex justify-end w-8">
+        {role === 'super_user' ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -111,10 +111,17 @@ export function AccountRow({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      ) : (
-        <div className="w-8" />
-      )}
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={() => onDetails(account)}
+          >
+            <HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4" />
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -28,6 +28,14 @@ export default function AwsConfigPage() {
   const [usernames, setUsernames] = useState<string[]>([])
   const [usersLoading, setUsersLoading] = useState(true)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // Per-user config viewer/editor
+  const [selectedUser, setSelectedUser] = useState('')
+  const [userConfig, setUserConfig] = useState('')
+  const [userConfigLoading, setUserConfigLoading] = useState(false)
+  const [userConfigSaving, setUserConfigSaving] = useState(false)
+  const [userConfigMsg, setUserConfigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const loadedUserRef = useRef('')
 
   useEffect(() => {
     fetch('/api/settings/aws-template')
@@ -73,6 +81,49 @@ export default function AwsConfigPage() {
       setMessage({ type: 'error', text: 'Terjadi kesalahan.' })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const loadUserConfig = async (username: string) => {
+    if (!username) return
+    setUserConfigLoading(true)
+    setUserConfigMsg(null)
+    try {
+      const res = await fetch(`/api/settings/user-aws-config/${encodeURIComponent(username)}`)
+      const data = await res.json()
+      if (res.ok) {
+        setUserConfig(data.content ?? '')
+        loadedUserRef.current = username
+      } else {
+        setUserConfigMsg({ type: 'error', text: data.detail ?? 'Gagal mengambil config.' })
+      }
+    } catch {
+      setUserConfigMsg({ type: 'error', text: 'Terjadi kesalahan.' })
+    } finally {
+      setUserConfigLoading(false)
+    }
+  }
+
+  const saveUserConfig = async () => {
+    if (!selectedUser) return
+    setUserConfigSaving(true)
+    setUserConfigMsg(null)
+    try {
+      const res = await fetch(`/api/settings/user-aws-config/${encodeURIComponent(selectedUser)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: userConfig }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setUserConfigMsg({ type: 'success', text: `Config ${selectedUser} berhasil disimpan.` })
+      } else {
+        setUserConfigMsg({ type: 'error', text: data.detail ?? 'Gagal menyimpan config.' })
+      }
+    } catch {
+      setUserConfigMsg({ type: 'error', text: 'Terjadi kesalahan.' })
+    } finally {
+      setUserConfigSaving(false)
     }
   }
 
@@ -186,6 +237,73 @@ export default function AwsConfigPage() {
             Simpan template terlebih dahulu sebelum menerapkan ke user.
           </p>
         )}
+      </div>
+
+      {/* Per-user config viewer/editor */}
+      <div className="rounded-lg border bg-card space-y-0">
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h2 className="font-medium text-sm">Config Per User</h2>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Lihat dan edit config AWS milik user tertentu secara langsung tanpa perlu terminal.
+          </p>
+
+          {userConfigMsg && (
+            <Alert variant={userConfigMsg.type === 'error' ? 'destructive' : 'default'}>
+              <AlertDescription>{userConfigMsg.text}</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="flex gap-3">
+            <Select
+              value={selectedUser}
+              onValueChange={(val) => {
+                setSelectedUser(val)
+                setUserConfig('')
+                loadedUserRef.current = ''
+                setUserConfigMsg(null)
+              }}
+              disabled={usersLoading}
+            >
+              <SelectTrigger className="flex-1 font-mono text-sm">
+                <SelectValue placeholder={usersLoading ? 'Memuat user...' : 'Pilih user'} />
+              </SelectTrigger>
+              <SelectContent>
+                {usernames.map((u) => (
+                  <SelectItem key={u} value={u}>{u}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              disabled={!selectedUser || userConfigLoading}
+              onClick={() => loadUserConfig(selectedUser)}
+            >
+              {userConfigLoading ? 'Memuat...' : 'Lihat Config'}
+            </Button>
+          </div>
+
+          {loadedUserRef.current && (
+            <>
+              <textarea
+                className="w-full font-mono text-sm bg-transparent resize-none outline-none border rounded-md px-4 py-3 min-h-[260px] leading-relaxed"
+                value={userConfig}
+                onChange={(e) => setUserConfig(e.target.value)}
+                spellCheck={false}
+              />
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={saveUserConfig}
+                  disabled={userConfigSaving}
+                >
+                  {userConfigSaving ? 'Menyimpan...' : `Simpan Config ${selectedUser}`}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Info box */}

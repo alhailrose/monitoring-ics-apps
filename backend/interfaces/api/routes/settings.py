@@ -148,3 +148,45 @@ def update_my_aws_config(
     with open(f"{user_dir}/config", "w") as f:
         f.write(body.content)
     return UserConfigResponse(content=body.content, username=username)
+
+
+# ---------------------------------------------------------------------------
+# Per-user config management (super_user only — any user)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/user-aws-config/{username}",
+    response_model=UserConfigResponse,
+    dependencies=[Depends(require_role("super_user"))],
+)
+def get_user_aws_config(username: str):
+    """Return a specific user's AWS config file (super_user only)."""
+    if "/" in username or ".." in username:
+        raise HTTPException(status_code=400, detail="Invalid username")
+    path = _user_config_path(username)
+    if os.path.exists(path):
+        with open(path) as f:
+            content = f.read()
+    elif os.path.exists(_TEMPLATE_PATH):
+        with open(_TEMPLATE_PATH) as f:
+            content = f.read()
+    else:
+        content = _read_default_template()
+    return UserConfigResponse(content=content, username=username)
+
+
+@router.put(
+    "/user-aws-config/{username}",
+    response_model=UserConfigResponse,
+    dependencies=[Depends(require_role("super_user"))],
+)
+def update_user_aws_config(username: str, body: TemplateUpdate):
+    """Write a specific user's AWS config file (super_user only)."""
+    if "/" in username or ".." in username:
+        raise HTTPException(status_code=400, detail="Invalid username")
+    user_dir = os.path.expanduser(f"~/.aws/users/{username}")
+    os.makedirs(f"{user_dir}/sso/cache", exist_ok=True)
+    with open(f"{user_dir}/config", "w") as f:
+        f.write(body.content)
+    return UserConfigResponse(content=body.content, username=username)

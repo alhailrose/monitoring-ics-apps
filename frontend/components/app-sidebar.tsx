@@ -157,15 +157,35 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* Settings — only visible to super_user */}
-        {user.role === 'super_user' && (
-          <>
-            <SidebarSeparator />
-            <SidebarGroup>
-              <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase tracking-widest text-[10px]">
-                Settings
-              </SidebarGroupLabel>
-              <SidebarMenu>
+        {/* Settings */}
+        <SidebarSeparator />
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase tracking-widest text-[10px]">
+            Settings
+          </SidebarGroupLabel>
+          <SidebarMenu>
+            {/* My Config — visible to all users */}
+            {user.role !== 'super_user' && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname.startsWith('/settings/my-config')}
+                  tooltip="My AWS Config"
+                  className={cn(
+                    pathname.startsWith('/settings/my-config') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                  )}
+                >
+                  <Link href="/settings/my-config">
+                    <HugeiconsIcon icon={ComputerTerminal01Icon} strokeWidth={2} />
+                    <span>My Config</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+
+            {/* Admin-only settings */}
+            {user.role === 'super_user' && (
+              <>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
@@ -200,7 +220,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
                   <SidebarMenuButton
                     asChild
                     isActive={pathname.startsWith('/settings/aws-config')}
-                    tooltip="AWS Config Template"
+                    tooltip="AWS Config"
                     className={cn(
                       pathname.startsWith('/settings/aws-config') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
                     )}
@@ -211,10 +231,10 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroup>
-          </>
-        )}
+              </>
+            )}
+          </SidebarMenu>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border pt-2">
