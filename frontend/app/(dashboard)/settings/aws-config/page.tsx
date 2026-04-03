@@ -4,6 +4,19 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+interface UserRow {
+  id: string
+  username: string
+  is_active: boolean
+}
 
 export default function AwsConfigPage() {
   const [content, setContent] = useState('')
@@ -12,6 +25,8 @@ export default function AwsConfigPage() {
   const [saving, setSaving] = useState(false)
   const [applying, setApplying] = useState(false)
   const [applyUsername, setApplyUsername] = useState('')
+  const [usernames, setUsernames] = useState<string[]>([])
+  const [usersLoading, setUsersLoading] = useState(true)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
@@ -22,6 +37,20 @@ export default function AwsConfigPage() {
         setIsDefault(data.is_default ?? true)
       })
       .finally(() => setLoading(false))
+
+    fetch('/api/users')
+      .then(async (r) => {
+        if (!r.ok) return [] as UserRow[]
+        return r.json() as Promise<UserRow[]>
+      })
+      .then((rows) => {
+        const activeUsernames = rows
+          .filter((u) => u.is_active)
+          .map((u) => u.username)
+          .sort((a, b) => a.localeCompare(b))
+        setUsernames(activeUsernames)
+      })
+      .finally(() => setUsersLoading(false))
   }, [])
 
   const save = async () => {
@@ -121,17 +150,37 @@ export default function AwsConfigPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Input
-            placeholder="username (contoh: bagus_syafiq)"
-            value={applyUsername}
-            onChange={e => setApplyUsername(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && applyToUser()}
-            className="flex-1 font-mono text-sm"
-          />
+          {usernames.length > 0 ? (
+            <Select value={applyUsername} onValueChange={setApplyUsername} disabled={usersLoading}>
+              <SelectTrigger className="flex-1 font-mono text-sm">
+                <SelectValue placeholder={usersLoading ? 'Memuat user...' : 'Pilih user'} />
+              </SelectTrigger>
+              <SelectContent>
+                {usernames.map((username) => (
+                  <SelectItem key={username} value={username}>
+                    {username}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              placeholder="username (contoh: bagus_syafiq)"
+              value={applyUsername}
+              onChange={e => setApplyUsername(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && applyToUser()}
+              className="flex-1 font-mono text-sm"
+            />
+          )}
           <Button onClick={applyToUser} disabled={applying || !applyUsername.trim() || isDefault} variant="outline">
             {applying ? 'Menerapkan...' : 'Apply'}
           </Button>
         </div>
+        {usernames.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Menampilkan user aktif. Jika user belum ada, tambahkan dulu di Settings → Users.
+          </p>
+        )}
         {isDefault && (
           <p className="text-xs text-muted-foreground">
             Simpan template terlebih dahulu sebelum menerapkan ke user.
