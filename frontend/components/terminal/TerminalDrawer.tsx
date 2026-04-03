@@ -58,7 +58,7 @@ function LoginHint({ autoExpand = false }: { autoExpand?: boolean }) {
   useEffect(() => { if (autoExpand) setOpen(true) }, [autoExpand])
 
   useEffect(() => {
-    fetch('/api/terminal-token')
+    fetch('/api/terminal-token', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(({ token }) => Promise.all([
         apiFetch<{ sso_sessions: string[] }>('/profiles/sso-sessions', { token }),
@@ -178,6 +178,7 @@ export function TerminalDrawer() {
   const termRef = useRef<Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const activeTokenRef = useRef<string | null>(null)
   const outputBufferRef = useRef('')
   const viewportCleanupRef = useRef<(() => void) | null>(null)
 
@@ -237,13 +238,20 @@ export function TerminalDrawer() {
     window.addEventListener('mouseup', onUp)
   }, [height])
 
+  const fetchTerminalToken = useCallback(async (): Promise<string | null> => {
+    const res = await fetch('/api/terminal-token', { cache: 'no-store' })
+    if (!res.ok) return null
+    const payload = await res.json() as { token?: string }
+    return payload.token ?? null
+  }, [])
+
   // ── Connect ────────────────────────────────────────────────────────────────
   const connect = useCallback(async () => {
     setStatus('connecting')
 
-    const res = await fetch('/api/terminal-token')
-    if (!res.ok) { setStatus('disconnected'); return }
-    const { token } = await res.json()
+    const token = await fetchTerminalToken()
+    if (!token) { setStatus('disconnected'); return }
+    activeTokenRef.current = token
 
     const { Terminal } = await import('@xterm/xterm')
     const { FitAddon } = await import('@xterm/addon-fit')
@@ -354,14 +362,32 @@ export function TerminalDrawer() {
     term.onResize(({ cols, rows }) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols, rows }))
     })
-  }, [])
+  }, [fetchTerminalToken])
 
   // ── Connect on first open ──────────────────────────────────────────────────
   useEffect(() => {
-    if (open && !hasConnectedOnce.current) {
-      connect()
+    if (!open) return
+
+    let cancelled = false
+    const ensureConnection = async () => {
+      const latestToken = await fetchTerminalToken()
+      if (cancelled) return
+
+      const tokenChanged = Boolean(
+        latestToken &&
+        activeTokenRef.current &&
+        latestToken !== activeTokenRef.current,
+      )
+      const wsConnected = wsRef.current?.readyState === WebSocket.OPEN
+
+      if (!hasConnectedOnce.current || tokenChanged || !wsConnected) {
+        await connect()
+      }
     }
-  }, [open, connect])
+
+    void ensureConnection()
+    return () => { cancelled = true }
+  }, [open, connect, fetchTerminalToken])
 
   // ── ResizeObserver — fit whenever container dimensions actually change ──────
   useEffect(() => {
