@@ -3,10 +3,13 @@ import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
 import { LoginForm } from '@/components/auth/LoginForm'
 import { LoginHero } from '@/components/auth/LoginHero'
+import type { NextRequest } from 'next/server'
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
+  const params = await searchParams
   const session = await getSession()
-  if (session) redirect('/dashboard')
+  // Don't redirect if there's an OAuth error to display
+  if (session && !params.error) redirect('/dashboard')
 
   return (
     <div className="bg-[#020617]">
