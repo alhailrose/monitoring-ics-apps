@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import pty
+import shutil
 import signal
 import struct
 import subprocess
@@ -37,6 +38,40 @@ router = APIRouter(tags=["terminal"])
 logger = logging.getLogger(__name__)
 
 _SHELL = os.environ.get("SHELL", "/bin/bash")
+
+
+def _ensure_symlink(link_path: str, target_path: str) -> None:
+    if os.path.islink(link_path):
+        if os.readlink(link_path) == target_path:
+            return
+        os.unlink(link_path)
+    elif os.path.exists(link_path):
+        if os.path.isdir(link_path):
+            shutil.rmtree(link_path)
+        else:
+            os.remove(link_path)
+    os.symlink(target_path, link_path)
+
+
+def _prepare_isolated_aws_home(
+    username: str,
+    base_home: str | None = None,
+) -> tuple[str, str, str, str]:
+    root_home = base_home or os.path.expanduser("~")
+    aws_user_dir = os.path.join(root_home, ".aws", "users", username)
+    user_config = os.path.join(aws_user_dir, "config")
+    user_sso_cache = os.path.join(aws_user_dir, "sso", "cache")
+    isolated_home = os.path.join(aws_user_dir, "home")
+    isolated_aws_dir = os.path.join(isolated_home, ".aws")
+    isolated_sso_dir = os.path.join(isolated_aws_dir, "sso")
+
+    os.makedirs(user_sso_cache, exist_ok=True)
+    os.makedirs(isolated_sso_dir, exist_ok=True)
+
+    _ensure_symlink(os.path.join(isolated_aws_dir, "config"), user_config)
+    _ensure_symlink(os.path.join(isolated_sso_dir, "cache"), user_sso_cache)
+
+    return aws_user_dir, user_config, user_sso_cache, isolated_home
 
 
 def _decode_token(token: str) -> TokenPayload:
@@ -95,14 +130,13 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
     _resize_pty(master_fd, rows=24, cols=80)  # initial size
 
     # Per-user AWS credential isolation
-    import shutil
-
-    aws_user_dir = os.path.expanduser(f"~/.aws/users/{username}")
+    aws_user_dir, _user_config, _user_sso_cache, _isolated_home = (
+        _prepare_isolated_aws_home(username)
+    )
     os.makedirs(aws_user_dir, exist_ok=True)
 
     _template = os.path.expanduser("~/.aws/aws-config.template")
     _system_config = os.path.expanduser("~/.aws/config")
-    _user_config = f"{aws_user_dir}/config"
     _source = (
         _template
         if os.path.exists(_template)
@@ -126,18 +160,18 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
             logger.info("terminal: synced aws %s to user=%s", label, username)
 
     # Per-user SSO cache — tokens are isolated per user
-    _user_sso_cache = f"{aws_user_dir}/sso/cache"
-    os.makedirs(_user_sso_cache, exist_ok=True)
-
     # Auto-sync profiles from any valid SSO tokens in user's cache
     try:
-        n = sync_sso_profiles(aws_config_file=_user_config, sso_cache_dir=_user_sso_cache)
+        n = sync_sso_profiles(
+            aws_config_file=_user_config, sso_cache_dir=_user_sso_cache
+        )
         if n:
             logger.info("terminal: synced %d SSO profiles for user=%s", n, username)
     except Exception as _sync_err:
         logger.debug("terminal: sync_sso_profiles skipped: %s", _sync_err)
 
     env = os.environ.copy()
+    env["HOME"] = _isolated_home
     env["AWS_CONFIG_FILE"] = _user_config
     env["AWS_SSO_CACHE_DIR"] = _user_sso_cache
     env.setdefault("TERM", "xterm-256color")
