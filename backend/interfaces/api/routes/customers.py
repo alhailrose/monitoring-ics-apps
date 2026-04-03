@@ -293,12 +293,14 @@ def test_account_connection(account_id: str, service=Depends(get_customer_servic
         creds = _build_creds_for_account(
             account_data,
             aws_config_file=service.aws_config_file,
+            sso_cache_dir=service.sso_cache_dir,
         )
         if creds is None:
             # profile auth — use profile directly
             session = get_aws_session(
                 profile_name=account_data.profile_name,
                 aws_config_file=service.aws_config_file,
+                sso_cache_dir=service.sso_cache_dir,
             )
         else:
             session = get_aws_session(
@@ -306,6 +308,7 @@ def test_account_connection(account_id: str, service=Depends(get_customer_servic
                 aws_secret_access_key=creds["aws_secret_access_key"],
                 aws_session_token=creds.get("aws_session_token"),
                 aws_config_file=service.aws_config_file,
+                sso_cache_dir=service.sso_cache_dir,
             )
         sts = session.client("sts", region_name="us-east-1")
         identity = sts.get_caller_identity()

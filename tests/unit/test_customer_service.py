@@ -1,4 +1,5 @@
 """Tests for CustomerService.import_from_yaml field extraction."""
+
 import pytest
 from unittest.mock import MagicMock, call
 
@@ -8,7 +9,11 @@ ARYANOBLE_YAML = {
     "display_name": "Aryanoble",
     "sso_session": "aryanoble-sso",
     "checks": ["daily-arbel", "daily-budget", "backup"],
-    "slack": {"webhook_url": "https://hooks.slack.com/test", "channel": "#ops", "enabled": True},
+    "slack": {
+        "webhook_url": "https://hooks.slack.com/test",
+        "channel": "#ops",
+        "enabled": True,
+    },
     "accounts": [
         {
             "profile": "connect-prod",
@@ -44,6 +49,7 @@ def _make_service(existing_customer=None, existing_accounts=None):
     repo.get_accounts_by_customer.return_value = existing_accounts or []
 
     from backend.domain.services.customer_service import CustomerService
+
     svc = CustomerService(repo)
     return svc, repo, fake_customer
 
@@ -68,7 +74,9 @@ def test_import_from_yaml_passes_alarm_names_per_account():
     svc.import_from_yaml(ARYANOBLE_YAML)
     # First account: connect-prod — should have alarm_names
     add_calls = repo.add_account.call_args_list
-    connect_call = next(c for c in add_calls if c.kwargs.get("profile_name") == "connect-prod")
+    connect_call = next(
+        c for c in add_calls if c.kwargs.get("profile_name") == "connect-prod"
+    )
     assert connect_call.kwargs.get("alarm_names") == ["alarm-1", "alarm-2"]
 
 
@@ -76,7 +84,9 @@ def test_import_from_yaml_passes_region_per_account():
     svc, repo, _ = _make_service()
     svc.import_from_yaml(ARYANOBLE_YAML)
     add_calls = repo.add_account.call_args_list
-    connect_call = next(c for c in add_calls if c.kwargs.get("profile_name") == "connect-prod")
+    connect_call = next(
+        c for c in add_calls if c.kwargs.get("profile_name") == "connect-prod"
+    )
     assert connect_call.kwargs.get("region") == "ap-southeast-3"
 
 
@@ -92,6 +102,66 @@ def test_import_from_yaml_preserves_daily_arbel_in_config_extra():
     svc, repo, _ = _make_service()
     svc.import_from_yaml(ARYANOBLE_YAML)
     add_calls = repo.add_account.call_args_list
-    connect_call = next(c for c in add_calls if c.kwargs.get("profile_name") == "connect-prod")
+    connect_call = next(
+        c for c in add_calls if c.kwargs.get("profile_name") == "connect-prod"
+    )
     config_extra = connect_call.kwargs.get("config_extra") or {}
     assert config_extra.get("daily_arbel") == {"cluster_id": "noncis-prod-rds"}
+
+
+def test_detect_account_id_passes_sso_cache_dir(monkeypatch):
+    from backend.domain.services import customer_service as module
+
+    identity = {"Account": "123456789012"}
+    sts_client = MagicMock()
+    sts_client.get_caller_identity.return_value = identity
+
+    session = MagicMock()
+    session.client.return_value = sts_client
+
+    captured = {}
+
+    def _fake_get_aws_session(**kwargs):
+        captured.update(kwargs)
+        return session
+
+    monkeypatch.setattr(module, "get_aws_session", _fake_get_aws_session)
+
+    result = module.detect_account_id(
+        "ops-prod",
+        aws_config_file="/tmp/aws-config",
+        sso_cache_dir="/tmp/sso-cache",
+    )
+
+    assert result == "123456789012"
+    assert captured["profile_name"] == "ops-prod"
+    assert captured["aws_config_file"] == "/tmp/aws-config"
+    assert captured["sso_cache_dir"] == "/tmp/sso-cache"
+
+
+def test_detect_profiles_passes_sso_cache_dir_to_helper(monkeypatch):
+    from backend.domain.services.customer_service import CustomerService
+    from backend.domain.services import customer_service as module
+
+    repo = MagicMock()
+    repo.get_mapped_profiles.return_value = ["mapped-prod"]
+
+    captured = {}
+
+    def _fake_detect_profiles(aws_config_file=None, sso_cache_dir=None):
+        captured["aws_config_file"] = aws_config_file
+        captured["sso_cache_dir"] = sso_cache_dir
+        return ["mapped-prod", "new-prod"]
+
+    monkeypatch.setattr(module, "detect_aws_profiles", _fake_detect_profiles)
+
+    service = CustomerService(
+        repo,
+        aws_config_file="/tmp/aws-config",
+        sso_cache_dir="/tmp/sso-cache",
+    )
+    result = service.detect_profiles()
+
+    assert result["unmapped_profiles"] == ["new-prod"]
+    assert captured["aws_config_file"] == "/tmp/aws-config"
+    assert captured["sso_cache_dir"] == "/tmp/sso-cache"

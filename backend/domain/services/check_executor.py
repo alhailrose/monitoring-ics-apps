@@ -165,6 +165,7 @@ def _build_creds_for_account(
     account,
     region: str | None = None,
     aws_config_file: str | None = None,
+    sso_cache_dir: str | None = None,
 ) -> dict:
     """Resolve credentials for an account based on its auth_method.
 
@@ -218,6 +219,7 @@ def _build_creds_for_account(
                 aws_session_token=None,
                 region_name=effective_region,
                 aws_config_file=aws_config_file,
+                sso_cache_dir=sso_cache_dir,
             )
         else:
             # No access key stored — fall back to boto3 default credential chain.
@@ -226,6 +228,7 @@ def _build_creds_for_account(
             base_session = get_aws_session(
                 region_name=effective_region,
                 aws_config_file=aws_config_file,
+                sso_cache_dir=sso_cache_dir,
             )
         sts = base_session.client("sts", region_name="us-east-1")
         assume_kwargs: dict = {
@@ -1560,6 +1563,7 @@ class CheckExecutor:
                             account,
                             region,
                             aws_config_file=self.aws_config_file,
+                            sso_cache_dir=self.sso_cache_dir,
                         )
                     except Exception as exc:
                         logger.warning(

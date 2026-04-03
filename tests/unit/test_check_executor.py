@@ -64,6 +64,82 @@ def test_execute_parallel_falls_back_to_effective_region_when_account_region_non
     assert args[2] == "ap-southeast-3"
 
 
+def test_execute_parallel_passes_sso_cache_dir_to_credential_builder():
+    executor = _make_executor(default_region="ap-southeast-3")
+    executor.aws_config_file = "/tmp/aws-config"
+    executor.sso_cache_dir = "/tmp/sso-cache"
+
+    acct = _make_account("ops-prod", region="ap-southeast-3")
+    acct.auth_method = "assumed_role"
+    acct.role_arn = "arn:aws:iam::123456789012:role/ReadOnly"
+    acct.external_id = None
+    acct.account_id = "123456789012"
+
+    with (
+        patch(
+            "backend.domain.services.check_executor._build_creds_for_account"
+        ) as mock_build,
+        patch("backend.domain.services.check_executor._run_single_check") as mock_run,
+    ):
+        mock_build.return_value = {
+            "aws_access_key_id": "AKIAEXAMPLE",
+            "aws_secret_access_key": "secret",
+            "aws_session_token": "token",
+        }
+        mock_run.return_value = {"status": "ok"}
+
+        executor._execute_parallel(
+            [acct], {"cloudwatch": MagicMock()}, "ap-southeast-3"
+        )
+
+    mock_build.assert_called_once_with(
+        acct,
+        "ap-southeast-3",
+        aws_config_file="/tmp/aws-config",
+        sso_cache_dir="/tmp/sso-cache",
+    )
+
+
+def test_build_creds_assumed_role_uses_sso_cache_dir_for_base_session():
+    from backend.domain.services import check_executor as module
+
+    account = MagicMock()
+    account.auth_method = "assumed_role"
+    account.role_arn = "arn:aws:iam::123456789012:role/ReadOnly"
+    account.external_id = None
+    account.profile_name = "ops-prod"
+    account.aws_access_key_id = None
+    account.aws_secret_access_key_enc = None
+
+    sts_client = MagicMock()
+    sts_client.assume_role.return_value = {
+        "Credentials": {
+            "AccessKeyId": "ASIAEXAMPLE",
+            "SecretAccessKey": "secret",
+            "SessionToken": "token",
+        }
+    }
+    base_session = MagicMock()
+    base_session.client.return_value = sts_client
+
+    with patch.object(
+        module, "get_aws_session", return_value=base_session
+    ) as mock_get_session:
+        creds = module._build_creds_for_account(
+            account,
+            region="ap-southeast-3",
+            aws_config_file="/tmp/aws-config",
+            sso_cache_dir="/tmp/sso-cache",
+        )
+
+    assert creds["aws_access_key_id"] == "ASIAEXAMPLE"
+    mock_get_session.assert_called_once_with(
+        region_name="ap-southeast-3",
+        aws_config_file="/tmp/aws-config",
+        sso_cache_dir="/tmp/sso-cache",
+    )
+
+
 def test_execute_parallel_injects_alarm_names_for_cloudwatch():
     executor = _make_executor()
     acct = _make_account("connect-prod", alarm_names=["alarm-a", "alarm-b"])
@@ -470,16 +546,26 @@ def test_ec2_utilization_uses_stored_instance_list():
 
     checker = AWSUtilization3CoreChecker(instance_list=stored_instances)
 
-    with patch.object(checker, "_discover_regions") as mock_discover, \
-         patch.object(checker, "_list_instances") as mock_list, \
-         patch.object(checker, "_get_session") as mock_session, \
-         patch.object(checker, "_collect_instance_metrics") as mock_collect:
-
-        mock_collect.return_value = {**stored_instances[0], "cpu_avg_12h": 10.0,
-            "cpu_peak_12h": 15.0, "cpu_peak_at_12h": None, "memory_avg_12h": None,
-            "memory_peak_12h": None, "memory_peak_at_12h": None, "memory_metric": None,
-            "memory_note": None, "disk_free_min_percent": None, "disk_note": None,
-            "status": "NORMAL"}
+    with (
+        patch.object(checker, "_discover_regions") as mock_discover,
+        patch.object(checker, "_list_instances") as mock_list,
+        patch.object(checker, "_get_session") as mock_session,
+        patch.object(checker, "_collect_instance_metrics") as mock_collect,
+    ):
+        mock_collect.return_value = {
+            **stored_instances[0],
+            "cpu_avg_12h": 10.0,
+            "cpu_peak_12h": 15.0,
+            "cpu_peak_at_12h": None,
+            "memory_avg_12h": None,
+            "memory_peak_12h": None,
+            "memory_peak_at_12h": None,
+            "memory_metric": None,
+            "memory_note": None,
+            "disk_free_min_percent": None,
+            "disk_note": None,
+            "status": "NORMAL",
+        }
         mock_session.return_value = MagicMock()
 
         result = checker.check("test-profile", "123456789012")
@@ -522,7 +608,9 @@ def test_executor_injects_instance_list_from_discovery():
         captured_kwargs[args[0]] = args[3]
         return {"status": "ok"}
 
-    with patch("backend.domain.services.check_executor._run_single_check", side_effect=capture):
+    with patch(
+        "backend.domain.services.check_executor._run_single_check", side_effect=capture
+    ):
         executor._execute_parallel(
             [acct], {"ec2_utilization": MagicMock()}, "ap-southeast-3"
         )

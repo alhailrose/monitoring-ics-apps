@@ -14,13 +14,19 @@ logger = logging.getLogger(__name__)
 AWS_CONFIG_PATH = Path.home() / ".aws" / "config"
 
 
-def detect_aws_profiles(aws_config_file: str | None = None) -> list[str]:
+def detect_aws_profiles(
+    aws_config_file: str | None = None,
+    sso_cache_dir: str | None = None,
+) -> list[str]:
     """Parse ~/.aws/config and return all profile names."""
     profiles = []
     config_path = Path(aws_config_file) if aws_config_file else AWS_CONFIG_PATH
     try:
         # Use boto3's built-in profile detection
-        session = get_aws_session(aws_config_file=aws_config_file)
+        session = get_aws_session(
+            aws_config_file=aws_config_file,
+            sso_cache_dir=sso_cache_dir,
+        )
         profiles = list(session.available_profiles)
     except Exception:
         # Fallback: parse config file directly
@@ -35,13 +41,16 @@ def detect_aws_profiles(aws_config_file: str | None = None) -> list[str]:
 
 
 def detect_account_id(
-    profile_name: str, aws_config_file: str | None = None
+    profile_name: str,
+    aws_config_file: str | None = None,
+    sso_cache_dir: str | None = None,
 ) -> str | None:
     """Try to get AWS account ID for a profile via STS."""
     try:
         session = get_aws_session(
             profile_name=profile_name,
             aws_config_file=aws_config_file,
+            sso_cache_dir=sso_cache_dir,
         )
         sts = session.client("sts")
         identity = sts.get_caller_identity()
@@ -54,7 +63,12 @@ def detect_account_id(
 class CustomerService:
     """Business logic for customer and account management."""
 
-    def __init__(self, customer_repo, aws_config_file: str | None = None, sso_cache_dir: str | None = None):
+    def __init__(
+        self,
+        customer_repo,
+        aws_config_file: str | None = None,
+        sso_cache_dir: str | None = None,
+    ):
         self.repo = customer_repo
         self.aws_config_file = aws_config_file
         self.sso_cache_dir = sso_cache_dir
@@ -130,7 +144,11 @@ class CustomerService:
     ) -> dict:
         # Auto-detect AWS account ID (only meaningful for profile auth)
         account_id = (
-            detect_account_id(profile_name, self.aws_config_file)
+            detect_account_id(
+                profile_name,
+                self.aws_config_file,
+                self.sso_cache_dir,
+            )
             if auth_method == "profile"
             else None
         )
@@ -438,7 +456,7 @@ class CustomerService:
 
     def detect_profiles(self) -> dict:
         """Detect AWS profiles and compare with mapped ones."""
-        all_profiles = detect_aws_profiles(self.aws_config_file)
+        all_profiles = detect_aws_profiles(self.aws_config_file, self.sso_cache_dir)
         mapped_profiles = self.repo.get_mapped_profiles()
         unmapped = [p for p in all_profiles if p not in mapped_profiles]
 
