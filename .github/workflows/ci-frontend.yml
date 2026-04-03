@@ -32,4 +32,4 @@ jobs:
         run: npm ci --prefix frontend
 
       - name: Typecheck
-        run: npx --prefix frontend tsc --noEmit
+        run: npm run --prefix frontend typecheck
