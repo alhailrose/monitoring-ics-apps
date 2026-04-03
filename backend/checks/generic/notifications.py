@@ -5,6 +5,21 @@ from datetime import datetime, timedelta, timezone
 from backend.checks.common.base import BaseChecker
 from backend.checks.common.aws_errors import is_credential_error
 
+_WIB = timezone(timedelta(hours=7))
+
+
+def _fmt_ts(ts) -> str:
+    """Convert a datetime or ISO string to WIB human-readable format."""
+    if not ts or ts == "N/A":
+        return "N/A"
+    try:
+        if isinstance(ts, datetime):
+            return ts.astimezone(_WIB).strftime("%d %b %Y %H:%M WIB")
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        return dt.astimezone(_WIB).strftime("%d %b %Y %H:%M WIB")
+    except Exception:
+        return str(ts)
+
 
 class NotificationChecker(BaseChecker):
     report_section_title = "NOTIFICATION CENTER"
@@ -59,50 +74,62 @@ class NotificationChecker(BaseChecker):
             }
 
     def format_report(self, results):
+        """Format notifications — full detail for specific/single check mode."""
         if results["status"] == "error":
             return f"ERROR: {results['error']}"
 
+        profile = results["profile"]
+        account_id = results.get("account_id", "Unknown")
+        now_wib = datetime.now(_WIB).strftime("%d %b %Y %H:%M WIB")
+        recent_count = results.get("recent_count", 0)
+        total_managed = results.get("total_managed", 0)
+        regular_count = results.get("regular_count", 0)
+
         lines = []
-        lines.append("AWS NOTIFICATION CENTER")
-        lines.append(
-            f"Last 12h: {results['recent_count']} new | Total: {results['total_managed']}"
-        )
+        lines.append("┌─ NOTIFICATION CENTER CHECK")
+        lines.append(f"│  Profil     : {profile} ({account_id})")
+        lines.append(f"│  Diperiksa  : {now_wib}")
+        lines.append(f"│  12 Jam     : {recent_count} notifikasi baru")
+        lines.append(f"│  Total      : {total_managed} managed | {regular_count} regular")
 
-        # Show recent events if any
-        if results["recent_events"]:
+        if recent_count == 0 and total_managed == 0 and regular_count == 0:
+            lines.append("└─ Status: Tidak ada data notifikasi")
+            return "\n".join(lines)
+
+        if recent_count == 0:
+            lines.append("└─ Status: ✓ Tidak ada notifikasi baru dalam 12 jam terakhir")
+            all_events = results.get("all_events") or []
+            if all_events:
+                lines.append("")
+                lines.append("  Notifikasi terbaru (referensi):")
+                for event in all_events[:5]:
+                    notif_event = event.get("notificationEvent", {})
+                    event_type = notif_event.get("sourceEventMetadata", {}).get("eventType", "N/A")
+                    headline = notif_event.get("messageComponents", {}).get("headline", "N/A")
+                    created = _fmt_ts(event.get("creationTime", "N/A"))
+                    lines.append(f"  • [{created}] {event_type}")
+                    lines.append(f"    {headline}")
+            return "\n".join(lines)
+
+        lines.append(f"└─ Status: ⚠ {recent_count} notifikasi baru dalam 12 jam terakhir")
+        lines.append("")
+        lines.append("  Notifikasi Baru (12 jam):")
+
+        for idx, event in enumerate(results.get("recent_events", []), 1):
+            notif_event = event.get("notificationEvent", {})
+            event_type = notif_event.get("sourceEventMetadata", {}).get("eventType", "N/A")
+            headline = notif_event.get("messageComponents", {}).get("headline", "N/A")
+            created = _fmt_ts(event.get("creationTime", "N/A"))
+            lines.append(f"  [{idx}] {event_type}")
+            lines.append(f"      Waktu     : {created}")
+            lines.append(f"      Headline  : {headline}")
             lines.append("")
-            lines.append("🔴 Recent notifications (12h):")
-            for event in results["recent_events"][:5]:
-                notif_event = event.get("notificationEvent", {})
-                event_type = notif_event.get("sourceEventMetadata", {}).get(
-                    "eventType", "N/A"
-                )
-                headline = notif_event.get("messageComponents", {}).get(
-                    "headline", "N/A"
-                )
-                created = event.get("creationTime", "N/A")
 
-                lines.append(f"\n• [{created}] {event_type}")
-                lines.append(f"  {headline[:150]}...")
+        recent_events = results.get("recent_events") or []
+        if len(recent_events) < recent_count:
+            lines.append(f"  ... dan {recent_count - len(recent_events)} notifikasi lainnya")
 
-        # Always show latest 3 for context
-        elif results["all_events"]:
-            lines.append("")
-            lines.append("Latest notifications (for reference):")
-            for event in results["all_events"][:3]:
-                notif_event = event.get("notificationEvent", {})
-                event_type = notif_event.get("sourceEventMetadata", {}).get(
-                    "eventType", "N/A"
-                )
-                headline = notif_event.get("messageComponents", {}).get(
-                    "headline", "N/A"
-                )
-                created = event.get("creationTime", "N/A")
-
-                lines.append(f"\n• [{created}] {event_type}")
-                lines.append(f"  {headline[:150]}...")
-
-        return "\n".join(lines)
+        return "\n".join(lines).rstrip()
 
     def count_issues(self, result: dict) -> int:
         if result.get("status") == "error":

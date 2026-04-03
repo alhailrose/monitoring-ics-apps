@@ -128,26 +128,49 @@ class GuardDutyChecker(BaseChecker):
             }
 
     def format_report(self, results):
-        """Format GuardDuty — concise per-account data output."""
+        """Format GuardDuty — full detail for specific/single check mode."""
         if results["status"] == "error":
             return f"ERROR: {results['error']}"
         if results["status"] == "disabled":
-            return f"GuardDuty | {results['profile']} ({results['account_id']})\nStatus: Disabled"
-
-        lines = []
-        lines.append(f"GuardDuty | {results['profile']} ({results['account_id']})")
-        lines.append(f"Findings: {results['findings']}")
-
-        if results["findings"] == 0:
-            lines.append("Status: Clear")
-            return "\n".join(lines)
-
-        for idx, detail in enumerate(results.get("details", [])[:5], 1):
-            lines.append(
-                f"  {idx}. [{detail['severity']}] {detail['type']} — {detail['title']} ({detail['updated']})"
+            return (
+                f"┌─ GUARDDUTY CHECK\n"
+                f"│  Profil   : {results['profile']} ({results['account_id']})\n"
+                f"└─ Status: GuardDuty tidak aktif di akun ini"
             )
 
-        return "\n".join(lines)
+        profile = results["profile"]
+        account_id = results.get("account_id", "Unknown")
+        now_wib = datetime.now(WIB).strftime("%d %b %Y %H:%M WIB")
+        finding_count = results.get("findings", 0)
+        details = results.get("details", [])
+
+        lines = []
+        lines.append("┌─ GUARDDUTY CHECK")
+        lines.append(f"│  Profil     : {profile} ({account_id})")
+        lines.append(f"│  Diperiksa  : {now_wib}")
+        lines.append(f"│  Temuan     : {finding_count} (hari ini, severity ≥ Medium)")
+
+        if finding_count == 0:
+            lines.append("└─ Status: ✓ Tidak ada temuan keamanan hari ini")
+            return "\n".join(lines)
+
+        lines.append("└─ Status: ⚠ Temuan ditemukan — detail di bawah")
+        lines.append("")
+
+        for idx, detail in enumerate(details, 1):
+            lines.append(f"  [{idx}] {detail.get('type', 'N/A')}")
+            lines.append(f"      Severity   : {detail.get('severity', 'N/A')}")
+            lines.append(f"      Judul      : {detail.get('title', 'N/A')}")
+            lines.append(f"      Updated    : {detail.get('updated', 'N/A')}")
+            lines.append(f"      Finding ID : {detail.get('id', 'N/A')}")
+            lines.append("")
+
+        if finding_count > len(details):
+            lines.append(
+                f"  ... dan {finding_count - len(details)} temuan lainnya (tidak ditampilkan)"
+            )
+
+        return "\n".join(lines).rstrip()
 
     def count_issues(self, result: dict) -> int:
         if result.get("status") in ("error", "disabled"):

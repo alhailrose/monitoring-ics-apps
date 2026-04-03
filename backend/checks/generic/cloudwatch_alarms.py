@@ -60,29 +60,37 @@ class CloudWatchAlarmChecker(BaseChecker):
             }
 
     def format_report(self, results):
-        """Format CloudWatch alarms into readable report"""
+        """Format CloudWatch alarms — full detail for specific/single check mode."""
         if results["status"] == "error":
             return f"ERROR: {results['error']}"
 
-        lines = []
-        lines.append("AWS CLOUDWATCH ALARMS")
+        from datetime import datetime
+        profile = results["profile"]
+        account_id = results.get("account_id", "Unknown")
+        now_wib = datetime.now(WIB).strftime("%d %b %Y %H:%M WIB")
+        count = results.get("count", 0)
+        details = results.get("details", [])
 
-        if results["count"] == 0:
-            lines.append("Status: All monitoring systems normal")
+        lines = []
+        lines.append("┌─ CLOUDWATCH ALARMS CHECK")
+        lines.append(f"│  Profil     : {profile} ({account_id})")
+        lines.append(f"│  Diperiksa  : {now_wib}")
+        lines.append(f"│  Alarm Aktif: {count}")
+
+        if count == 0:
+            lines.append("└─ Status: ✓ Semua sistem monitoring normal")
             return "\n".join(lines)
 
-        lines.append(f"Status: {results['count']} alarm(s) in ALARM state")
+        lines.append(f"└─ Status: ⚠ {count} alarm dalam kondisi ALARM")
         lines.append("")
-        lines.append("Active Alarms (up to 5):")
-        for alarm in results.get("details", [])[:5]:
-            lines.append(f"\n• {alarm.get('name', 'N/A')}")
-            reason = str(alarm.get("reason", "N/A"))
-            if len(reason) > 120:
-                reason = reason[:120] + "..."
-            lines.append(f"  Reason: {reason}")
-            lines.append(f"  Updated: {alarm.get('updated', 'N/A')}")
 
-        return "\n".join(lines)
+        for idx, alarm in enumerate(details, 1):
+            lines.append(f"  [{idx}] {alarm.get('name', 'N/A')}")
+            lines.append(f"      Updated   : {alarm.get('updated', 'N/A')}")
+            lines.append(f"      Reason    : {alarm.get('reason', 'N/A')}")
+            lines.append("")
+
+        return "\n".join(lines).rstrip()
 
     def count_issues(self, result: dict) -> int:
         if result.get("status") == "error":

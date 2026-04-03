@@ -327,41 +327,91 @@ class BackupStatusChecker(BaseChecker):
             }
 
     def format_report(self, results):
-        """Format backup status — concise per-account data output."""
+        """Format backup status — full detail for specific/single check mode."""
         if results.get("status") == "error":
             return f"ERROR: {results.get('error')}"
 
+        profile = results.get("profile", "")
+        account_id = results.get("account_id", "Unknown")
+        now_wib_str = datetime.now(JAKARTA_TZ).strftime("%d %b %Y %H:%M WIB")
+        total = results.get("total_jobs", 0)
+        completed = results.get("completed_jobs", 0)
+        failed = results.get("failed_jobs", 0)
+        expired = results.get("expired_jobs", 0)
+        issues = results.get("issues", [])
+
         lines = []
-        lines.append(f"Backup | {results.get('profile', '')} | {results.get('region', '')}")
+        lines.append("┌─ BACKUP STATUS CHECK")
+        lines.append(f"│  Profil     : {profile} ({account_id})")
+        lines.append(f"│  Region     : {results.get('region', '-')}")
+        lines.append(f"│  Diperiksa  : {now_wib_str}")
         lines.append(
-            f"Jobs: {results.get('total_jobs', 0)} total | {results.get('completed_jobs', 0)} ok | {results.get('failed_jobs', 0)} failed | {results.get('expired_jobs', 0)} expired"
+            f"│  Total Jobs : {total} "
+            f"(selesai: {completed}, gagal: {failed}, expired: {expired})"
         )
 
-        # Failed/expired details
+        if not issues:
+            lines.append("└─ Status: ✓ Semua backup jobs berhasil")
+        else:
+            lines.append(f"└─ Status: ⚠ {len(issues)} masalah ditemukan")
+
+        # Backup plans
+        plans = results.get("backup_plans", [])
+        if plans:
+            lines.append("")
+            lines.append(f"  Backup Plans ({len(plans)}):")
+            for p in plans:
+                lines.append(f"    • {p}")
+
+        # Failed/expired job details
         details = results.get("job_details", [])
         failed_jobs = [j for j in details if j.get("state") in ["FAILED", "EXPIRED"]]
-        for j in failed_jobs:
-            ts_wib = j.get("created_wib")
-            ts_str = ts_wib.strftime("%H:%M WIB") if hasattr(ts_wib, "strftime") else str(ts_wib)
-            lines.append(f"  - {j.get('state')}: {j.get('resource_label', 'N/A')} ({ts_str}) — {j.get('reason', '')}")
+        if failed_jobs:
+            lines.append("")
+            lines.append(f"  Job Bermasalah ({len(failed_jobs)}):")
+            for j in failed_jobs:
+                ts_wib = j.get("created_wib")
+                ts_str = (
+                    ts_wib.strftime("%d %b %Y %H:%M WIB")
+                    if hasattr(ts_wib, "strftime")
+                    else str(ts_wib)
+                )
+                reason = j.get("reason") or "-"
+                lines.append(
+                    f"    [{j.get('state')}] {j.get('resource_label', 'N/A')} ({j.get('type', '-')})"
+                )
+                lines.append(f"      Waktu  : {ts_str}")
+                if reason and reason != "-":
+                    lines.append(f"      Alasan : {reason}")
+                lines.append("")
 
         # Vault activity
-        for v in results.get("vaults", []):
-            if v.get("error"):
-                lines.append(f"  - Vault {v['vault_name']}: ERROR {v['error']}")
-            else:
-                lines.append(f"  - Vault {v['vault_name']}: {v.get('recovery_points_24h', 0)} new / {v.get('total_recovery_points', 0)} total")
+        vaults = results.get("vaults", [])
+        if vaults:
+            lines.append("  Vault Activity (24 jam):")
+            for v in vaults:
+                if v.get("error"):
+                    lines.append(f"    ⚠ {v['vault_name']}: ERROR — {v['error']}")
+                else:
+                    rp_24h = v.get("recovery_points_24h", 0)
+                    total_rp = v.get("total_recovery_points", 0)
+                    icon = "✓" if rp_24h > 0 else "⚠"
+                    lines.append(
+                        f"    {icon} {v['vault_name']}: {rp_24h} baru / {total_rp} total"
+                    )
+                    resources = v.get("resources_24h", [])
+                    for r in resources[:5]:
+                        lines.append(f"      - {r.get('name', 'N/A')} ({r.get('type', '-')})")
+                    if len(resources) > 5:
+                        lines.append(f"      ... dan {len(resources) - 5} resource lain")
 
         if results.get("monitor_rds_snapshots"):
-            lines.append(f"RDS snapshots (24h): {results.get('rds_snapshots_24h', 0)}")
+            rds = results.get("rds_snapshots_24h", 0)
+            icon = "✓" if rds > 0 else "⚠"
+            lines.append("")
+            lines.append(f"  {icon} RDS Snapshots (24 jam): {rds}")
 
-        if results.get("issues"):
-            for i in results["issues"]:
-                lines.append(f"  ! {i}")
-        elif not failed_jobs:
-            lines.append("Status: Healthy")
-
-        return "\n".join(lines)
+        return "\n".join(lines).rstrip()
 
     def count_issues(self, result: dict) -> int:
         if result.get("status") == "error":

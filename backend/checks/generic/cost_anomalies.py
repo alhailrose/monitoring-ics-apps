@@ -2,11 +2,60 @@
 
 import logging
 import boto3
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from backend.checks.common.base import BaseChecker
 from backend.checks.common.aws_errors import is_credential_error
 
 logger = logging.getLogger(__name__)
+
+_WIB = timezone(timedelta(hours=7))
+
+_MONTH_ID = {
+    1: "Januari", 2: "Februari", 3: "Maret", 4: "April",
+    5: "Mei", 6: "Juni", 7: "Juli", 8: "Agustus",
+    9: "September", 10: "Oktober", 11: "November", 12: "Desember",
+}
+
+
+def _fmt_date(date_str: str) -> str:
+    """Format 'YYYY-MM-DD' → '3 April 2026'."""
+    try:
+        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        return f"{d.day} {_MONTH_ID[d.month]} {d.year}"
+    except Exception:
+        return date_str
+
+
+def _fmt_date_range(start: str, end: str) -> str:
+    if start == end or not end or end == "N/A":
+        return _fmt_date(start)
+    return f"{_fmt_date(start)} s/d {_fmt_date(end)}"
+
+
+def _score_label(score) -> str:
+    try:
+        s = float(score)
+        if s >= 80: return "Sangat Tinggi"
+        if s >= 50: return "Tinggi"
+        if s >= 20: return "Sedang"
+        return "Rendah"
+    except Exception:
+        return str(score)
+
+
+def _linked_accounts(root_causes: list) -> list[dict]:
+    """Extract unique linked accounts from root causes."""
+    seen = set()
+    accounts = []
+    for rc in root_causes:
+        acct_id = rc.get("LinkedAccount", "")
+        if acct_id and acct_id not in seen:
+            seen.add(acct_id)
+            accounts.append({
+                "id": acct_id,
+                "name": rc.get("LinkedAccountName", ""),
+            })
+    return accounts
 
 
 class CostAnomalyChecker(BaseChecker):
@@ -86,41 +135,93 @@ class CostAnomalyChecker(BaseChecker):
             }
 
     def format_report(self, results):
-        """Format cost anomalies — concise per-account data output."""
+        """Format cost anomalies — full detail for specific/single check mode."""
         if results["status"] == "error":
             return f"ERROR: {results['error']}"
 
-        lines = []
-        lines.append(f"Cost Anomaly | {results['profile']} ({results['account_id']})")
-        lines.append(f"Monitors: {results['total_monitors']} | Anomalies: {results['total_anomalies']} (today: {results.get('today_anomaly_count', 0)}, yesterday: {results.get('yesterday_anomaly_count', 0)})")
+        profile = results["profile"]
+        account_id = results.get("account_id", "Unknown")
+        anomalies = results.get("anomalies", [])
+        now_wib = datetime.now(_WIB).strftime("%d %b %Y %H:%M WIB")
 
-        if not results["anomalies"]:
-            lines.append("Status: Clear")
+        lines = []
+        lines.append(f"┌─ COST ANOMALY CHECK")
+        lines.append(f"│  Profil     : {profile} ({account_id})")
+        lines.append(f"│  Diperiksa  : {now_wib}")
+        lines.append(f"│  Monitor    : {results['total_monitors']} aktif")
+        lines.append(f"│  Anomali    : {results['total_anomalies']} terdeteksi "
+                     f"(hari ini: {results.get('today_anomaly_count', 0)}, "
+                     f"kemarin: {results.get('yesterday_anomaly_count', 0)})")
+
+        if not anomalies:
+            lines.append("└─ Status: ✓ Tidak ada anomali biaya")
             return "\n".join(lines)
 
         total_impact = sum(
             float(a.get("Impact", {}).get("TotalImpact", 0))
-            for a in results["anomalies"]
+            for a in anomalies
         )
-        lines.append(f"Total Impact: ${total_impact:.2f}")
+        lines.append(f"│  Total Dampak: ${total_impact:,.2f}")
+        lines.append("└─ Status: ⚠ Anomali ditemukan — detail di bawah")
+        lines.append("")
 
-        for idx, anomaly in enumerate(results["anomalies"], 1):
+        for idx, anomaly in enumerate(anomalies, 1):
             impact = anomaly.get("Impact", {})
             impact_val = float(impact.get("TotalImpact", 0))
+            impact_pct = impact.get("TotalImpactPercentage")
+            max_impact = impact.get("MaxImpact")
             start_date = anomaly.get("AnomalyStartDate", "N/A")
-            end_date = anomaly.get("AnomalyEndDate", "N/A")
+            end_date = anomaly.get("AnomalyEndDate") or start_date
             score = anomaly.get("AnomalyScore", {}).get("CurrentScore", "N/A")
-
             root_causes = anomaly.get("RootCauses", [])
-            services = list(set(rc.get("Service", "N/A") for rc in root_causes))
+            linked_accounts = _linked_accounts(root_causes)
 
-            lines.append(
-                f"  {idx}. {anomaly.get('MonitorName', 'N/A')} | {start_date}~{end_date} | ${impact_val:.2f} | score={score}"
-            )
-            if services:
-                lines.append(f"     Services: {', '.join(services[:5])}")
+            lines.append(f"  [{idx}] {anomaly.get('MonitorName', 'N/A')}")
+            lines.append(f"      Periode   : {_fmt_date_range(start_date, end_date)}")
+            lines.append(f"      Dampak    : ${impact_val:,.2f}" +
+                         (f" (+{impact_pct:.1f}%)" if impact_pct else "") +
+                         (f" | Puncak: ${float(max_impact):,.2f}/hari" if max_impact else ""))
+            lines.append(f"      Skor      : {score} ({_score_label(score)})")
 
-        return "\n".join(lines)
+            # Linked accounts — penting untuk payer account
+            if linked_accounts:
+                if len(linked_accounts) == 1:
+                    a = linked_accounts[0]
+                    label = f"{a['name']} ({a['id']})" if a['name'] else a['id']
+                    lines.append(f"      Akun      : {label}")
+                else:
+                    lines.append(f"      Akun ({len(linked_accounts)}):")
+                    for a in linked_accounts:
+                        label = f"{a['name']} ({a['id']})" if a['name'] else a['id']
+                        lines.append(f"        • {label}")
+
+            # Root causes
+            if root_causes:
+                seen_services = set()
+                service_details = []
+                for rc in root_causes:
+                    svc = rc.get("Service", "")
+                    region = rc.get("Region", "")
+                    usage = rc.get("UsageType", "")
+                    key = f"{svc}|{usage}"
+                    if key not in seen_services:
+                        seen_services.add(key)
+                        parts = [svc]
+                        if region:
+                            parts.append(region)
+                        if usage:
+                            parts.append(usage)
+                        service_details.append(" / ".join(p for p in parts if p))
+
+                lines.append(f"      Penyebab  :")
+                for detail in service_details[:5]:
+                    lines.append(f"        • {detail}")
+                if len(service_details) > 5:
+                    lines.append(f"        ... dan {len(service_details) - 5} lainnya")
+
+            lines.append("")
+
+        return "\n".join(lines).rstrip()
 
     def count_issues(self, result: dict) -> int:
         """Count cost anomalies — prefer today's count, fall back to total."""
@@ -132,7 +233,7 @@ class CostAnomalyChecker(BaseChecker):
         return int(result.get("total_anomalies", 0) or 0)
 
     def render_section(self, all_results: dict, errors: list) -> list[str]:
-        """Render COST ANOMALIES section for consolidated report."""
+        """Render COST ANOMALIES section for consolidated (bundled) report."""
         lines = []
         lines.append("")
         lines.append("COST ANOMALIES")
@@ -151,40 +252,46 @@ class CostAnomalyChecker(BaseChecker):
         if total_anomalies == 0:
             lines.append("Status: CLEAR - No cost anomalies detected")
         else:
-            lines.append(
-                f"Status: ATTENTION REQUIRED - {total_anomalies} anomalies detected"
-            )
+            lines.append(f"Status: ATTENTION REQUIRED - {total_anomalies} anomalies detected")
             lines.append("")
             lines.append("Detected Anomalies:")
             for profile, cost_data in all_results.items():
-                if cost_data.get("total_anomalies", 0) > 0:
-                    account_id = cost_data.get("account_id", "Unknown")
-                    lines.append(
-                        f"  * {profile} ({account_id}): {cost_data['total_anomalies']} anomalies"
-                    )
-                    for anomaly in cost_data.get("anomalies", [])[:3]:
-                        impact = anomaly.get("Impact", {}).get("TotalImpact", "0")
-                        anomaly_start = anomaly.get("AnomalyStartDate", "N/A")
-                        anomaly_end = anomaly.get("AnomalyEndDate", "N/A")
-                        lines.append(f"    - Monitor: {anomaly.get('MonitorName', 'N/A')}")
-                        lines.append(f"    - Impact: ${impact}")
-                        lines.append(f"    - Date: {anomaly_start} to {anomaly_end}")
+                if cost_data.get("total_anomalies", 0) == 0:
+                    continue
+                account_id = cost_data.get("account_id", "Unknown")
+                lines.append(f"  * {profile} ({account_id}): {cost_data['total_anomalies']} anomali")
+                for anomaly in cost_data.get("anomalies", [])[:3]:
+                    impact = anomaly.get("Impact", {})
+                    impact_val = float(impact.get("TotalImpact", 0))
+                    impact_pct = impact.get("TotalImpactPercentage")
+                    start = anomaly.get("AnomalyStartDate", "N/A")
+                    end = anomaly.get("AnomalyEndDate") or start
+                    root_causes = anomaly.get("RootCauses", [])
+                    linked_accounts = _linked_accounts(root_causes)
 
-                        root_causes = anomaly.get("RootCauses", [])
-                        if root_causes:
-                            services = list(
-                                set([rc.get("Service", "N/A") for rc in root_causes])
-                            )
-                            lines.append(
-                                f"    - Affected Services: {', '.join(services[:3])}"
-                            )
-                            if len(services) > 3:
-                                lines.append(
-                                    f"      ... and {len(services) - 3} more services"
-                                )
-                            top_cause = root_causes[0]
-                            lines.append(
-                                f"    - Top Root Cause: {top_cause.get('Service', 'N/A')} - {top_cause.get('UsageType', 'N/A')}"
-                            )
+                    pct_str = f" (+{impact_pct:.1f}%)" if impact_pct else ""
+                    lines.append(f"    - Monitor : {anomaly.get('MonitorName', 'N/A')}")
+                    lines.append(f"    - Periode : {_fmt_date_range(start, end)}")
+                    lines.append(f"    - Dampak  : ${impact_val:,.2f}{pct_str}")
+
+                    # Linked accounts untuk payer
+                    if linked_accounts:
+                        acct_labels = []
+                        for a in linked_accounts[:3]:
+                            acct_labels.append(f"{a['name']} ({a['id']})" if a['name'] else a['id'])
+                        lines.append(f"    - Akun    : {', '.join(acct_labels)}")
+                        if len(linked_accounts) > 3:
+                            lines.append(f"               ... dan {len(linked_accounts) - 3} akun lain")
+
+                    if root_causes:
+                        services = list(dict.fromkeys(
+                            rc.get("Service", "N/A") for rc in root_causes if rc.get("Service")
+                        ))
+                        top = root_causes[0]
+                        lines.append(f"    - Service : {', '.join(services[:3])}")
+                        usage = top.get("UsageType", "")
+                        if usage:
+                            lines.append(f"    - Usage   : {usage}")
+                    lines.append("")
 
         return lines

@@ -599,21 +599,39 @@ class AWSUtilization3CoreChecker(BaseChecker):
         return "N/A"
 
     def format_report(self, results: dict[str, Any]) -> str:
+        """Format utilization — full detail for specific/single check mode."""
         if results.get("status") != "success":
             return f"ERROR: {results.get('error', 'unknown error')}"
 
+        profile = results.get("profile", "")
+        account_id = results.get("account_id", "Unknown")
         summary = results.get("summary", {})
-        lines = [
-            f"AWS UTILIZATION 3-CORE | Profile {results.get('profile')} | Window {self.util_hours}h",
-            (
-                "Summary: "
-                f"NORMAL={summary.get('normal', 0)} "
-                f"WARNING={summary.get('warning', 0)} "
-                f"CRITICAL={summary.get('critical', 0)} "
-                f"PARTIAL_DATA={summary.get('partial_data', 0)}"
-            ),
-            "Instances:",
-        ]
+        util_window = results.get("util_window", {})
+        now_str = results.get("generated_at", "")
+        hours = util_window.get("hours", self.util_hours)
+
+        lines = []
+        lines.append("┌─ EC2 UTILIZATION CHECK (CPU / MEMORY / DISK)")
+        lines.append(f"│  Profil       : {profile} ({account_id})")
+        lines.append(f"│  Region       : {results.get('region', '-')}")
+        lines.append(f"│  Diperiksa    : {now_str}")
+        lines.append(f"│  Window       : {hours}h")
+        lines.append(
+            f"│  Instance     : {summary.get('total', 0)} total | "
+            f"Normal: {summary.get('normal', 0)} | "
+            f"Warning: {summary.get('warning', 0)} | "
+            f"Critical: {summary.get('critical', 0)} | "
+            f"Data Parsial: {summary.get('partial_data', 0)}"
+        )
+
+        critical = summary.get("critical", 0)
+        warning = summary.get("warning", 0)
+        if critical > 0:
+            lines.append(f"└─ Status: ✗ {critical} instance CRITICAL, {warning} WARNING")
+        elif warning > 0:
+            lines.append(f"└─ Status: ⚠ {warning} instance perlu perhatian")
+        else:
+            lines.append("└─ Status: ✓ Semua instance normal")
 
         order = {"CRITICAL": 0, "WARNING": 1, "PARTIAL_DATA": 2, "NORMAL": 3}
         rows = sorted(
@@ -623,24 +641,49 @@ class AWSUtilization3CoreChecker(BaseChecker):
                 str((row or {}).get("instance_id") or ""),
             ),
         )
-        for row in rows:
-            notes = []
-            if row.get("memory_note"):
-                notes.append(str(row.get("memory_note")))
-            if row.get("disk_note"):
-                notes.append(str(row.get("disk_note")))
-            notes_text = f" | NOTE={'; '.join(notes)}" if notes else ""
-            lines.append(
-                (
-                    f"- {row.get('instance_id')} ({row.get('name', '-')}) | "
-                    f"OS={row.get('os_type', '-')}/{row.get('region', '-')} | "
-                    f"CPU(avg/peak)={self._fmt_pct(row.get('cpu_avg_12h'))}/{self._fmt_pct(row.get('cpu_peak_12h'))} | "
-                    f"MEM(avg/peak)={self._fmt_pct(row.get('memory_avg_12h'))}/{self._fmt_pct(row.get('memory_peak_12h'))} | "
-                    f"DISK_FREE_MIN={self._fmt_pct(row.get('disk_free_min_percent'))} | "
-                    f"STATUS={row.get('status', 'PARTIAL_DATA')}{notes_text}"
+
+        if rows:
+            lines.append("")
+            status_icons = {"CRITICAL": "✗", "WARNING": "⚠", "NORMAL": "✓"}
+            for row in rows:
+                status = str(row.get("status", "PARTIAL_DATA")).upper()
+                icon = status_icons.get(status, "~")
+                lines.append(
+                    f"  {icon} [{status}] {row.get('instance_id')} — {row.get('name', '-')}"
                 )
-            )
-        return "\n".join(lines)
+                lines.append(
+                    f"      OS/Region    : {row.get('os_type', '-')} / "
+                    f"{row.get('region', '-')} ({row.get('instance_type', '-')})"
+                )
+
+                cpu_avg = self._fmt_pct(row.get("cpu_avg_12h"))
+                cpu_peak = self._fmt_pct(row.get("cpu_peak_12h"))
+                cpu_peak_at = row.get("cpu_peak_at_12h") or "-"
+                lines.append(
+                    f"      CPU          : avg {cpu_avg} | peak {cpu_peak} @ {cpu_peak_at}"
+                )
+
+                if row.get("memory_note"):
+                    lines.append(f"      Memory       : {row['memory_note']}")
+                else:
+                    mem_avg = self._fmt_pct(row.get("memory_avg_12h"))
+                    mem_peak = self._fmt_pct(row.get("memory_peak_12h"))
+                    mem_peak_at = row.get("memory_peak_at_12h") or "-"
+                    mem_metric = row.get("memory_metric") or ""
+                    metric_note = f" [{mem_metric}]" if mem_metric else ""
+                    lines.append(
+                        f"      Memory       : avg {mem_avg} | peak {mem_peak} @ {mem_peak_at}{metric_note}"
+                    )
+
+                if row.get("disk_note"):
+                    lines.append(f"      Disk Free    : {row['disk_note']}")
+                else:
+                    disk_free = self._fmt_pct(row.get("disk_free_min_percent"))
+                    lines.append(f"      Disk Free    : min {disk_free}")
+
+                lines.append("")
+
+        return "\n".join(lines).rstrip()
 
     def count_issues(self, result: dict) -> int:
         if result.get("status") != "success":

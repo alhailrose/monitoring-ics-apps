@@ -1,9 +1,24 @@
 """AWS Health Events Checker"""
 import logging
 import boto3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from backend.checks.common.base import BaseChecker
 from backend.checks.common.aws_errors import is_credential_error
+
+_WIB = timezone(timedelta(hours=7))
+
+
+def _fmt_health_ts(ts) -> str:
+    """Convert AWS Health timestamp to WIB human-readable format."""
+    if not ts or ts == "N/A":
+        return "N/A"
+    try:
+        if isinstance(ts, datetime):
+            return ts.astimezone(_WIB).strftime("%d %b %Y %H:%M WIB")
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        return dt.astimezone(_WIB).strftime("%d %b %Y %H:%M WIB")
+    except Exception:
+        return str(ts)
 
 logger = logging.getLogger(__name__)
 
@@ -71,17 +86,15 @@ class HealthChecker(BaseChecker):
             }
     
     def format_report(self, results):
-        """Format health events into readable report"""
+        """Format health events — full detail for specific/single check mode."""
         if results['status'] == 'error':
             return f"ERROR: {results['error']}"
-        
-        now = self.timestamp
-        date_str = now.strftime('%B %d, %Y')
-        time_str = now.strftime('%H:%M WIB')
-        
+
+        now_wib = datetime.now(_WIB).strftime("%d %b %Y %H:%M WIB")
+
         lines = []
         lines.append("AWS HEALTH EVENTS MONITORING REPORT")
-        lines.append(f"Date: {date_str} | Time: {time_str}")
+        lines.append(f"Date: {now_wib}")
         lines.append(f"Account: {results['profile']} ({results['account_id']})")
         lines.append("")
         lines.append("=" * 80)
@@ -139,16 +152,16 @@ class HealthChecker(BaseChecker):
                 
                 lines.append(f"  Region: {event['region']}")
                 lines.append(f"  Category: {event['eventTypeCategory']}")
-                lines.append(f"  Start Time: {event.get('startTime', 'N/A')}")
-                lines.append(f"  Last Updated: {event.get('lastUpdatedTime', 'N/A')}")
-                
+                lines.append(f"  Start Time: {_fmt_health_ts(event.get('startTime', 'N/A'))}")
+                lines.append(f"  Last Updated: {_fmt_health_ts(event.get('lastUpdatedTime', 'N/A'))}")
+
                 if event.get('endTime'):
-                    lines.append(f"  End Time: {event['endTime']}")
-                
+                    lines.append(f"  End Time: {_fmt_health_ts(event['endTime'])}")
+
                 lines.append(f"  Actionability: {event.get('actionability', 'N/A')}")
-                
+
                 if item['description'] != 'N/A':
-                    lines.append(f"  Description: {item['description'][:200]}...")
+                    lines.append(f"  Description: {item['description']}")
                 
                 if item['affected_entities']:
                     lines.append(f"  Affected Resources: {len(item['affected_entities'])} resource(s)")
@@ -164,7 +177,7 @@ class HealthChecker(BaseChecker):
             for idx, item in enumerate(closed_events[:3], 1):
                 event = item['event']
                 lines.append(f"\n• {event['service']} - {event['eventTypeCode']}")
-                lines.append(f"  Closed: {event.get('endTime', 'N/A')}")
+                lines.append(f"  Closed: {_fmt_health_ts(event.get('endTime', 'N/A'))}")
         
         # Recommendations
         lines.append("")
