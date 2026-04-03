@@ -36,6 +36,7 @@ from backend.checks.common.aws_errors import (
     is_credential_error,
     friendly_credential_message,
 )
+from backend.infra.cloud.aws.clients import get_session as get_aws_session
 from backend.infra.notifications.slack.notifier import send_to_webhook
 
 logger = logging.getLogger(__name__)
@@ -160,7 +161,11 @@ def _build_summary(raw_result: dict, check_name: str) -> str:
     return str(raw_result.get("summary", "Check completed"))
 
 
-def _build_creds_for_account(account, region: str | None = None) -> dict:
+def _build_creds_for_account(
+    account,
+    region: str | None = None,
+    aws_config_file: str | None = None,
+) -> dict:
     """Resolve credentials for an account based on its auth_method.
 
     Returns a dict with keys:
@@ -170,7 +175,6 @@ def _build_creds_for_account(account, region: str | None = None) -> dict:
     than sharing a single Session across threads, to avoid any profile/env state
     leaking in.
     """
-    import boto3
     from backend.utils.crypto import decrypt_secret
     from backend.config.settings import get_settings
 
@@ -208,17 +212,21 @@ def _build_creds_for_account(account, region: str | None = None) -> dict:
             secret = decrypt_secret(
                 account.aws_secret_access_key_enc, get_settings().jwt_secret
             )
-            base_session = boto3.Session(
+            base_session = get_aws_session(
                 aws_access_key_id=account.aws_access_key_id,
                 aws_secret_access_key=secret,
                 aws_session_token=None,
                 region_name=effective_region,
+                aws_config_file=aws_config_file,
             )
         else:
             # No access key stored — fall back to boto3 default credential chain.
             # On EC2 this picks up the Instance Profile automatically.
             # Locally, set AWS_PROFILE or AWS_ACCESS_KEY_ID env vars.
-            base_session = boto3.Session(region_name=effective_region)
+            base_session = get_aws_session(
+                region_name=effective_region,
+                aws_config_file=aws_config_file,
+            )
         sts = base_session.client("sts", region_name="us-east-1")
         assume_kwargs: dict = {
             "RoleArn": role_arn,
@@ -244,6 +252,7 @@ def _run_single_check(
     check_kwargs: Optional[dict] = None,
     injected_creds: dict | None = None,
     account_id: str | None = None,
+    aws_config_file: str | None = None,
 ) -> dict:
     """Run one check on one profile, return raw result."""
     checker_class = AVAILABLE_CHECKS.get(check_name)
@@ -253,6 +262,7 @@ def _run_single_check(
     if not account_id or account_id == "Unknown":
         account_id = get_account_id_from_profile(profile)
     checker = checker_class(region=region, **(check_kwargs or {}))
+    checker._aws_config_file = aws_config_file
     if injected_creds is not None:
         checker._injected_creds = injected_creds
         logger.info(
@@ -1061,12 +1071,14 @@ class CheckExecutor:
         region: str,
         max_workers: int = DEFAULT_WORKERS,
         timeout: int = 300,
+        aws_config_file: str | None = None,
     ):
         self.check_repo = check_repo
         self.customer_repo = customer_repo
         self.region = region
         self.max_workers = max_workers
         self.timeout = timeout
+        self.aws_config_file = aws_config_file
 
     def execute(
         self,
@@ -1185,7 +1197,9 @@ class CheckExecutor:
                 if chk_name not in checkers_map:
                     checker_class = AVAILABLE_CHECKS.get(chk_name)
                     if checker_class:
-                        checkers_map[chk_name] = checker_class(region=effective_region)
+                        checker_inst = checker_class(region=effective_region)
+                        checker_inst._aws_config_file = self.aws_config_file
+                        checkers_map[chk_name] = checker_inst
 
             # Determine clean accounts
             profiles = [acc.profile_name for acc in accounts]
@@ -1537,7 +1551,11 @@ class CheckExecutor:
                 injected_creds = None
                 if auth_method != "profile":
                     try:
-                        injected_creds = _build_creds_for_account(account, region)
+                        injected_creds = _build_creds_for_account(
+                            account,
+                            region,
+                            aws_config_file=self.aws_config_file,
+                        )
                     except Exception as exc:
                         logger.warning(
                             "Auth setup failed for account %s: %s",
@@ -1630,6 +1648,10 @@ class CheckExecutor:
                     # Use account's own region if set, otherwise fall back to effective_region
                     region_for_account = account.region or region
 
+                    submit_kwargs = {}
+                    if self.aws_config_file:
+                        submit_kwargs["aws_config_file"] = self.aws_config_file
+
                     future = executor.submit(
                         _run_single_check,
                         chk_name,
@@ -1638,6 +1660,7 @@ class CheckExecutor:
                         check_kwargs,
                         injected_creds,
                         account.account_id,
+                        **submit_kwargs,
                     )
                     futures[future] = (account, chk_name)
 

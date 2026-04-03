@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from backend.checks.common.aws_errors import classify_aws_error, is_credential_error
+from backend.infra.cloud.aws.clients import get_session as get_aws_session
 
 
 class BaseChecker(ABC):
@@ -19,26 +20,31 @@ class BaseChecker(ABC):
 
     # -- Consolidated report metadata --
     # Set these in subclasses that should appear in the consolidated report.
-    report_section_title: str = ""   # e.g. "COST ANOMALIES"
-    issue_label: str = ""            # e.g. "cost anomalies" (for Executive Summary)
-    recommendation_text: str = ""    # e.g. "COST REVIEW: Investigate cost anomalies"
+    report_section_title: str = ""  # e.g. "COST ANOMALIES"
+    issue_label: str = ""  # e.g. "cost anomalies" (for Executive Summary)
+    recommendation_text: str = ""  # e.g. "COST REVIEW: Investigate cost anomalies"
 
     def __init__(self, region="ap-southeast-3", **kwargs):
         self.region = region
         self.timestamp = datetime.now()
         self._injected_creds: dict | None = None  # set by executor for non-profile auth
+        self._aws_config_file: str | None = None
 
     def _get_session(self, profile: str):
         """Return a boto3 Session using injected credentials if available, else AWS profile."""
-        import boto3
         if self._injected_creds is not None:
-            return boto3.Session(
+            return get_aws_session(
                 aws_access_key_id=self._injected_creds["aws_access_key_id"],
                 aws_secret_access_key=self._injected_creds["aws_secret_access_key"],
                 aws_session_token=self._injected_creds.get("aws_session_token"),
                 region_name=self.region,
+                aws_config_file=self._aws_config_file,
             )
-        return boto3.Session(profile_name=profile, region_name=self.region)
+        return get_aws_session(
+            profile_name=profile,
+            region_name=self.region,
+            aws_config_file=self._aws_config_file,
+        )
 
     @abstractmethod
     def check(self, profile, account_id) -> dict[str, Any]:
@@ -84,6 +90,7 @@ class BaseChecker(ABC):
         user-friendly messages. Preserves the standard result shape.
         """
         import logging as _logging
+
         _logging.getLogger(__name__).warning(
             "[auth] _error_result in %s for '%s': %r",
             type(self).__name__,

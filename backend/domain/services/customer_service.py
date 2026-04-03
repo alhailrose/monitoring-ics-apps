@@ -6,8 +6,7 @@ import logging
 from configparser import ConfigParser
 from pathlib import Path
 
-import boto3
-
+from backend.infra.cloud.aws.clients import get_session as get_aws_session
 from backend.utils.crypto import encrypt_secret, decrypt_secret
 
 logger = logging.getLogger(__name__)
@@ -15,18 +14,19 @@ logger = logging.getLogger(__name__)
 AWS_CONFIG_PATH = Path.home() / ".aws" / "config"
 
 
-def detect_aws_profiles() -> list[str]:
+def detect_aws_profiles(aws_config_file: str | None = None) -> list[str]:
     """Parse ~/.aws/config and return all profile names."""
     profiles = []
+    config_path = Path(aws_config_file) if aws_config_file else AWS_CONFIG_PATH
     try:
         # Use boto3's built-in profile detection
-        session = boto3.Session()
+        session = get_aws_session(aws_config_file=aws_config_file)
         profiles = list(session.available_profiles)
     except Exception:
         # Fallback: parse config file directly
-        if AWS_CONFIG_PATH.exists():
+        if config_path.exists():
             parser = ConfigParser()
-            parser.read(str(AWS_CONFIG_PATH))
+            parser.read(str(config_path))
             for section in parser.sections():
                 name = section.replace("profile ", "")
                 if name != "default":
@@ -34,10 +34,15 @@ def detect_aws_profiles() -> list[str]:
     return sorted(profiles)
 
 
-def detect_account_id(profile_name: str) -> str | None:
+def detect_account_id(
+    profile_name: str, aws_config_file: str | None = None
+) -> str | None:
     """Try to get AWS account ID for a profile via STS."""
     try:
-        session = boto3.Session(profile_name=profile_name)
+        session = get_aws_session(
+            profile_name=profile_name,
+            aws_config_file=aws_config_file,
+        )
         sts = session.client("sts")
         identity = sts.get_caller_identity()
         return identity.get("Account")
@@ -49,8 +54,9 @@ def detect_account_id(profile_name: str) -> str | None:
 class CustomerService:
     """Business logic for customer and account management."""
 
-    def __init__(self, customer_repo):
+    def __init__(self, customer_repo, aws_config_file: str | None = None):
         self.repo = customer_repo
+        self.aws_config_file = aws_config_file
 
     def list_customers(self) -> list[dict]:
         """Return all customers with their accounts."""
@@ -122,7 +128,11 @@ class CustomerService:
         app_secret: str | None = None,
     ) -> dict:
         # Auto-detect AWS account ID (only meaningful for profile auth)
-        account_id = detect_account_id(profile_name) if auth_method == "profile" else None
+        account_id = (
+            detect_account_id(profile_name, self.aws_config_file)
+            if auth_method == "profile"
+            else None
+        )
 
         # Encrypt secret key if provided
         secret_enc = None
@@ -171,21 +181,24 @@ class CustomerService:
 
     def discover_account_alarms(self, account_id: str) -> list[str]:
         """Discover CloudWatch alarm names for an account and save them to DB."""
-        import boto3
         from backend.domain.services.check_executor import _build_creds_for_account
 
         account = self.repo.get_account(account_id)
         if account is None:
             raise ValueError("Account not found")
 
-        creds = _build_creds_for_account(account)
+        creds = _build_creds_for_account(account, aws_config_file=self.aws_config_file)
         if creds is None:
-            session = boto3.Session(profile_name=account.profile_name)
+            session = get_aws_session(
+                profile_name=account.profile_name,
+                aws_config_file=self.aws_config_file,
+            )
         else:
-            session = boto3.Session(
+            session = get_aws_session(
                 aws_access_key_id=creds["aws_access_key_id"],
                 aws_secret_access_key=creds["aws_secret_access_key"],
                 aws_session_token=creds.get("aws_session_token"),
+                aws_config_file=self.aws_config_file,
             )
         cw = session.client("cloudwatch")
 
@@ -205,21 +218,24 @@ class CustomerService:
 
     def discover_account_full(self, account_id: str) -> dict:
         """Discover AWS account ID, alarms, EC2 instances, and RDS resources. Saves to DB."""
-        import boto3
         from backend.domain.services.check_executor import _build_creds_for_account
 
         account = self.repo.get_account(account_id)
         if account is None:
             raise ValueError("Account not found")
 
-        creds = _build_creds_for_account(account)
+        creds = _build_creds_for_account(account, aws_config_file=self.aws_config_file)
         if creds is None:
-            session = boto3.Session(profile_name=account.profile_name)
+            session = get_aws_session(
+                profile_name=account.profile_name,
+                aws_config_file=self.aws_config_file,
+            )
         else:
-            session = boto3.Session(
+            session = get_aws_session(
                 aws_access_key_id=creds["aws_access_key_id"],
                 aws_secret_access_key=creds["aws_secret_access_key"],
                 aws_session_token=creds.get("aws_session_token"),
+                aws_config_file=self.aws_config_file,
             )
 
         result = {
@@ -245,7 +261,9 @@ class CustomerService:
             cw = session.client("cloudwatch", region_name=region)
             paginator = cw.get_paginator("describe_alarms")
             alarm_names: list[str] = []
-            for page in paginator.paginate(AlarmTypes=["MetricAlarm", "CompositeAlarm"]):
+            for page in paginator.paginate(
+                AlarmTypes=["MetricAlarm", "CompositeAlarm"]
+            ):
                 for alarm in page.get("MetricAlarms", []):
                     alarm_names.append(alarm["AlarmName"])
                 for alarm in page.get("CompositeAlarms", []):
@@ -261,7 +279,9 @@ class CustomerService:
             try:
                 regions = [
                     r["RegionName"]
-                    for r in ec2_default.describe_regions(AllRegions=False).get("Regions", [])
+                    for r in ec2_default.describe_regions(AllRegions=False).get(
+                        "Regions", []
+                    )
                     if r.get("RegionName")
                 ]
             except Exception:
@@ -273,7 +293,9 @@ class CustomerService:
                 try:
                     ec2 = session.client("ec2", region_name=reg)
                     paginator = ec2.get_paginator("describe_instances")
-                    for page in paginator.paginate(Filters=[{"Name": "instance-state-name", "Values": ["running"]}]):
+                    for page in paginator.paginate(
+                        Filters=[{"Name": "instance-state-name", "Values": ["running"]}]
+                    ):
                         for reservation in page.get("Reservations", []):
                             for inst in reservation.get("Instances", []):
                                 iid = inst.get("InstanceId")
@@ -281,16 +303,29 @@ class CustomerService:
                                     continue
                                 seen_ids.add(iid)
                                 name = next(
-                                    (t["Value"] for t in (inst.get("Tags") or []) if t.get("Key") == "Name"),
+                                    (
+                                        t["Value"]
+                                        for t in (inst.get("Tags") or [])
+                                        if t.get("Key") == "Name"
+                                    ),
                                     "-",
                                 )
-                                ec2_instances.append({
-                                    "instance_id": iid,
-                                    "name": name,
-                                    "instance_type": inst.get("InstanceType", "-"),
-                                    "region": reg,
-                                    "platform": "windows" if "windows" in str(inst.get("Platform") or inst.get("PlatformDetails") or "").lower() else "linux",
-                                })
+                                ec2_instances.append(
+                                    {
+                                        "instance_id": iid,
+                                        "name": name,
+                                        "instance_type": inst.get("InstanceType", "-"),
+                                        "region": reg,
+                                        "platform": "windows"
+                                        if "windows"
+                                        in str(
+                                            inst.get("Platform")
+                                            or inst.get("PlatformDetails")
+                                            or ""
+                                        ).lower()
+                                        else "linux",
+                                    }
+                                )
                 except Exception:
                     continue
             result["ec2_instances"] = ec2_instances
@@ -398,7 +433,7 @@ class CustomerService:
 
     def detect_profiles(self) -> dict:
         """Detect AWS profiles and compare with mapped ones."""
-        all_profiles = detect_aws_profiles()
+        all_profiles = detect_aws_profiles(self.aws_config_file)
         mapped_profiles = self.repo.get_mapped_profiles()
         unmapped = [p for p in all_profiles if p not in mapped_profiles]
 

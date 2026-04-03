@@ -67,7 +67,9 @@ class InviteResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/login", response_model=TokenResponse, summary="Login and obtain JWT token")
+@router.post(
+    "/login", response_model=TokenResponse, summary="Login and obtain JWT token"
+)
 def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
     auth_svc=Depends(get_auth_service),
@@ -88,7 +90,9 @@ def login(
     return result
 
 
-@router.get("/me", response_model=UserMeResponse, summary="Get current authenticated user")
+@router.get(
+    "/me", response_model=UserMeResponse, summary="Get current authenticated user"
+)
 def me(current_user: Annotated[TokenPayload, Depends(require_auth)]):
     """Return the current session's user identity and role decoded from the JWT."""
     return UserMeResponse(
@@ -98,13 +102,16 @@ def me(current_user: Annotated[TokenPayload, Depends(require_auth)]):
     )
 
 
-@router.post("/google", response_model=TokenResponse, summary="Login with Google OAuth id_token")
+@router.post(
+    "/google", response_model=TokenResponse, summary="Login with Google OAuth id_token"
+)
 def login_google(
     body: GoogleLoginRequest,
     auth_svc=Depends(get_auth_service),
 ):
     """Verify a Google id_token and return a signed JWT if the user has an accepted invite."""
     from backend.config.settings import get_settings
+
     settings = get_settings()
     try:
         return auth_svc.login_google(body.id_token, settings.google_client_id)
@@ -157,7 +164,9 @@ def accept_invite_google(
     hd = claims.get("hd", "")
 
     if not email.endswith("@icscompute.com") and hd != "icscompute.com":
-        raise HTTPException(status_code=403, detail="Only @icscompute.com accounts allowed")
+        raise HTTPException(
+            status_code=403, detail="Only @icscompute.com accounts allowed"
+        )
 
     # Use a single session so the created user is visible to login_google
     session = build_session_factory(settings.database_url)()
@@ -191,7 +200,9 @@ def accept_invite_google(
         try:
             return auth_svc.login_google(body.id_token, settings.google_client_id)
         except Exception:
-            raise HTTPException(status_code=500, detail="Account created but login failed")
+            raise HTTPException(
+                status_code=500, detail="Account created but login failed"
+            )
     finally:
         session.close()
 
@@ -207,34 +218,27 @@ def create_invite(
     current_user: Annotated[TokenPayload, Depends(require_auth)],
     invite_svc=Depends(get_invite_service),
 ):
-    from backend.infra.database.session import build_session_factory
-    from backend.config.settings import get_settings
-    from backend.infra.database.repositories.user_repository import UserRepository
-
-    session = build_session_factory(get_settings().database_url)()
+    inviter = TokenPayload(
+        user_id=current_user.user_id,
+        username=current_user.username,
+        role=current_user.role,
+    )
     try:
-        inviter = UserRepository(session).get_by_id(current_user.user_id)
-        if not inviter:
-            raise HTTPException(status_code=404, detail="Inviter user not found")
-        try:
-            invite = invite_svc.create_invite(
-                email=str(body.email),
-                role=body.role,
-                invited_by=inviter,
-            )
-        except InviteError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        session.commit()
-        return InviteResponse(
-            id=invite.id,
-            email=invite.email,
-            role=invite.role,
-            accepted=invite.accepted,
-            expires_at=invite.expires_at.isoformat(),
-            created_at=invite.created_at.isoformat(),
+        invite = invite_svc.create_invite(
+            email=str(body.email),
+            role=body.role,
+            invited_by=inviter,
         )
-    finally:
-        session.close()
+    except InviteError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return InviteResponse(
+        id=invite.id,
+        email=invite.email,
+        role=invite.role,
+        accepted=invite.accepted,
+        expires_at=invite.expires_at.isoformat(),
+        created_at=invite.created_at.isoformat(),
+    )
 
 
 @router.get(

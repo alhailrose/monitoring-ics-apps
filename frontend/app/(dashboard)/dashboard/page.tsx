@@ -1,5 +1,6 @@
 // Server Component — fetches all dashboard data server-side
 import { getToken } from '@/lib/server-token'
+import { getSession } from '@/lib/auth'
 import { getCustomers } from '@/lib/api/customers'
 import { getDashboardSummary, getCustomersOverview } from '@/lib/api/dashboard'
 import { getHistory, getRunDetail } from '@/lib/api/history'
@@ -11,6 +12,7 @@ import { StatCards } from '@/components/dashboard/StatCards'
 import { RecentHistory } from '@/components/dashboard/RecentHistory'
 import { AccountOverview } from '@/components/dashboard/AccountOverview'
 import { CustomersOverviewGrid } from '@/components/dashboard/CustomersOverviewGrid'
+import { FirstRunGuide } from '@/components/onboarding/FirstRunGuide'
 import Link from 'next/link'
 import type { ReportSchedule } from '@/lib/schedule-utils'
 
@@ -19,7 +21,7 @@ interface PageProps {
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
-  const token = await getToken()
+  const [token, session] = await Promise.all([getToken(), getSession()])
   const { customer_id, window_hours } = await searchParams
 
   const customers = await getCustomers(token).catch(() => [])
@@ -40,6 +42,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             ) : undefined
           }
         />
+        <FirstRunGuide username={session?.username ?? 'user'} role={session?.role ?? 'user'} />
         <CustomersOverviewGrid items={overviewItems} />
       </div>
     )
@@ -90,6 +93,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           ) : undefined
         }
       />
+
+      <FirstRunGuide username={session?.username ?? 'user'} role={session?.role ?? 'user'} />
 
       <StatCards
         summary={summary}

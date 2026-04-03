@@ -13,9 +13,7 @@ from configparser import ConfigParser
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
-
+from backend.infra.cloud.aws.clients import get_session as get_aws_session
 from backend.infra.notifications.slack.notifier import send_to_webhook
 
 logger = logging.getLogger(__name__)
@@ -44,12 +42,16 @@ class SessionHealthReport:
     sso_sessions: dict[str, dict] = field(default_factory=dict)
 
 
-def _get_sso_session_for_profile(profile_name: str) -> str | None:
+def _get_sso_session_for_profile(
+    profile_name: str,
+    aws_config_path: Path | None = None,
+) -> str | None:
     """Read ~/.aws/config to find the sso_session for a profile."""
-    if not AWS_CONFIG_PATH.exists():
+    config_path = aws_config_path or AWS_CONFIG_PATH
+    if not config_path.exists():
         return None
     parser = ConfigParser()
-    parser.read(str(AWS_CONFIG_PATH))
+    parser.read(str(config_path))
 
     # Try "profile <name>" section (standard aws config format)
     section = f"profile {profile_name}"
@@ -62,10 +64,16 @@ def _get_sso_session_for_profile(profile_name: str) -> str | None:
     return parser.get(section, "sso_session", fallback=None)
 
 
-def _check_profile_health(profile_name: str) -> ProfileStatus:
+def _check_profile_health(
+    profile_name: str,
+    aws_config_path: Path | None = None,
+    aws_config_file: str | None = None,
+) -> ProfileStatus:
     """Check if a single profile's credentials are valid via STS."""
     result = ProfileStatus(profile_name=profile_name)
-    result.sso_session = _get_sso_session_for_profile(profile_name) or ""
+    result.sso_session = (
+        _get_sso_session_for_profile(profile_name, aws_config_path) or ""
+    )
 
     if result.sso_session:
         result.login_command = f"aws sso login --sso-session {result.sso_session}"
@@ -73,7 +81,10 @@ def _check_profile_health(profile_name: str) -> ProfileStatus:
         result.login_command = f"aws sso login --profile {profile_name}"
 
     try:
-        session = boto3.Session(profile_name=profile_name)
+        session = get_aws_session(
+            profile_name=profile_name,
+            aws_config_file=aws_config_file,
+        )
         sts = session.client("sts")
         identity = sts.get_caller_identity()
         result.account_id = identity.get("Account")
@@ -98,9 +109,18 @@ def _check_profile_health(profile_name: str) -> ProfileStatus:
 class SessionHealthService:
     """Check and report on AWS SSO session health for all customer accounts."""
 
-    def __init__(self, customer_repo, max_workers: int = 10):
+    def __init__(
+        self,
+        customer_repo,
+        max_workers: int = 10,
+        aws_config_file: str | None = None,
+    ):
         self.customer_repo = customer_repo
         self.max_workers = max_workers
+        self.aws_config_file = aws_config_file
+        self.aws_config_path = (
+            Path(aws_config_file) if aws_config_file else AWS_CONFIG_PATH
+        )
 
     def check_all(self, customer_id: str | None = None) -> SessionHealthReport:
         """Check session health for all accounts (or one customer's accounts).
@@ -139,7 +159,13 @@ class SessionHealthService:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
-                executor.submit(_check_profile_health, p): p for p in unique_profiles
+                executor.submit(
+                    _check_profile_health,
+                    p,
+                    self.aws_config_path,
+                    self.aws_config_file,
+                ): p
+                for p in unique_profiles
             }
             for future in as_completed(futures):
                 profile = futures[future]

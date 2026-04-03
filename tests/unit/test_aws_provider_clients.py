@@ -23,7 +23,7 @@ def test_get_client_uses_boto3_session(monkeypatch):
     monkeypatch.setattr(
         clients.boto3,
         "Session",
-        lambda profile_name=None, region_name=None: _Session(),
+        lambda **kwargs: _Session(),
         raising=False,
     )
 
@@ -50,3 +50,36 @@ def test_cloudwatch_service_uses_shared_client_factory(monkeypatch):
 
     assert result["service"] == "cloudwatch"
     assert result["profile"] == "ops"
+
+
+def test_get_session_uses_custom_aws_config_file(monkeypatch, tmp_path):
+    captured = {}
+
+    class _Session:
+        def __init__(
+            self,
+            *,
+            botocore_session=None,
+            profile_name=None,
+            region_name=None,
+            **kwargs,
+        ):
+            captured["botocore_session"] = botocore_session
+            captured["profile_name"] = profile_name
+            captured["region_name"] = region_name
+
+    monkeypatch.setattr(clients.boto3, "Session", _Session)
+
+    cfg = tmp_path / "users" / "alice" / "config"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("[profile demo]\nregion=ap-southeast-3\n", encoding="utf-8")
+
+    clients.get_session(
+        profile_name="demo",
+        region_name="ap-southeast-3",
+        aws_config_file=str(cfg),
+    )
+
+    assert captured["profile_name"] == "demo"
+    assert captured["region_name"] == "ap-southeast-3"
+    assert captured["botocore_session"].get_config_variable("config_file") == str(cfg)

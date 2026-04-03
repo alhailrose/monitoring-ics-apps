@@ -16,8 +16,13 @@ from backend.infra.database.session import build_session_factory
 from backend.domain.services.customer_service import CustomerService
 from backend.domain.services.check_executor import CheckExecutor
 from backend.domain.services.session_health import SessionHealthService
-from backend.domain.services.auth_service import AuthService, InvalidTokenError, TokenPayload
+from backend.domain.services.auth_service import (
+    AuthService,
+    InvalidTokenError,
+    TokenPayload,
+)
 from backend.domain.services.invite_service import InviteService
+from backend.infra.cloud.aws.clients import user_aws_config_path
 
 logger = logging.getLogger(__name__)
 
@@ -33,18 +38,28 @@ def _get_session():
     return _get_session_factory()()
 
 
-def get_customer_service():
+def _resolve_request_aws_config_file(request: Request) -> str | None:
+    current_user = getattr(request.state, "auth_user", None)
+    username = getattr(current_user, "username", None)
+    if not username or username in {"anonymous", "api-key"}:
+        return None
+    return user_aws_config_path(username)
+
+
+def get_customer_service(request: Request):
     session = _get_session()
+    aws_config_file = _resolve_request_aws_config_file(request)
     try:
         repo = CustomerRepository(session)
-        yield CustomerService(repo)
+        yield CustomerService(repo, aws_config_file=aws_config_file)
     finally:
         session.close()
 
 
-def get_check_executor():
+def get_check_executor(request: Request):
     session = _get_session()
     settings = get_settings()
+    aws_config_file = _resolve_request_aws_config_file(request)
     try:
         customer_repo = CustomerRepository(session)
         check_repo = CheckRepository(session)
@@ -54,6 +69,7 @@ def get_check_executor():
             region=settings.default_region,
             max_workers=settings.max_workers,
             timeout=settings.execution_timeout,
+            aws_config_file=aws_config_file,
         )
     finally:
         session.close()
@@ -67,11 +83,12 @@ def get_check_repository():
         session.close()
 
 
-def get_session_health_service():
+def get_session_health_service(request: Request):
     session = _get_session()
+    aws_config_file = _resolve_request_aws_config_file(request)
     try:
         repo = CustomerRepository(session)
-        yield SessionHealthService(customer_repo=repo)
+        yield SessionHealthService(customer_repo=repo, aws_config_file=aws_config_file)
     finally:
         session.close()
 
@@ -104,7 +121,11 @@ def require_auth(
 
     # -- Auth disabled bypass (matches require_api_key behaviour) --
     if not settings.api_auth_enabled:
-        return TokenPayload(user_id="anonymous", username="anonymous", role="super_user")
+        payload = TokenPayload(
+            user_id="anonymous", username="anonymous", role="super_user"
+        )
+        request.state.auth_user = payload
+        return payload
 
     # -- JWT path --
     if token:
@@ -113,7 +134,11 @@ def require_auth(
             logger.warning(
                 "API key auth is deprecated — migrate to JWT via POST /api/v1/auth/login"
             )
-            return TokenPayload(user_id="api-key", username="api-key", role="super_user")
+            payload = TokenPayload(
+                user_id="api-key", username="api-key", role="super_user"
+            )
+            request.state.auth_user = payload
+            return payload
 
         session = _get_session_factory()()
         try:
@@ -124,7 +149,9 @@ def require_auth(
                 jwt_expire_hours=settings.jwt_expire_hours,
             )
             try:
-                return auth_svc.decode_token(token)
+                payload = auth_svc.decode_token(token)
+                request.state.auth_user = payload
+                return payload
             except InvalidTokenError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -141,7 +168,11 @@ def require_auth(
             logger.warning(
                 "API key auth is deprecated — migrate to JWT via POST /api/v1/auth/login"
             )
-            return TokenPayload(user_id="api-key", username="api-key", role="super_user")
+            payload = TokenPayload(
+                user_id="api-key", username="api-key", role="super_user"
+            )
+            request.state.auth_user = payload
+            return payload
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -177,6 +208,7 @@ def require_role(required_role: str):
     Usage:
         @router.post("/", dependencies=[Depends(require_role("super_user"))])
     """
+
     def _check(current_user: Annotated[TokenPayload, Depends(require_auth)]):
         role_hierarchy = {"super_user": 2, "user": 1}
         user_level = role_hierarchy.get(current_user.role, 0)
@@ -186,6 +218,7 @@ def require_role(required_role: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Role '{required_role}' required",
             )
+
     return _check
 
 

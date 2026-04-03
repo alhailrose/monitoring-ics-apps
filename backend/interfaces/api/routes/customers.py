@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.config.settings import get_settings
+from backend.infra.cloud.aws.clients import get_session as get_aws_session
 from backend.interfaces.api.dependencies import get_customer_service, require_role
 
 router = APIRouter(prefix="/customers", tags=["customers"])
@@ -41,7 +42,9 @@ class AddAccountRequest(BaseModel):
     config_extra: dict | None = None
     region: str | None = None
     alarm_names: list[str] | None = None
-    auth_method: str = Field(default="profile", pattern="^(profile|access_key|assumed_role)$")
+    auth_method: str = Field(
+        default="profile", pattern="^(profile|access_key|assumed_role)$"
+    )
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
     role_arn: str | None = None
@@ -54,7 +57,9 @@ class UpdateAccountRequest(BaseModel):
     config_extra: dict | None = None
     region: str | None = None
     alarm_names: list[str] | None = None
-    auth_method: str | None = Field(default=None, pattern="^(profile|access_key|assumed_role)$")
+    auth_method: str | None = Field(
+        default=None, pattern="^(profile|access_key|assumed_role)$"
+    )
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None  # None = don't update
     role_arn: str | None = None
@@ -116,7 +121,11 @@ def update_customer(
     return result
 
 
-@router.delete("/{customer_id}", status_code=204, dependencies=[Depends(require_role("super_user"))])
+@router.delete(
+    "/{customer_id}",
+    status_code=204,
+    dependencies=[Depends(require_role("super_user"))],
+)
 def delete_customer(customer_id: str, service=Depends(get_customer_service)):
     if not service.delete_customer(customer_id):
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -125,7 +134,11 @@ def delete_customer(customer_id: str, service=Depends(get_customer_service)):
 # -- Account sub-routes --
 
 
-@router.post("/{customer_id}/accounts", status_code=201, dependencies=[Depends(require_role("super_user"))])
+@router.post(
+    "/{customer_id}/accounts",
+    status_code=201,
+    dependencies=[Depends(require_role("super_user"))],
+)
 def add_account(
     customer_id: str,
     payload: AddAccountRequest,
@@ -150,7 +163,9 @@ def add_account(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.patch("/accounts/{account_id}", dependencies=[Depends(require_role("super_user"))])
+@router.patch(
+    "/accounts/{account_id}", dependencies=[Depends(require_role("super_user"))]
+)
 def update_account(
     account_id: str,
     payload: UpdateAccountRequest,
@@ -167,7 +182,11 @@ def update_account(
     return result
 
 
-@router.delete("/accounts/{account_id}", status_code=204, dependencies=[Depends(require_role("super_user"))])
+@router.delete(
+    "/accounts/{account_id}",
+    status_code=204,
+    dependencies=[Depends(require_role("super_user"))],
+)
 def delete_account(account_id: str, service=Depends(get_customer_service)):
     if not service.delete_account(account_id):
         raise HTTPException(status_code=404, detail="Account not found")
@@ -211,7 +230,10 @@ def delete_account_check_config(
         raise HTTPException(status_code=404, detail=str(exc))
 
 
-@router.post("/accounts/{account_id}/alarms/discover", dependencies=[Depends(require_role("super_user"))])
+@router.post(
+    "/accounts/{account_id}/alarms/discover",
+    dependencies=[Depends(require_role("super_user"))],
+)
 def discover_account_alarms(account_id: str, service=Depends(get_customer_service)):
     """Discover CloudWatch alarm names for an account and save them to DB."""
     try:
@@ -223,7 +245,10 @@ def discover_account_alarms(account_id: str, service=Depends(get_customer_servic
         raise HTTPException(status_code=500, detail=f"Failed to discover alarms: {exc}")
 
 
-@router.post("/accounts/{account_id}/discover-full", dependencies=[Depends(require_role("super_user"))])
+@router.post(
+    "/accounts/{account_id}/discover-full",
+    dependencies=[Depends(require_role("super_user"))],
+)
 def discover_account_full(account_id: str, service=Depends(get_customer_service)):
     """Discover AWS account ID, alarms, EC2, and RDS resources. Saves to DB."""
     try:
@@ -253,25 +278,34 @@ def get_discovery_snapshot(account_id: str, service=Depends(get_customer_service
     }
 
 
-@router.post("/accounts/{account_id}/test-connection", dependencies=[Depends(require_role("super_user"))])
+@router.post(
+    "/accounts/{account_id}/test-connection",
+    dependencies=[Depends(require_role("super_user"))],
+)
 def test_account_connection(account_id: str, service=Depends(get_customer_service)):
     """Test AWS connectivity for an account using its stored credentials."""
-    import boto3
     from backend.domain.services.check_executor import _build_creds_for_account
 
     account_data = service.repo.get_account(account_id)
     if account_data is None:
         raise HTTPException(status_code=404, detail="Account not found")
     try:
-        creds = _build_creds_for_account(account_data)
+        creds = _build_creds_for_account(
+            account_data,
+            aws_config_file=service.aws_config_file,
+        )
         if creds is None:
             # profile auth — use profile directly
-            session = boto3.Session(profile_name=account_data.profile_name)
+            session = get_aws_session(
+                profile_name=account_data.profile_name,
+                aws_config_file=service.aws_config_file,
+            )
         else:
-            session = boto3.Session(
+            session = get_aws_session(
                 aws_access_key_id=creds["aws_access_key_id"],
                 aws_secret_access_key=creds["aws_secret_access_key"],
                 aws_session_token=creds.get("aws_session_token"),
+                aws_config_file=service.aws_config_file,
             )
         sts = session.client("sts", region_name="us-east-1")
         identity = sts.get_caller_identity()

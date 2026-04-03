@@ -24,7 +24,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from backend.config.settings import get_settings
-from backend.domain.services.auth_service import AuthService, InvalidTokenError, TokenPayload
+from backend.domain.services.auth_service import (
+    AuthService,
+    InvalidTokenError,
+    TokenPayload,
+)
 from backend.infra.database.repositories.user_repository import UserRepository
 from backend.interfaces.api.dependencies import _get_session_factory
 
@@ -91,18 +95,22 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
 
     # Per-user AWS credential isolation
     import shutil
+
     aws_user_dir = os.path.expanduser(f"~/.aws/users/{username}")
     os.makedirs(aws_user_dir, exist_ok=True)
 
     _template = os.path.expanduser("~/.aws/aws-config.template")
     _system_config = os.path.expanduser("~/.aws/config")
     _user_config = f"{aws_user_dir}/config"
-    _source = _template if os.path.exists(_template) else (_system_config if os.path.exists(_system_config) else None)
+    _source = (
+        _template
+        if os.path.exists(_template)
+        else (_system_config if os.path.exists(_system_config) else None)
+    )
 
     if _source:
         # Always keep per-user config in sync with the source (template or system).
-        # This ensures credential cache keys are identical between terminal sessions
-        # and backend boto3 calls (which use ~/.aws/config directly).
+        # This keeps each user terminal profile baseline aligned with admin config.
         # If the user has personalised their config (mtime newer than source) keep it.
         _should_copy = not os.path.exists(_user_config)
         if not _should_copy and os.path.exists(_user_config):

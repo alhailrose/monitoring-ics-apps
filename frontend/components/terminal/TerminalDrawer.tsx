@@ -12,6 +12,14 @@ import { apiFetch } from '@/lib/api/client'
 import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 
+function stripAnsi(value: string): string {
+  return value
+    // eslint-disable-next-line no-control-regex
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/\x1b\][^\x07]*\x07/g, '')
+}
+
 function CopyableCommand({ cmd, color = 'emerald' }: { cmd: string; color?: 'emerald' | 'violet' }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
@@ -123,6 +131,14 @@ function LoginHint({ autoExpand = false }: { autoExpand?: boolean }) {
               ))}
             </div>
           )}
+
+          <div className="space-y-1.5">
+            <p className="text-slate-400">
+              <span className="text-amber-300 font-semibold">Access key profile</span>
+              {' '}— kalau tidak pakai SSO, buat profile dengan access key di terminal.
+            </p>
+            <CopyableCommand cmd="aws configure --profile monitoring" color="emerald" />
+          </div>
         </div>
       )}
     </div>
@@ -143,7 +159,7 @@ function StatusDot({ status }: { status: Status }) {
   )
 }
 
-const DEFAULT_HEIGHT = 400
+const DEFAULT_HEIGHT = 460
 const MIN_HEIGHT = 200
 const MAX_HEIGHT = 800
 
@@ -153,12 +169,51 @@ export function TerminalDrawer() {
   const [height, setHeight] = useState(DEFAULT_HEIGHT)
   const [minimized, setMinimized] = useState(false)
   const [firstSession, setFirstSession] = useState(false)
+  const [autoFollow, setAutoFollow] = useState(true)
+  const [copyNotice, setCopyNotice] = useState('')
   const hasConnectedOnce = useRef(false)
+  const autoFollowRef = useRef(true)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const outputBufferRef = useRef('')
+  const viewportCleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    autoFollowRef.current = autoFollow
+  }, [autoFollow])
+
+  const flashCopyNotice = useCallback((message: string) => {
+    setCopyNotice(message)
+    window.setTimeout(() => setCopyNotice(''), 1400)
+  }, [])
+
+  const copySelection = useCallback(async () => {
+    const selected = termRef.current?.getSelection() ?? ''
+    if (!selected.trim()) {
+      flashCopyNotice('No selection')
+      return
+    }
+    await navigator.clipboard.writeText(selected)
+    flashCopyNotice('Selection copied')
+  }, [flashCopyNotice])
+
+  const copyOutput = useCallback(async () => {
+    const payload = outputBufferRef.current.trim()
+    if (!payload) {
+      flashCopyNotice('No output yet')
+      return
+    }
+    await navigator.clipboard.writeText(payload)
+    flashCopyNotice('Output copied')
+  }, [flashCopyNotice])
+
+  const resumeFollow = useCallback(() => {
+    setAutoFollow(true)
+    termRef.current?.scrollToBottom()
+  }, [])
 
   // ── Resize drag ────────────────────────────────────────────────────────────
   const dragStartY = useRef(0)
@@ -197,6 +252,9 @@ export function TerminalDrawer() {
     // Dispose previous instances
     if (termRef.current) { termRef.current.dispose(); termRef.current = null }
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null }
+    if (viewportCleanupRef.current) { viewportCleanupRef.current(); viewportCleanupRef.current = null }
+    outputBufferRef.current = ''
+    setAutoFollow(true)
     setFirstSession(false)
 
     const term = new Terminal({
@@ -204,6 +262,7 @@ export function TerminalDrawer() {
       cursorBlink: true,
       scrollOnUserInput: true,     // scroll to bottom whenever user types
       scrollback: 5000,            // keep more history
+      rightClickSelectsWord: true,
       theme: {
         background: '#0a0a0a',
         foreground: '#e2e8f0',
@@ -227,6 +286,22 @@ export function TerminalDrawer() {
     if (containerRef.current) {
       term.open(containerRef.current)
       fitAddon.fit()
+
+      const viewport = containerRef.current.querySelector('.xterm-viewport') as HTMLElement | null
+      if (viewport) {
+        const onScroll = () => {
+          const atBottom = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 4
+          if (!atBottom && autoFollowRef.current) {
+            setAutoFollow(false)
+            return
+          }
+          if (atBottom && !autoFollowRef.current) {
+            setAutoFollow(true)
+          }
+        }
+        viewport.addEventListener('scroll', onScroll)
+        viewportCleanupRef.current = () => viewport.removeEventListener('scroll', onScroll)
+      }
     }
 
     termRef.current = term
@@ -254,9 +329,16 @@ export function TerminalDrawer() {
         }
       }
       const data = e.data instanceof ArrayBuffer ? new Uint8Array(e.data) : (e.data as string)
+      const textChunk = typeof data === 'string' ? data : new TextDecoder().decode(data)
+      outputBufferRef.current += stripAnsi(textChunk)
+      if (outputBufferRef.current.length > 250_000) {
+        outputBufferRef.current = outputBufferRef.current.slice(-250_000)
+      }
+
       term.write(data, () => {
-        // Scroll to bottom after each write so output always stays visible
-        term.scrollToBottom()
+        if (autoFollowRef.current) {
+          term.scrollToBottom()
+        }
       })
     }
     ws.onclose = () => {
@@ -297,6 +379,7 @@ export function TerminalDrawer() {
     return () => {
       wsRef.current?.close()
       termRef.current?.dispose()
+      viewportCleanupRef.current?.()
     }
   }, [])
 
@@ -335,6 +418,40 @@ export function TerminalDrawer() {
             <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className="size-3 mr-1" />
             Reconnect
           </Button>
+        )}
+
+        {!minimized && (
+          <button
+            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5"
+            onClick={copySelection}
+            aria-label="Copy selected terminal text"
+          >
+            Copy selected
+          </button>
+        )}
+
+        {!minimized && (
+          <button
+            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5"
+            onClick={copyOutput}
+            aria-label="Copy terminal output"
+          >
+            Copy output
+          </button>
+        )}
+
+        {!minimized && !autoFollow && (
+          <button
+            className="text-[11px] text-sky-300 hover:text-sky-200 transition-colors px-1.5 py-0.5"
+            onClick={resumeFollow}
+            aria-label="Resume follow output"
+          >
+            Follow output
+          </button>
+        )}
+
+        {!minimized && copyNotice && (
+          <span className="text-[11px] text-emerald-300">{copyNotice}</span>
         )}
 
         <button

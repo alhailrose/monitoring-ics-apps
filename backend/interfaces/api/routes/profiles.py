@@ -2,14 +2,24 @@
 
 from configparser import ConfigParser
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from backend.interfaces.api.dependencies import get_customer_service
+from backend.domain.services.auth_service import TokenPayload
+from backend.infra.cloud.aws.clients import user_aws_config_path
+from backend.interfaces.api.dependencies import get_customer_service, require_auth
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
 AWS_CONFIG_PATH = Path.home() / ".aws" / "config"
+
+
+def _resolve_config_path_for_user(current_user: TokenPayload) -> Path:
+    user_path = Path(user_aws_config_path(current_user.username))
+    if user_path.exists():
+        return user_path
+    return AWS_CONFIG_PATH
 
 
 @router.get("/detect")
@@ -19,12 +29,13 @@ def detect_profiles(service=Depends(get_customer_service)):
 
 
 @router.get("/sso-sessions")
-def list_sso_sessions():
+def list_sso_sessions(current_user: Annotated[TokenPayload, Depends(require_auth)]):
     """Return all [sso-session ...] names from ~/.aws/config."""
     sessions: list[str] = []
-    if AWS_CONFIG_PATH.exists():
+    config_path = _resolve_config_path_for_user(current_user)
+    if config_path.exists():
         parser = ConfigParser()
-        parser.read(str(AWS_CONFIG_PATH))
+        parser.read(str(config_path))
         for section in parser.sections():
             if section.startswith("sso-session "):
                 sessions.append(section.removeprefix("sso-session ").strip())
@@ -32,12 +43,15 @@ def list_sso_sessions():
 
 
 @router.get("/login-session-profiles")
-def list_login_session_profiles():
+def list_login_session_profiles(
+    current_user: Annotated[TokenPayload, Depends(require_auth)],
+):
     """Return profile names that use login_session (IAM Identity Center) auth."""
     profiles: list[str] = []
-    if AWS_CONFIG_PATH.exists():
+    config_path = _resolve_config_path_for_user(current_user)
+    if config_path.exists():
         parser = ConfigParser()
-        parser.read(str(AWS_CONFIG_PATH))
+        parser.read(str(config_path))
         for section in parser.sections():
             if parser.has_option(section, "login_session"):
                 name = section.removeprefix("profile ").strip()

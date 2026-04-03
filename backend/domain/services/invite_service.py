@@ -54,13 +54,20 @@ class InviteService:
         if self._users.get_by_email(email):
             raise InviteError(f"User with email {email} already exists")
 
+        inviter_id = getattr(invited_by, "id", None) or getattr(
+            invited_by, "user_id", None
+        )
+        inviter_username = getattr(invited_by, "username", None)
+        if not inviter_id or not inviter_username:
+            raise InviteError("Invalid inviter context")
+
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(hours=self._expire_hours)
         invite = self._invites.create(
             email=email,
             token=token,
             role=role,
-            invited_by=invited_by.id,
+            invited_by=inviter_id,
             expires_at=expires_at,
         )
 
@@ -68,13 +75,14 @@ class InviteService:
         send_invite_email(
             to_email=email,
             invite_url=invite_url,
-            invited_by_username=invited_by.username,
+            invited_by_username=inviter_username,
             smtp_host=self._smtp_host,
             smtp_port=self._smtp_port,
             smtp_user=self._smtp_user,
             smtp_password=self._smtp_password,
             smtp_from=self._smtp_from,
         )
+        self._invites.session.commit()
         return invite
 
     def accept_invite(self, token: str, google_sub: str, email: str) -> User:

@@ -1,6 +1,33 @@
 import 'server-only'
 
-export function getGoogleAuthUrl(state: string, inviteToken?: string): string {
+type OAuthStatePayload = {
+  csrf: string
+  inviteToken?: string
+}
+
+export function encodeOAuthState(payload: OAuthStatePayload): string {
+  return Buffer.from(JSON.stringify(payload), 'utf-8').toString('base64url')
+}
+
+export function decodeOAuthState(state: string): OAuthStatePayload | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8')) as {
+      csrf?: unknown
+      inviteToken?: unknown
+    }
+    if (typeof parsed.csrf !== 'string' || parsed.csrf.length === 0) {
+      return null
+    }
+    return {
+      csrf: parsed.csrf,
+      inviteToken: typeof parsed.inviteToken === 'string' ? parsed.inviteToken : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+export function getGoogleAuthUrl(state: string): string {
   const redirectUri = process.env.GOOGLE_REDIRECT_URI!
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID!,
@@ -12,7 +39,6 @@ export function getGoogleAuthUrl(state: string, inviteToken?: string): string {
     access_type: 'online',
     prompt: 'select_account',
   })
-  if (inviteToken) params.set('invite_token', inviteToken)
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 

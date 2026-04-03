@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { decodeOAuthState } from '@/lib/google-oauth'
 import { exchangeCodeForIdToken } from '@/lib/google-oauth'
 import { setSessionCookie } from '@/lib/session'
 import type { NextRequest } from 'next/server'
@@ -10,16 +11,17 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const code = searchParams.get('code')
   const state = searchParams.get('state')
+  const parsedState = state ? decodeOAuthState(state) : null
 
   const cookieStore = await cookies()
   const savedState = cookieStore.get('oauth_state')?.value
-  const inviteToken = cookieStore.get('oauth_invite')?.value
+  const inviteTokenFromCookie = cookieStore.get('oauth_invite')?.value
 
   // Clear OAuth cookies
   cookieStore.delete('oauth_state')
   cookieStore.delete('oauth_invite')
 
-  if (!code || !state || state !== savedState) {
+  if (!code || !state || !savedState || state !== savedState || !parsedState) {
     redirect('/login?error=oauth_state')
   }
 
@@ -29,6 +31,8 @@ export async function GET(req: NextRequest) {
   } catch {
     redirect('/login?error=oauth_exchange')
   }
+
+  const inviteToken = inviteTokenFromCookie ?? parsedState.inviteToken
 
   // If invite token present → accept invite first
   const endpoint = inviteToken
