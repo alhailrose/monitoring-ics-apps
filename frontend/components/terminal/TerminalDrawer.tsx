@@ -41,10 +41,13 @@ function CopyableCommand({ cmd, color = 'emerald' }: { cmd: string; color?: 'eme
   )
 }
 
-function LoginHint() {
-  const [open, setOpen] = useState(false)
+function LoginHint({ autoExpand = false }: { autoExpand?: boolean }) {
+  const [open, setOpen] = useState(autoExpand)
   const [ssoSessions, setSsoSessions] = useState<string[]>([])
   const [loginProfiles, setLoginProfiles] = useState<string[]>([])
+
+  // Auto-expand when backend signals first session
+  useEffect(() => { if (autoExpand) setOpen(true) }, [autoExpand])
 
   useEffect(() => {
     fetch('/api/terminal-token')
@@ -70,14 +73,30 @@ function LoginHint() {
       >
         <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5 shrink-0 text-sky-400" />
         <span className="font-semibold tracking-wide">AWS Login</span>
+        {autoExpand && !open && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-400 font-medium">
+            Setup diperlukan
+          </span>
+        )}
         <span className="ml-auto text-slate-500 text-[10px]">{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
         <div className="px-3 pb-3 space-y-3">
+          {autoExpand && (
+            <div className="rounded border border-sky-500/20 bg-sky-950/30 px-3 py-2">
+              <p className="text-sky-300 font-semibold mb-0.5">Selamat datang! Setup AWS pertama kali:</p>
+              <p className="text-slate-400">
+                Jalankan salah satu perintah di bawah di terminal untuk login ke AWS.
+                Buka URL yang muncul di browser, masukkan kode verifikasi, lalu kembali ke terminal.
+              </p>
+            </div>
+          )}
+
           {!hasAny && (
             <p className="text-amber-400/80 italic">
               ~/.aws/config belum ada atau tidak ada sso-session / login_session profile.
+              Hubungi admin untuk setup config.
             </p>
           )}
 
@@ -124,15 +143,16 @@ function StatusDot({ status }: { status: Status }) {
   )
 }
 
-const DEFAULT_HEIGHT = 320
-const MIN_HEIGHT = 160
-const MAX_HEIGHT = 700
+const DEFAULT_HEIGHT = 400
+const MIN_HEIGHT = 200
+const MAX_HEIGHT = 800
 
 export function TerminalDrawer() {
   const { open, hide } = useTerminal()
   const [status, setStatus] = useState<Status>('connecting')
   const [height, setHeight] = useState(DEFAULT_HEIGHT)
   const [minimized, setMinimized] = useState(false)
+  const [firstSession, setFirstSession] = useState(false)
   const hasConnectedOnce = useRef(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -177,8 +197,28 @@ export function TerminalDrawer() {
     // Dispose previous instances
     if (termRef.current) { termRef.current.dispose(); termRef.current = null }
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null }
+    setFirstSession(false)
 
-    const term = new Terminal({ fontSize: 13, cursorBlink: true, theme: { background: '#0a0a0a' } })
+    const term = new Terminal({
+      fontSize: 13,
+      cursorBlink: true,
+      scrollOnUserInput: true,     // scroll to bottom whenever user types
+      scrollback: 5000,            // keep more history
+      theme: {
+        background: '#0a0a0a',
+        foreground: '#e2e8f0',
+        cursor: '#7dd3fc',
+        selectionBackground: '#3b82f680',
+        black: '#0a0a0a', brightBlack: '#475569',
+        red: '#f87171', brightRed: '#fca5a5',
+        green: '#4ade80', brightGreen: '#86efac',
+        yellow: '#fbbf24', brightYellow: '#fde68a',
+        blue: '#60a5fa', brightBlue: '#93c5fd',
+        magenta: '#c084fc', brightMagenta: '#d8b4fe',
+        cyan: '#22d3ee', brightCyan: '#67e8f9',
+        white: '#e2e8f0', brightWhite: '#f8fafc',
+      },
+    })
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.loadAddon(new WebLinksAddon())
@@ -201,7 +241,23 @@ export function TerminalDrawer() {
 
     ws.onopen = () => setStatus('connected')
     ws.onmessage = (e) => {
-      term.write(e.data instanceof ArrayBuffer ? new Uint8Array(e.data) : (e.data as string))
+      // Check for JSON control messages from backend
+      if (typeof e.data === 'string') {
+        try {
+          const msg = JSON.parse(e.data)
+          if (msg.type === 'first_session') {
+            setFirstSession(true)
+            return
+          }
+        } catch {
+          // Not JSON — fall through to terminal write
+        }
+      }
+      const data = e.data instanceof ArrayBuffer ? new Uint8Array(e.data) : (e.data as string)
+      term.write(data, () => {
+        // Scroll to bottom after each write so output always stays visible
+        term.scrollToBottom()
+      })
     }
     ws.onclose = () => {
       setStatus('disconnected')
@@ -257,9 +313,11 @@ export function TerminalDrawer() {
       {/* Drag handle — only when expanded */}
       {!minimized && (
         <div
-          className="absolute top-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-primary/40 transition-colors"
+          className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize group flex items-center justify-center"
           onMouseDown={onDragStart}
-        />
+        >
+          <div className="w-10 h-0.5 rounded-full bg-border/50 group-hover:bg-primary/60 transition-colors" />
+        </div>
       )}
 
       {/* Title bar */}
@@ -300,7 +358,7 @@ export function TerminalDrawer() {
       </div>
 
       {/* AWS SSO login hint — only when expanded */}
-      {!minimized && <LoginHint />}
+      {!minimized && <LoginHint autoExpand={firstSession} />}
 
       {/* xterm container — always in DOM, hidden via CSS when minimized */}
       <div

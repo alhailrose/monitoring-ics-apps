@@ -61,12 +61,30 @@ def is_credential_error(exc: BaseException) -> bool:
     return any(hint.lower() in msg for hint in _TOKEN_EXPIRED_HINTS)
 
 
+def _login_command_for_profile(profile: str) -> str:
+    """Return the correct login command based on the profile's auth type in ~/.aws/config."""
+    from configparser import ConfigParser
+    from pathlib import Path
+
+    config_path = Path.home() / ".aws" / "config"
+    if profile and config_path.exists():
+        parser = ConfigParser()
+        parser.read(str(config_path))
+        # Check both "profile <name>" and bare "<name>" sections
+        for section in (f"profile {profile}", profile):
+            if parser.has_section(section) and parser.has_option(section, "login_session"):
+                return f"aws login --remote --profile {profile}"
+    return f"aws sso login --profile {profile}"
+
+
 def friendly_credential_message(exc: BaseException, profile: str = "") -> str:
     """Return a user-friendly message for credential/token errors."""
+    login_cmd = _login_command_for_profile(profile)
+
     if isinstance(exc, NoCredentialsError):
         return (
             f"AWS credentials not found for profile '{profile}'. "
-            "Run: aws configure --profile {profile} or aws sso login --profile {profile}"
+            f"Run: {login_cmd}"
         )
 
     if isinstance(exc, ProfileNotFound):
@@ -77,7 +95,7 @@ def friendly_credential_message(exc: BaseException, profile: str = "") -> str:
         if code in ("ExpiredTokenException", "ExpiredToken"):
             return (
                 f"AWS session token expired for profile '{profile}'. "
-                f"Run: aws sso login --profile {profile}"
+                f"Run: {login_cmd}"
             )
         if code == "InvalidClientTokenId":
             return (
@@ -97,15 +115,15 @@ def friendly_credential_message(exc: BaseException, profile: str = "") -> str:
 
     msg = str(exc)
     msg_lower = msg.lower()
-    if "sso" in msg_lower and ("token" in msg_lower or "expired" in msg_lower):
+    if "token" in msg_lower or "expired" in msg_lower or "sso" in msg_lower:
         return (
-            f"AWS SSO token expired or invalid for profile '{profile}'. "
-            f"Run: aws sso login --profile {profile}"
+            f"AWS session expired or invalid for profile '{profile}'. "
+            f"Run: {login_cmd}"
         )
 
     return (
         f"AWS authentication failed for profile '{profile}': {msg}. "
-        f"Try: aws sso login --profile {profile}"
+        f"Try: {login_cmd}"
     )
 
 

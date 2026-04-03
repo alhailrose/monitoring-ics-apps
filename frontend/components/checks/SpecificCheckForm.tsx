@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useTransition } from 'react'
+import { useState, useMemo, useTransition, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { runChecks } from '@/app/(dashboard)/checks/actions'
 import { ResultsTable } from '@/components/checks/ResultsTable'
@@ -23,6 +23,22 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import type { Customer, ExecuteResponse } from '@/lib/types/api'
 
+interface Ec2Instance {
+  instance_id: string
+  name: string
+  instance_type: string
+  region: string
+  platform: string
+}
+
+interface AccountSnapshot {
+  loading: boolean
+  instances: Ec2Instance[]
+  noData: boolean  // discovery never run
+}
+
+type SnapshotMap = Record<string, AccountSnapshot>  // key = account DB id
+
 const CHECK_CARDS = [
   { value: 'guardduty',          label: 'GuardDuty',          icon: Shield01Icon,       color: 'text-blue-400' },
   { value: 'cloudwatch',         label: 'CloudWatch',          icon: Chart01Icon,        color: 'text-cyan-400' },
@@ -30,13 +46,13 @@ const CHECK_CARDS = [
   { value: 'backup',             label: 'Backup',              icon: ArchiveRestoreIcon, color: 'text-emerald-400' },
   { value: 'cost',               label: 'Cost',                icon: DollarCircleIcon,   color: 'text-amber-400' },
   { value: 'daily-arbel-rds',    label: 'RDS Utilization',     icon: Database01Icon,     color: 'text-orange-400' },
-  { value: 'daily-arbel-ec2',    label: 'EC2 Utilization',     icon: ComputerIcon,       color: 'text-sky-400' },
+  { value: 'ec2_utilization',    label: 'EC2 Utilization',     icon: ComputerIcon,       color: 'text-sky-400' },
   { value: 'alarm_verification', label: 'Alarm Verification',  icon: Alert01Icon,        color: 'text-red-400' },
   { value: 'daily-budget',       label: 'Daily Budget',        icon: DollarCircleIcon,   color: 'text-green-400' },
 ]
 
 // Checks that support time window selection
-const UTILIZATION_CHECKS = new Set(['daily-arbel-rds', 'daily-arbel-ec2'])
+const UTILIZATION_CHECKS = new Set(['daily-arbel-rds', 'ec2_utilization'])
 
 const TIME_WINDOWS = [
   { value: 1,  label: '1h' },
@@ -62,6 +78,48 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
   const [results, setResults] = useState<ExecuteResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  // EC2 instance selection (for ec2_utilization)
+  const [snapshotMap, setSnapshotMap] = useState<SnapshotMap>({})
+  const [selectedInstanceIds, setSelectedInstanceIds] = useState<string[]>([])
+  const [instanceSearch, setInstanceSearch] = useState('')
+  const fetchedRef = useRef<Set<string>>(new Set())
+
+  const isEc2Check = selectedCheckName === 'ec2_utilization'
+
+  // Fetch discovery snapshots when ec2_utilization is selected and accounts change
+  useEffect(() => {
+    if (!isEc2Check) return
+    const toFetch = selectedAccountIds.filter((id) => !fetchedRef.current.has(id))
+    if (toFetch.length === 0) return
+
+    toFetch.forEach((accId) => {
+      fetchedRef.current.add(accId)
+      setSnapshotMap((prev) => ({ ...prev, [accId]: { loading: true, instances: [], noData: false } }))
+      fetch(`/api/discovery-snapshot/${accId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          const instances: Ec2Instance[] = (data?.snapshot?.ec2_instances ?? [])
+          setSnapshotMap((prev) => ({
+            ...prev,
+            [accId]: { loading: false, instances, noData: instances.length === 0 && !data?.snapshot },
+          }))
+        })
+        .catch(() => {
+          setSnapshotMap((prev) => ({ ...prev, [accId]: { loading: false, instances: [], noData: true } }))
+        })
+    })
+  }, [isEc2Check, selectedAccountIds])
+
+  // Reset instance selection when check type or accounts change
+  useEffect(() => {
+    setSelectedInstanceIds([])
+    setInstanceSearch('')
+  }, [selectedCheckName, selectedAccountIds])
+
+  const toggleInstance = (id: string) => {
+    setSelectedInstanceIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+  }
 
   const showTimeWindow = UTILIZATION_CHECKS.has(selectedCheckName)
 
@@ -156,7 +214,24 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
 
     // Build check_params
     const checkParams: Record<string, unknown> = {}
-    if (showTimeWindow) checkParams.window_hours = windowHours
+    if (showTimeWindow) {
+      if (selectedCheckName === 'ec2_utilization') checkParams.util_hours = windowHours
+      else checkParams.window_hours = windowHours
+    }
+    // Pass specific instance list for ec2_utilization if user selected instances
+    if (isEc2Check && selectedInstanceIds.length > 0) {
+      const allInstances = Object.values(snapshotMap).flatMap((s) => s.instances)
+      const picked = allInstances.filter((i) => selectedInstanceIds.includes(i.instance_id))
+      if (picked.length > 0) {
+        checkParams.instance_list = picked.map((i) => ({
+          instance_id: i.instance_id,
+          name: i.name,
+          os_type: i.platform === 'windows' ? 'windows' : 'linux',
+          instance_type: i.instance_type,
+          region: i.region,
+        }))
+      }
+    }
     // Per-account alarm name overrides for alarm_verification
     if (isAlarmCheck && selectedAlarmNames.length > 0) {
       const accountAlarmNames: Record<string, string[]> = {}
@@ -520,6 +595,130 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
             Select accounts above to see their configured alarm names.
           </p>
         )}
+
+        {/* ── EC2 instance selector (ec2_utilization only) ── */}
+        {isEc2Check && selectedAccountIds.length > 0 && (() => {
+          const activeAccounts = allAccounts.filter((a) => selectedAccountIds.includes(a.id))
+          const allInstances = activeAccounts.flatMap((a) => {
+            const snap = snapshotMap[a.id]
+            return (snap?.instances ?? []).map((i) => ({ ...i, _accName: a.display_name, _accId: a.id }))
+          })
+          const notDiscovered = activeAccounts.filter((a) => {
+            const snap = snapshotMap[a.id]
+            return !snap || (!snap.loading && snap.noData)
+          })
+          const loading = activeAccounts.some((a) => snapshotMap[a.id]?.loading)
+          const filteredInstances = instanceSearch.trim()
+            ? allInstances.filter((i) =>
+                i.name.toLowerCase().includes(instanceSearch.toLowerCase()) ||
+                i.instance_id.toLowerCase().includes(instanceSearch.toLowerCase()) ||
+                i.region.toLowerCase().includes(instanceSearch.toLowerCase()),
+              )
+            : allInstances
+
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>
+                  EC2 Instances
+                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                    {selectedInstanceIds.length === 0
+                      ? `— semua ${allInstances.length} akan dicek`
+                      : `— ${selectedInstanceIds.length} dari ${allInstances.length} dipilih`}
+                  </span>
+                </Label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInstanceIds(allInstances.map((i) => i.instance_id))}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Select All
+                  </button>
+                  {selectedInstanceIds.length > 0 && (
+                    <>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedInstanceIds([])}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {notDiscovered.length > 0 && (
+                <div className="rounded border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-400/90">
+                  Instance belum di-discovery:{' '}
+                  <span className="font-medium">{notDiscovered.map((a) => a.display_name).join(', ')}</span>
+                  . Jalankan <span className="font-mono">Discover Full</span> di halaman Customers terlebih dahulu.
+                </div>
+              )}
+
+              {loading && (
+                <p className="text-xs text-muted-foreground animate-pulse">Memuat daftar instance…</p>
+              )}
+
+              {!loading && allInstances.length > 0 && (
+                <>
+                  <Input
+                    placeholder="Cari nama, instance ID, atau region…"
+                    value={instanceSearch}
+                    onChange={(e) => setInstanceSearch(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                  <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto rounded-md border border-border/60 bg-muted/20 p-1.5">
+                    {filteredInstances.length === 0 ? (
+                      <p className="text-xs text-muted-foreground px-1">Tidak ada instance yang cocok</p>
+                    ) : (
+                      filteredInstances.map((inst) => {
+                        const selected = selectedInstanceIds.includes(inst.instance_id)
+                        return (
+                          <button
+                            key={inst.instance_id}
+                            type="button"
+                            onClick={() => toggleInstance(inst.instance_id)}
+                            className={cn(
+                              'flex items-center gap-2.5 rounded px-2 py-1.5 text-left transition-colors',
+                              selected ? 'bg-primary/10' : 'hover:bg-muted/40',
+                            )}
+                          >
+                            <div className={cn(
+                              'h-3.5 w-3.5 shrink-0 rounded border flex items-center justify-center transition-colors',
+                              selected ? 'border-primary bg-primary' : 'border-border/40',
+                            )}>
+                              {selected && (
+                                <svg className="size-2 text-primary-foreground" viewBox="0 0 10 8" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M1 4l2.5 2.5L9 1" />
+                                </svg>
+                              )}
+                            </div>
+                            <span className={cn('flex-1 text-xs', selected ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                              {inst.name !== '-' ? inst.name : inst.instance_id}
+                            </span>
+                            <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">{inst.instance_type}</span>
+                            <span className="shrink-0 font-mono text-[10px] text-muted-foreground/35">{inst.region}</span>
+                            {activeAccounts.length > 1 && (
+                              <span className="shrink-0 text-[10px] text-muted-foreground/35">{inst._accName}</span>
+                            )}
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                  {selectedInstanceIds.length === 0 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Klik instance untuk filter — kosong berarti cek semua.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })()}
 
         {isAlarmCheck && selectedAccountIds.length > 0 && alarmNames.length === 0 && (
           <p className="text-xs text-amber-400/80">

@@ -9,11 +9,13 @@ export async function GET(req: NextRequest) {
   const state = randomBytes(16).toString('hex')
 
   const cookieStore = await cookies()
+  const secure = process.env.NODE_ENV === 'production'
   cookieStore.set('oauth_state', state, {
     httpOnly: true,
     maxAge: 300,
     sameSite: 'lax',
     path: '/',
+    secure,
   })
   if (inviteToken) {
     cookieStore.set('oauth_invite', inviteToken, {
@@ -21,6 +23,7 @@ export async function GET(req: NextRequest) {
       maxAge: 300,
       sameSite: 'lax',
       path: '/',
+      secure,
     })
   }
 

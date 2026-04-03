@@ -281,7 +281,6 @@ export function TerminalPanel() {
     const term = new Terminal({
       fontSize: 13,
       cursorBlink: true,
-      copyOnSelect: true,           // auto-copy on mouse select
       theme: { background: '#0a0a0a' },
     })
     const fitAddon = new FitAddon()

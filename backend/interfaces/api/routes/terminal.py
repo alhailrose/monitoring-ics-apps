@@ -92,27 +92,42 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
     # Per-user AWS credential isolation
     import shutil
     aws_user_dir = os.path.expanduser(f"~/.aws/users/{username}")
-    os.makedirs(f"{aws_user_dir}/sso/cache", exist_ok=True)
+    os.makedirs(aws_user_dir, exist_ok=True)
 
     _template = os.path.expanduser("~/.aws/aws-config.template")
     _system_config = os.path.expanduser("~/.aws/config")
     _user_config = f"{aws_user_dir}/config"
+    _source = _template if os.path.exists(_template) else (_system_config if os.path.exists(_system_config) else None)
 
-    if not os.path.exists(_user_config):
-        if os.path.exists(_template):
-            # Template saved by admin → apply to this user
-            shutil.copy(_template, _user_config)
-            logger.info("terminal: applied aws template to user=%s", username)
-        elif os.path.exists(_system_config):
-            # No template yet → copy system config so existing profiles still work
-            shutil.copy(_system_config, _user_config)
-            logger.info("terminal: copied system aws config to user=%s", username)
+    if _source:
+        # Always keep per-user config in sync with the source (template or system).
+        # This ensures credential cache keys are identical between terminal sessions
+        # and backend boto3 calls (which use ~/.aws/config directly).
+        # If the user has personalised their config (mtime newer than source) keep it.
+        _should_copy = not os.path.exists(_user_config)
+        if not _should_copy and os.path.exists(_user_config):
+            source_mtime = os.path.getmtime(_source)
+            user_mtime = os.path.getmtime(_user_config)
+            # Re-copy only when the source changed after the user config was last written,
+            # meaning an admin updated the template but the user config is stale.
+            _should_copy = source_mtime > user_mtime
+        if _should_copy:
+            shutil.copy(_source, _user_config)
+            label = "template" if _source == _template else "system config"
+            logger.info("terminal: synced aws %s to user=%s", label, username)
 
     env = os.environ.copy()
     env["AWS_CONFIG_FILE"] = _user_config
-    env["AWS_SSO_CACHE_PATH"] = f"{aws_user_dir}/sso/cache"
+    # SSO cache intentionally NOT overridden — keeps shared at ~/.aws/sso/cache
+    # so tokens from terminal login are also readable by the app's boto3 sessions
     env.setdefault("TERM", "xterm-256color")
     env.setdefault("COLORTERM", "truecolor")
+
+    # Each user gets their own workspace directory so the shell starts
+    # in a clean place, not the backend project root.
+    workspace = os.path.expanduser(f"~/terminal-workspace/{username}")
+    _first_session = not os.path.exists(workspace)
+    os.makedirs(workspace, exist_ok=True)
 
     proc = subprocess.Popen(
         [_SHELL, "-l"],
@@ -122,6 +137,7 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
         close_fds=True,
         preexec_fn=os.setsid,
         env=env,
+        cwd=workspace,
     )
     os.close(slave_fd)  # parent doesn't need the slave end
 
@@ -140,6 +156,13 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
             pass
 
     reader = asyncio.create_task(_pty_to_ws())
+
+    # --- Notify frontend of first-session (triggers LoginHint auto-expand) ---
+    if _first_session:
+        try:
+            await websocket.send_text(json.dumps({"type": "first_session"}))
+        except Exception:
+            pass
 
     # --- Main loop: WebSocket input → PTY ---
     try:

@@ -2,34 +2,21 @@
 
 from __future__ import annotations
 
-import json
-import time
-import urllib.request
-from base64 import urlsafe_b64decode
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 from jose import JWTError, jwt
 
 from backend.infra.database.repositories.user_repository import UserRepository
 
 ALGORITHM = "HS256"
-_GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs"
 _ALLOWED_DOMAIN = "icscompute.com"
 
-# Simple in-memory JWKS cache (key: url, value: (certs_dict, fetched_at))
-_jwks_cache: dict[str, tuple[dict, float]] = {}
-
-
-def _fetch_google_public_keys() -> dict:
-    cache = _jwks_cache.get(_GOOGLE_CERTS_URL)
-    if cache and time.time() - cache[1] < 3600:
-        return cache[0]
-    with urllib.request.urlopen(_GOOGLE_CERTS_URL, timeout=10) as resp:
-        data = json.loads(resp.read())
-    _jwks_cache[_GOOGLE_CERTS_URL] = (data, time.time())
-    return data
+# Shared google-auth HTTP session (reuses connection, handles JWKS caching internally)
+_google_request = google_requests.Request()
 
 
 # ---------------------------------------------------------------------------
@@ -130,15 +117,14 @@ class AuthService:
             InviteRequiredError: if no accepted invite exists for this email
         """
         try:
-            jwks = _fetch_google_public_keys()
-            payload = jwt.decode(
+            # google-auth handles JWKS fetching, caching, and RS256 verification
+            payload = google_id_token.verify_oauth2_token(
                 id_token,
-                jwks,
-                algorithms=["RS256"],
+                _google_request,
                 audience=google_client_id,
             )
         except Exception as exc:
-            raise InvalidTokenError("Invalid Google token") from exc
+            raise InvalidTokenError(f"Invalid Google token: {exc}") from exc
 
         hd = payload.get("hd", "")
         email: str = payload.get("email", "")
