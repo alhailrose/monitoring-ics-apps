@@ -80,7 +80,8 @@ export default function MyConfigPage() {
       <div className="rounded-lg border border-dashed bg-muted/30 px-5 py-4 text-sm text-muted-foreground space-y-1">
         <p className="font-medium text-foreground text-xs uppercase tracking-widest mb-2">Cara kerja</p>
         <p>• Config ini disimpan di server dan digunakan saat kamu membuka terminal</p>
-        <p>• Setelah disimpan, jalankan <code className="bg-muted px-1 rounded text-xs">aws login --remote --profile &lt;profile&gt;</code> di terminal untuk login</p>
+        <p>• Setelah disimpan, jalankan <code className="bg-muted px-1 rounded text-xs">aws sso login --sso-session &lt;session&gt;</code> di terminal untuk login</p>
+        <p>• Jika tidak menggunakan SSO session, gunakan <code className="bg-muted px-1 rounded text-xs">aws sso login --profile &lt;profile&gt;</code></p>
         <p>• Perubahan berlaku saat kamu membuka sesi terminal baru</p>
       </div>
     </div>

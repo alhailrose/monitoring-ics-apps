@@ -312,7 +312,9 @@ export default function AwsConfigPage() {
         <p>• Template disimpan di <code className="bg-muted px-1 rounded text-xs">~/.aws/aws-config.template</code> di server</p>
         <p>• Saat user buka terminal pertama kali dan belum punya config, template otomatis diterapkan</p>
         <p>• Gunakan tombol <strong>Apply</strong> untuk reset atau provision manual config user</p>
-        <p>• Setelah config diterapkan, user cukup jalankan <code className="bg-muted px-1 rounded text-xs">aws login --remote --profile &lt;profile&gt;</code> di terminal</p>
+        <p>• Setelah config diterapkan, jalankan <code className="bg-muted px-1 rounded text-xs">aws sso login --sso-session &lt;session&gt;</code> di terminal untuk login</p>
+        <p>• Jika tidak menggunakan SSO session, gunakan <code className="bg-muted px-1 rounded text-xs">aws sso login --profile &lt;profile&gt;</code></p>
+        <p>• Status login tiap profile bisa dipantau di halaman <strong>Customers</strong> (kolom Session)</p>
       </div>
     </div>
   )
