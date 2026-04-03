@@ -36,6 +36,7 @@ class TicketRepository:
         self,
         *,
         ticket_no: str,
+        customer_id: str | None,
         task: str,
         pic: str,
         status: str,
@@ -44,6 +45,7 @@ class TicketRepository:
     ) -> Ticket:
         ticket = Ticket(
             ticket_no=ticket_no,
+            customer_id=customer_id,
             task=task,
             pic=pic,
             status=status,

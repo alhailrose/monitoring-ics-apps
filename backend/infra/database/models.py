@@ -95,6 +95,9 @@ class Ticket(Base):
     ticket_no: Mapped[str] = mapped_column(
         String(32), unique=True, nullable=False, index=True
     )
+    customer_id: Mapped[str | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     task: Mapped[str] = mapped_column(String(512), nullable=False)
     pic: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")

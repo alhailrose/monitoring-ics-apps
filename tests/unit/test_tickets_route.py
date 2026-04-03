@@ -27,6 +27,7 @@ def test_create_ticket_generates_ticket_number_and_commits():
         id="t-1",
         ticket_no="TKT-0001",
         task="Investigate CPU alarm",
+        customer_id="cust-1",
         pic="Bagus",
         status="open",
         description_solution="Initial triage",
@@ -39,6 +40,7 @@ def test_create_ticket_generates_ticket_number_and_commits():
         "/api/v1/tickets",
         json={
             "task": "Investigate CPU alarm",
+            "customer_id": "cust-1",
             "pic": "Bagus",
             "status": "open",
             "description_solution": "Initial triage",
@@ -47,6 +49,7 @@ def test_create_ticket_generates_ticket_number_and_commits():
 
     assert resp.status_code == 201
     assert resp.json()["ticket_no"] == "TKT-0001"
+    assert resp.json()["customer_id"] == "cust-1"
     repo.session.commit.assert_called_once()
 
 
@@ -56,6 +59,7 @@ def test_update_ticket_sets_ended_at_when_resolved():
         id="t-1",
         ticket_no="TKT-0001",
         task="Investigate CPU alarm",
+        customer_id="cust-1",
         pic="Bagus",
         status="resolved",
         description_solution="Threshold tuned",
@@ -67,6 +71,7 @@ def test_update_ticket_sets_ended_at_when_resolved():
     resp = client.patch(
         "/api/v1/tickets/t-1",
         json={
+            "customer_id": "cust-1",
             "status": "resolved",
             "description_solution": "Threshold tuned",
         },
@@ -76,3 +81,19 @@ def test_update_ticket_sets_ended_at_when_resolved():
     assert resp.json()["status"] == "resolved"
     assert resp.json()["ended_at"] is not None
     repo.session.commit.assert_called_once()
+
+
+def test_create_ticket_requires_customer_id():
+    repo = MagicMock()
+    client = TestClient(_make_app(repo))
+
+    resp = client.post(
+        "/api/v1/tickets",
+        json={
+            "task": "Investigate CPU alarm",
+            "pic": "Bagus",
+            "status": "open",
+        },
+    )
+
+    assert resp.status_code == 422

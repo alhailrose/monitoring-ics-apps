@@ -33,12 +33,18 @@ type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
 interface Ticket {
   id: string
   ticket_no: string
+  customer_id: string | null
   task: string
   pic: string
   status: TicketStatus
   description_solution: string | null
   created_at: string
   ended_at: string | null
+}
+
+interface CustomerOption {
+  id: string
+  display_name: string
 }
 
 async function appApiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -72,6 +78,7 @@ function statusBadgeClass(status: TicketStatus): string {
 }
 
 const defaultForm = {
+  customer_id: '',
   task: '',
   pic: '',
   status: 'open' as TicketStatus,
@@ -86,6 +93,7 @@ export default function TicketingPage() {
   const [editing, setEditing] = useState<Ticket | null>(null)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(defaultForm)
+  const [customers, setCustomers] = useState<CustomerOption[]>([])
 
   const loadTickets = async () => {
     setLoading(true)
@@ -102,6 +110,14 @@ export default function TicketingPage() {
 
   useEffect(() => {
     loadTickets()
+    appApiFetch<{ customers: Array<{ id: string; display_name: string }> }>('/api/customers')
+      .then((data) => {
+        const items = (data.customers || []).map((c) => ({ id: c.id, display_name: c.display_name }))
+        setCustomers(items)
+      })
+      .catch(() => {
+        setCustomers([])
+      })
   }, [])
 
   const openCreateDialog = () => {
@@ -112,6 +128,7 @@ export default function TicketingPage() {
   const openEditDialog = (ticket: Ticket) => {
     setEditing(ticket)
     setForm({
+      customer_id: ticket.customer_id ?? '',
       task: ticket.task,
       pic: ticket.pic,
       status: ticket.status,
@@ -120,13 +137,14 @@ export default function TicketingPage() {
   }
 
   const createTicket = async () => {
-    if (!form.task.trim() || !form.pic.trim()) return
+    if (!form.customer_id || !form.task.trim() || !form.pic.trim()) return
     setSaving(true)
     setError(null)
     try {
       await appApiFetch('/api/tickets', {
         method: 'POST',
         body: JSON.stringify({
+          customer_id: form.customer_id,
           task: form.task.trim(),
           pic: form.pic.trim(),
           status: form.status,
@@ -151,6 +169,7 @@ export default function TicketingPage() {
       await appApiFetch(`/api/tickets/${editing.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
+          customer_id: form.customer_id,
           task: form.task.trim(),
           pic: form.pic.trim(),
           status: form.status,
@@ -184,6 +203,7 @@ export default function TicketingPage() {
           <TableHeader>
             <TableRow className="bg-muted/30">
               <TableHead>Nomor Ticket</TableHead>
+              <TableHead>Customer</TableHead>
               <TableHead>Task</TableHead>
               <TableHead>PIC</TableHead>
               <TableHead>Created At</TableHead>
@@ -196,16 +216,19 @@ export default function TicketingPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : tickets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">Belum ada ticket</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Belum ada ticket</TableCell>
               </TableRow>
             ) : (
               tickets.map((ticket) => (
                 <TableRow key={ticket.id}>
                   <TableCell className="font-mono text-xs">{ticket.ticket_no}</TableCell>
+                  <TableCell className="text-sm">
+                    {customers.find((c) => c.id === ticket.customer_id)?.display_name ?? '-'}
+                  </TableCell>
                   <TableCell className="font-medium">{ticket.task}</TableCell>
                   <TableCell>{ticket.pic}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{formatDate(ticket.created_at)}</TableCell>
@@ -231,10 +254,12 @@ export default function TicketingPage() {
       <Dialog open={openCreate} onOpenChange={setOpenCreate}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Tambah Ticket</DialogTitle></DialogHeader>
-          <TicketForm form={form} setForm={setForm} />
+          <TicketForm form={form} setForm={setForm} customers={customers} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenCreate(false)}>Cancel</Button>
-            <Button onClick={createTicket} disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan'}</Button>
+            <Button onClick={createTicket} disabled={saving || !form.customer_id || !form.task.trim() || !form.pic.trim()}>
+              {saving ? 'Menyimpan...' : 'Simpan'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -242,10 +267,12 @@ export default function TicketingPage() {
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Edit Ticket {editing?.ticket_no}</DialogTitle></DialogHeader>
-          <TicketForm form={form} setForm={setForm} />
+          <TicketForm form={form} setForm={setForm} customers={customers} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-            <Button onClick={updateTicket} disabled={saving}>{saving ? 'Menyimpan...' : 'Update'}</Button>
+            <Button onClick={updateTicket} disabled={saving || !form.customer_id || !form.task.trim() || !form.pic.trim()}>
+              {saving ? 'Menyimpan...' : 'Update'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -256,12 +283,26 @@ export default function TicketingPage() {
 function TicketForm({
   form,
   setForm,
+  customers,
 }: {
   form: typeof defaultForm
   setForm: React.Dispatch<React.SetStateAction<typeof defaultForm>>
+  customers: CustomerOption[]
 }) {
   return (
     <div className="space-y-4 py-2">
+      <div className="space-y-1.5">
+        <Label>Customer</Label>
+        <Select value={form.customer_id} onValueChange={(v) => setForm((p) => ({ ...p, customer_id: v }))}>
+          <SelectTrigger><SelectValue placeholder="Pilih customer" /></SelectTrigger>
+          <SelectContent>
+            {customers.map((customer) => (
+              <SelectItem key={customer.id} value={customer.id}>{customer.display_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="space-y-1.5">
         <Label htmlFor="task">Task</Label>
         <Input id="task" value={form.task} onChange={(e) => setForm((p) => ({ ...p, task: e.target.value }))} />

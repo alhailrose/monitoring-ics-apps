@@ -19,6 +19,7 @@ _FINAL_STATUSES = {"resolved", "closed"}
 class TicketResponse(BaseModel):
     id: str
     ticket_no: str
+    customer_id: str | None = None
     task: str
     pic: str
     status: str
@@ -28,6 +29,7 @@ class TicketResponse(BaseModel):
 
 
 class CreateTicketRequest(BaseModel):
+    customer_id: str
     task: str
     pic: str
     status: str = "open"
@@ -42,8 +44,17 @@ class CreateTicketRequest(BaseModel):
             )
         return value
 
+    @field_validator("customer_id")
+    @classmethod
+    def valid_customer_id(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("customer_id is required")
+        return cleaned
+
 
 class UpdateTicketRequest(BaseModel):
+    customer_id: str | None = None
     task: str | None = None
     pic: str | None = None
     status: str | None = None
@@ -60,11 +71,22 @@ class UpdateTicketRequest(BaseModel):
             )
         return value
 
+    @field_validator("customer_id")
+    @classmethod
+    def valid_optional_customer_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("customer_id must not be blank")
+        return cleaned
+
 
 def _to_response(row) -> TicketResponse:
     return TicketResponse(
         id=row.id,
         ticket_no=row.ticket_no,
+        customer_id=row.customer_id,
         task=row.task,
         pic=row.pic,
         status=row.status,
@@ -95,6 +117,7 @@ def create_ticket(
     ended_at = datetime.now(timezone.utc) if body.status in _FINAL_STATUSES else None
     row = repo.create_ticket(
         ticket_no=repo.next_ticket_number(),
+        customer_id=body.customer_id,
         task=body.task,
         pic=body.pic,
         status=body.status,
@@ -116,6 +139,8 @@ def update_ticket(
         raise HTTPException(status_code=404, detail="Ticket not found")
 
     updates: dict[str, object] = {}
+    if body.customer_id is not None:
+        updates["customer_id"] = body.customer_id
     if body.task is not None:
         updates["task"] = body.task
     if body.pic is not None:
