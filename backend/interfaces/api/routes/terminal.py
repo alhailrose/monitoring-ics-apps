@@ -29,6 +29,7 @@ from backend.domain.services.auth_service import (
     InvalidTokenError,
     TokenPayload,
 )
+from backend.infra.cloud.aws.clients import sync_sso_profiles
 from backend.infra.database.repositories.user_repository import UserRepository
 from backend.interfaces.api.dependencies import _get_session_factory
 
@@ -124,10 +125,21 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
             label = "template" if _source == _template else "system config"
             logger.info("terminal: synced aws %s to user=%s", label, username)
 
+    # Per-user SSO cache — tokens are isolated per user
+    _user_sso_cache = f"{aws_user_dir}/sso/cache"
+    os.makedirs(_user_sso_cache, exist_ok=True)
+
+    # Auto-sync profiles from any valid SSO tokens in user's cache
+    try:
+        n = sync_sso_profiles(aws_config_file=_user_config, sso_cache_dir=_user_sso_cache)
+        if n:
+            logger.info("terminal: synced %d SSO profiles for user=%s", n, username)
+    except Exception as _sync_err:
+        logger.debug("terminal: sync_sso_profiles skipped: %s", _sync_err)
+
     env = os.environ.copy()
     env["AWS_CONFIG_FILE"] = _user_config
-    # SSO cache intentionally NOT overridden — keeps shared at ~/.aws/sso/cache
-    # so tokens from terminal login are also readable by the app's boto3 sessions
+    env["AWS_SSO_CACHE_DIR"] = _user_sso_cache
     env.setdefault("TERM", "xterm-256color")
     env.setdefault("COLORTERM", "truecolor")
 

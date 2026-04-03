@@ -68,6 +68,7 @@ def _check_profile_health(
     profile_name: str,
     aws_config_path: Path | None = None,
     aws_config_file: str | None = None,
+    sso_cache_dir: str | None = None,
 ) -> ProfileStatus:
     """Check if a single profile's credentials are valid via STS."""
     result = ProfileStatus(profile_name=profile_name)
@@ -84,6 +85,7 @@ def _check_profile_health(
         session = get_aws_session(
             profile_name=profile_name,
             aws_config_file=aws_config_file,
+            sso_cache_dir=sso_cache_dir,
         )
         sts = session.client("sts")
         identity = sts.get_caller_identity()
@@ -114,10 +116,12 @@ class SessionHealthService:
         customer_repo,
         max_workers: int = 10,
         aws_config_file: str | None = None,
+        sso_cache_dir: str | None = None,
     ):
         self.customer_repo = customer_repo
         self.max_workers = max_workers
         self.aws_config_file = aws_config_file
+        self.sso_cache_dir = sso_cache_dir
         self.aws_config_path = (
             Path(aws_config_file) if aws_config_file else AWS_CONFIG_PATH
         )
@@ -164,6 +168,7 @@ class SessionHealthService:
                     p,
                     self.aws_config_path,
                     self.aws_config_file,
+                    self.sso_cache_dir,
                 ): p
                 for p in unique_profiles
             }

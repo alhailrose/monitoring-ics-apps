@@ -253,6 +253,7 @@ def _run_single_check(
     injected_creds: dict | None = None,
     account_id: str | None = None,
     aws_config_file: str | None = None,
+    sso_cache_dir: str | None = None,
 ) -> dict:
     """Run one check on one profile, return raw result."""
     checker_class = AVAILABLE_CHECKS.get(check_name)
@@ -263,6 +264,7 @@ def _run_single_check(
         account_id = get_account_id_from_profile(profile)
     checker = checker_class(region=region, **(check_kwargs or {}))
     checker._aws_config_file = aws_config_file
+    checker._sso_cache_dir = sso_cache_dir
     if injected_creds is not None:
         checker._injected_creds = injected_creds
         logger.info(
@@ -1072,6 +1074,7 @@ class CheckExecutor:
         max_workers: int = DEFAULT_WORKERS,
         timeout: int = 300,
         aws_config_file: str | None = None,
+        sso_cache_dir: str | None = None,
     ):
         self.check_repo = check_repo
         self.customer_repo = customer_repo
@@ -1079,6 +1082,7 @@ class CheckExecutor:
         self.max_workers = max_workers
         self.timeout = timeout
         self.aws_config_file = aws_config_file
+        self.sso_cache_dir = sso_cache_dir
 
     def execute(
         self,
@@ -1199,6 +1203,7 @@ class CheckExecutor:
                     if checker_class:
                         checker_inst = checker_class(region=effective_region)
                         checker_inst._aws_config_file = self.aws_config_file
+                        checker_inst._sso_cache_dir = self.sso_cache_dir
                         checkers_map[chk_name] = checker_inst
 
             # Determine clean accounts
@@ -1651,6 +1656,8 @@ class CheckExecutor:
                     submit_kwargs = {}
                     if self.aws_config_file:
                         submit_kwargs["aws_config_file"] = self.aws_config_file
+                    if self.sso_cache_dir:
+                        submit_kwargs["sso_cache_dir"] = self.sso_cache_dir
 
                     future = executor.submit(
                         _run_single_check,

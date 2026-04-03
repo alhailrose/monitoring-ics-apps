@@ -54,9 +54,10 @@ def detect_account_id(
 class CustomerService:
     """Business logic for customer and account management."""
 
-    def __init__(self, customer_repo, aws_config_file: str | None = None):
+    def __init__(self, customer_repo, aws_config_file: str | None = None, sso_cache_dir: str | None = None):
         self.repo = customer_repo
         self.aws_config_file = aws_config_file
+        self.sso_cache_dir = sso_cache_dir
 
     def list_customers(self) -> list[dict]:
         """Return all customers with their accounts."""
@@ -192,6 +193,7 @@ class CustomerService:
             session = get_aws_session(
                 profile_name=account.profile_name,
                 aws_config_file=self.aws_config_file,
+                sso_cache_dir=self.sso_cache_dir,
             )
         else:
             session = get_aws_session(
@@ -199,6 +201,7 @@ class CustomerService:
                 aws_secret_access_key=creds["aws_secret_access_key"],
                 aws_session_token=creds.get("aws_session_token"),
                 aws_config_file=self.aws_config_file,
+                sso_cache_dir=self.sso_cache_dir,
             )
         cw = session.client("cloudwatch")
 
@@ -229,6 +232,7 @@ class CustomerService:
             session = get_aws_session(
                 profile_name=account.profile_name,
                 aws_config_file=self.aws_config_file,
+                sso_cache_dir=self.sso_cache_dir,
             )
         else:
             session = get_aws_session(
@@ -236,6 +240,7 @@ class CustomerService:
                 aws_secret_access_key=creds["aws_secret_access_key"],
                 aws_session_token=creds.get("aws_session_token"),
                 aws_config_file=self.aws_config_file,
+                sso_cache_dir=self.sso_cache_dir,
             )
 
         result = {

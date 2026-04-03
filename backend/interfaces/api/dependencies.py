@@ -22,7 +22,7 @@ from backend.domain.services.auth_service import (
     TokenPayload,
 )
 from backend.domain.services.invite_service import InviteService
-from backend.infra.cloud.aws.clients import user_aws_config_path
+from backend.infra.cloud.aws.clients import user_aws_config_path, user_sso_cache_path
 
 logger = logging.getLogger(__name__)
 
@@ -38,20 +38,21 @@ def _get_session():
     return _get_session_factory()()
 
 
-def _resolve_request_aws_config_file(request: Request) -> str | None:
+def _resolve_user_aws_paths(request: Request) -> tuple[str | None, str | None]:
+    """Return (aws_config_file, sso_cache_dir) for the current user, or (None, None)."""
     current_user = getattr(request.state, "auth_user", None)
     username = getattr(current_user, "username", None)
     if not username or username in {"anonymous", "api-key"}:
-        return None
-    return user_aws_config_path(username)
+        return None, None
+    return user_aws_config_path(username), user_sso_cache_path(username)
 
 
 def get_customer_service(request: Request):
     session = _get_session()
-    aws_config_file = _resolve_request_aws_config_file(request)
+    aws_config_file, sso_cache_dir = _resolve_user_aws_paths(request)
     try:
         repo = CustomerRepository(session)
-        yield CustomerService(repo, aws_config_file=aws_config_file)
+        yield CustomerService(repo, aws_config_file=aws_config_file, sso_cache_dir=sso_cache_dir)
     finally:
         session.close()
 
@@ -59,7 +60,7 @@ def get_customer_service(request: Request):
 def get_check_executor(request: Request):
     session = _get_session()
     settings = get_settings()
-    aws_config_file = _resolve_request_aws_config_file(request)
+    aws_config_file, sso_cache_dir = _resolve_user_aws_paths(request)
     try:
         customer_repo = CustomerRepository(session)
         check_repo = CheckRepository(session)
@@ -70,6 +71,7 @@ def get_check_executor(request: Request):
             max_workers=settings.max_workers,
             timeout=settings.execution_timeout,
             aws_config_file=aws_config_file,
+            sso_cache_dir=sso_cache_dir,
         )
     finally:
         session.close()
@@ -85,10 +87,10 @@ def get_check_repository():
 
 def get_session_health_service(request: Request):
     session = _get_session()
-    aws_config_file = _resolve_request_aws_config_file(request)
+    aws_config_file, sso_cache_dir = _resolve_user_aws_paths(request)
     try:
         repo = CustomerRepository(session)
-        yield SessionHealthService(customer_repo=repo, aws_config_file=aws_config_file)
+        yield SessionHealthService(customer_repo=repo, aws_config_file=aws_config_file, sso_cache_dir=sso_cache_dir)
     finally:
         session.close()
 

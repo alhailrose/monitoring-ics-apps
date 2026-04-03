@@ -29,6 +29,7 @@ class BaseChecker(ABC):
         self.timestamp = datetime.now()
         self._injected_creds: dict | None = None  # set by executor for non-profile auth
         self._aws_config_file: str | None = None
+        self._sso_cache_dir: str | None = None
 
     def _get_session(self, profile: str):
         """Return a boto3 Session using injected credentials if available, else AWS profile."""
@@ -39,11 +40,13 @@ class BaseChecker(ABC):
                 aws_session_token=self._injected_creds.get("aws_session_token"),
                 region_name=self.region,
                 aws_config_file=self._aws_config_file,
+                sso_cache_dir=self._sso_cache_dir,
             )
         return get_aws_session(
             profile_name=profile,
             region_name=self.region,
             aws_config_file=self._aws_config_file,
+            sso_cache_dir=self._sso_cache_dir,
         )
 
     @abstractmethod
