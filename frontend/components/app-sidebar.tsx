@@ -47,6 +47,7 @@ const navItems = [
 ]
 
 const opsItems = [
+  { title: "Ticketing", url: "/ticketing", icon: TaskIcon },
   { title: "Tasks", url: "/tasks", icon: TaskIcon },
   { title: "Checks", url: "/checks", icon: CheckListIcon },
 ]

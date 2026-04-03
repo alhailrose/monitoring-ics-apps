@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -119,6 +120,74 @@ function ResolveForm({
   )
 }
 
+type VerifyState = {
+  loading: boolean
+  error?: string
+  result?: {
+    mapped_accounts: number
+    counts: Record<string, number>
+    check_run_id?: string | null
+  }
+}
+
+function VerifyNowButton({ alarmName }: { alarmName: string }) {
+  const [state, setState] = useState<VerifyState>({ loading: false })
+
+  const verifyNow = async () => {
+    setState({ loading: true })
+    try {
+      const res = await fetch(`/api/alarms/${encodeURIComponent(alarmName)}/verify`, {
+        method: 'POST',
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        setState({ loading: false, error: body?.detail ?? 'Gagal cek alarm' })
+        return
+      }
+      setState({
+        loading: false,
+        result: {
+          mapped_accounts: Number(body?.mapped_accounts ?? 0),
+          counts: (body?.counts ?? {}) as Record<string, number>,
+          check_run_id: (body?.check_run_id as string | null | undefined) ?? null,
+        },
+      })
+    } catch {
+      setState({ loading: false, error: 'Terjadi kesalahan jaringan' })
+    }
+  }
+
+  const counts = state.result?.counts ?? {}
+  const summaryParts = [
+    counts.ALARM ? `${counts.ALARM} ALARM` : null,
+    counts.OK ? `${counts.OK} OK` : null,
+    counts.ERROR ? `${counts.ERROR} ERROR` : null,
+    counts.NO_DATA ? `${counts.NO_DATA} NO_DATA` : null,
+  ].filter(Boolean)
+
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={verifyNow} disabled={state.loading}>
+        {state.loading ? 'Mengecek...' : 'Cek Sekarang'}
+      </Button>
+      {state.error && <p className="text-[11px] text-destructive text-right max-w-72">{state.error}</p>}
+      {state.result && (
+        <div className="text-[11px] text-muted-foreground text-right max-w-72">
+          <p>
+            {summaryParts.length > 0 ? summaryParts.join(' · ') : 'Tidak ada hasil'}
+            {state.result.mapped_accounts > 0 ? ` · ${state.result.mapped_accounts} akun` : ''}
+          </p>
+          {state.result.check_run_id && (
+            <Link href={`/history/${state.result.check_run_id}`} className="text-sky-400 hover:text-sky-300 underline">
+              Lihat detail run
+            </Link>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Stats card ──────────────────────────────────────────────────────────────
 
 function StatsPanel() {
@@ -220,7 +289,10 @@ export default function AlarmsPage() {
                       </span>
                     </p>
                   </div>
-                  <ResolveForm alarm={alarm} onResolved={refresh} />
+                  <div className="flex items-start gap-2">
+                    <VerifyNowButton alarmName={alarm.alarm_name} />
+                    <ResolveForm alarm={alarm} onResolved={refresh} />
+                  </div>
                 </div>
                 <ElapsedBar seconds={alarm.elapsed_seconds} escalated={alarm.escalated} />
               </div>

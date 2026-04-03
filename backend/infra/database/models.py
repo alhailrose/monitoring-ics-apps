@@ -20,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -39,15 +40,27 @@ class User(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    username: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    username: Mapped[str] = mapped_column(
+        String(128), unique=True, nullable=False, index=True
+    )
     hashed_password: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    email: Mapped[str | None] = mapped_column(String(256), unique=True, nullable=True, index=True)
-    google_sub: Mapped[str | None] = mapped_column(String(256), unique=True, nullable=True, index=True)
-    auth_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="password")
+    email: Mapped[str | None] = mapped_column(
+        String(256), unique=True, nullable=True, index=True
+    )
+    google_sub: Mapped[str | None] = mapped_column(
+        String(256), unique=True, nullable=True, index=True
+    )
+    auth_provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="password"
+    )
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )
 
 
 class Invite(Base):
@@ -55,12 +68,46 @@ class Invite(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     email: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
-    token: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    token: Mapped[str] = mapped_column(
+        String(128), unique=True, nullable=False, index=True
+    )
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
     invited_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     accepted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+
+
+class Ticket(Base):
+    __tablename__ = "tickets"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('open','in_progress','resolved','closed')",
+            name="ck_tickets_status_valid",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    ticket_no: Mapped[str] = mapped_column(
+        String(32), unique=True, nullable=False, index=True
+    )
+    task: Mapped[str] = mapped_column(String(512), nullable=False)
+    pic: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    description_solution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False
+    )
 
 
 class Customer(Base):
@@ -116,7 +163,9 @@ class Account(Base):
     config_extra: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     region: Mapped[str | None] = mapped_column(Text, nullable=True)
     alarm_names: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    auth_method: Mapped[str] = mapped_column(String(16), nullable=False, default="profile")
+    auth_method: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="profile"
+    )
     aws_access_key_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     aws_secret_access_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     role_arn: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -250,8 +299,12 @@ class FindingEvent(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utc_now, nullable=False
     )
