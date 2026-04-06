@@ -6,6 +6,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -128,16 +134,22 @@ function StatusCell({ ticket, onUpdated }: { ticket: Ticket; onUpdated: () => vo
 
   return (
     <div>
-      <Select value={ticket.status} onValueChange={v => change(v as TicketStatus)} disabled={saving}>
-        <SelectTrigger className="h-7 w-32 text-[10px] px-2 border-transparent hover:border-border focus:ring-0">
-          <Badge className={statusBadgeClass(ticket.status)}>{STATUS_LABELS[ticket.status]}</Badge>
-        </SelectTrigger>
-        <SelectContent>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild disabled={saving}>
+          <button className="cursor-pointer focus:outline-none disabled:opacity-50">
+            <Badge className={statusBadgeClass(ticket.status)}>
+              {saving ? '...' : STATUS_LABELS[ticket.status]}
+            </Badge>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
           {STATUS_OPTIONS.map(s => (
-            <SelectItem key={s} value={s} className="text-xs">{STATUS_LABELS[s]}</SelectItem>
+            <DropdownMenuItem key={s} onClick={() => change(s)} className="text-xs">
+              {STATUS_LABELS[s]}
+            </DropdownMenuItem>
           ))}
-        </SelectContent>
-      </Select>
+        </DropdownMenuContent>
+      </DropdownMenu>
       {error && <p className="text-[10px] text-destructive mt-0.5">{error}</p>}
     </div>
   )
@@ -288,6 +300,7 @@ export default function TicketingPage() {
   const [form, setForm] = useState(defaultForm)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
   const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   // Filters
   const [filterCustomer, setFilterCustomer] = useState('')
@@ -325,13 +338,17 @@ export default function TicketingPage() {
 
   const doExport = async () => {
     setExporting(true)
+    setExportError(null)
     try {
       const p = new URLSearchParams()
       if (filterMonth) p.set('month', filterMonth)
       if (filterYear) p.set('year', filterYear)
       const qs = p.toString() ? `?${p.toString()}` : ''
       const res = await fetch(`/api/tickets/export${qs}`)
-      if (!res.ok) throw new Error('Export failed')
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        throw new Error(body || `Export gagal (${res.status})`)
+      }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -339,10 +356,12 @@ export default function TicketingPage() {
       const cd = res.headers.get('Content-Disposition') ?? ''
       const match = cd.match(/filename="?([^"]+)"?/)
       a.download = match ? match[1] : 'tickets.xlsx'
+      document.body.appendChild(a)
       a.click()
+      document.body.removeChild(a)
       URL.revokeObjectURL(url)
-    } catch {
-      // silent fail
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Export gagal')
     } finally {
       setExporting(false)
     }
@@ -469,6 +488,7 @@ export default function TicketingPage() {
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {exportError && <p className="text-sm text-destructive">Export error: {exportError}</p>}
 
       <div className="rounded-lg border overflow-hidden">
         <Table>
