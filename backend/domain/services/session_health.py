@@ -42,14 +42,19 @@ class SessionHealthReport:
     sso_sessions: dict[str, dict] = field(default_factory=dict)
 
 
-def _get_sso_session_for_profile(
+def _get_auth_session_for_profile(
     profile_name: str,
     aws_config_path: Path | None = None,
-) -> str | None:
-    """Read ~/.aws/config to find the sso_session for a profile."""
+) -> tuple[str | None, str]:
+    """Read ~/.aws/config to find auth session type and session value.
+
+    Returns:
+        (session_value, session_type)
+        session_type is one of: "sso", "login", "profile"
+    """
     config_path = aws_config_path or AWS_CONFIG_PATH
     if not config_path.exists():
-        return None
+        return None, "profile"
     parser = ConfigParser()
     parser.read(str(config_path))
 
@@ -59,9 +64,17 @@ def _get_sso_session_for_profile(
         # Try just the name (for default or non-standard)
         section = profile_name
     if section not in parser:
-        return None
+        return None, "profile"
 
-    return parser.get(section, "sso_session", fallback=None)
+    sso_session = parser.get(section, "sso_session", fallback=None)
+    if sso_session:
+        return sso_session, "sso"
+
+    login_session = parser.get(section, "login_session", fallback=None)
+    if login_session:
+        return login_session, "login"
+
+    return None, "profile"
 
 
 def _check_profile_health(
@@ -72,12 +85,16 @@ def _check_profile_health(
 ) -> ProfileStatus:
     """Check if a single profile's credentials are valid via STS."""
     result = ProfileStatus(profile_name=profile_name)
-    result.sso_session = (
-        _get_sso_session_for_profile(profile_name, aws_config_path) or ""
+    session_value, session_type = _get_auth_session_for_profile(
+        profile_name,
+        aws_config_path,
     )
+    result.sso_session = session_value or ""
 
-    if result.sso_session:
-        result.login_command = f"aws sso login --sso-session {result.sso_session}"
+    if session_type == "sso" and session_value:
+        result.login_command = f"aws sso login --sso-session {session_value}"
+    elif session_type == "login":
+        result.login_command = f"aws login --profile {profile_name} --remote"
     else:
         result.login_command = f"aws sso login --profile {profile_name}"
 
@@ -147,12 +164,18 @@ class SessionHealthService:
         profile_display = {}
         for customer in customers:
             for account in customer.accounts:
-                if account.is_active:
-                    profiles_to_check.append(account.profile_name)
-                    profile_display[account.profile_name] = (
-                        account.display_name,
-                        customer.display_name,
-                    )
+                if not account.is_active:
+                    continue
+
+                auth_method = getattr(account, "auth_method", "profile") or "profile"
+                if auth_method != "profile":
+                    continue
+
+                profiles_to_check.append(account.profile_name)
+                profile_display[account.profile_name] = (
+                    account.display_name,
+                    customer.display_name,
+                )
 
         # Deduplicate (same profile might be in multiple customers)
         unique_profiles = list(dict.fromkeys(profiles_to_check))
@@ -211,7 +234,7 @@ class SessionHealthService:
                 if status.sso_session not in sso_sessions:
                     sso_sessions[status.sso_session] = {
                         "session_name": status.sso_session,
-                        "login_command": f"aws sso login --sso-session {status.sso_session}",
+                        "login_command": status.login_command,
                         "status": "ok",
                         "profiles_ok": [],
                         "profiles_expired": [],

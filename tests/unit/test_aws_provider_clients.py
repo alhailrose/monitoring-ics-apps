@@ -1,7 +1,7 @@
 import backend.infra.cloud.aws.auth as auth
 import backend.infra.cloud.aws.clients as clients
 import backend.infra.cloud.aws.services.cloudwatch as cw_service
-from botocore.credentials import SSOProvider
+from botocore.credentials import LoginProvider, SSOProvider
 
 
 def test_resolve_execution_identity_includes_execution_mode():
@@ -114,9 +114,17 @@ def test_get_session_registers_custom_credential_provider_for_sso_cache(
 
     resolver = object()
     captured_profile = {}
+    captured_login_cache = {}
 
-    def _fake_build_resolver(session, *, sso_cache_dir=None, region_name=None):
+    def _fake_build_resolver(
+        session,
+        *,
+        sso_cache_dir=None,
+        login_cache_dir=None,
+        region_name=None,
+    ):
         captured_profile["profile"] = session.get_config_variable("profile")
+        captured_login_cache["dir"] = login_cache_dir
         return resolver
 
     monkeypatch.setattr(
@@ -139,6 +147,7 @@ def test_get_session_registers_custom_credential_provider_for_sso_cache(
     bsession = captured["botocore_session"]
     assert bsession.registered == ("credential_provider", resolver)
     assert captured_profile["profile"] == "demo"
+    assert captured_login_cache["dir"].endswith("users/alice/home/.aws/login/cache")
 
 
 def test_get_session_does_not_register_custom_resolver_without_profile(
@@ -187,13 +196,23 @@ def test_custom_credential_resolver_uses_given_sso_cache_dir(tmp_path):
     bsession = botocore.session.Session()
     cache_dir = tmp_path / "sso" / "cache"
     cache_dir.mkdir(parents=True)
+    login_cache_dir = tmp_path / "home" / ".aws" / "login" / "cache"
+    login_cache_dir.mkdir(parents=True)
 
     resolver = clients._build_credential_resolver_with_sso_cache(
         bsession,
         sso_cache_dir=str(cache_dir),
+        login_cache_dir=str(login_cache_dir),
     )
 
     sso_provider = next(
         provider for provider in resolver.providers if isinstance(provider, SSOProvider)
     )
     assert str(cache_dir) == sso_provider._token_cache._working_dir
+
+    login_provider = next(
+        provider
+        for provider in resolver.providers
+        if isinstance(provider, LoginProvider)
+    )
+    assert str(login_cache_dir) == login_provider._token_cache._working_dir

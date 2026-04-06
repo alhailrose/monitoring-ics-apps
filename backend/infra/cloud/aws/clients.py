@@ -57,9 +57,15 @@ def _build_botocore_session(
 
     if sso_cache_dir and profile_name:
         os.makedirs(sso_cache_dir, exist_ok=True)
+        login_cache_dir = _derive_login_cache_dir(
+            aws_config_file=aws_config_file,
+            sso_cache_dir=sso_cache_dir,
+        )
+        os.makedirs(login_cache_dir, exist_ok=True)
         resolver = _build_credential_resolver_with_sso_cache(
             session,
             sso_cache_dir=sso_cache_dir,
+            login_cache_dir=login_cache_dir,
             region_name=region_name,
         )
         session.register_component("credential_provider", resolver)
@@ -71,6 +77,7 @@ def _build_credential_resolver_with_sso_cache(
     session: botocore.session.Session,
     *,
     sso_cache_dir: str,
+    login_cache_dir: str,
     region_name: str | None = None,
 ) -> CredentialResolver:
     profile_name = session.get_config_variable("profile") or "default"
@@ -91,6 +98,7 @@ def _build_credential_resolver_with_sso_cache(
 
     shared_cache: dict = {}
     token_cache = JSONFileCache(sso_cache_dir)
+    login_token_cache = JSONFileCache(login_cache_dir)
 
     env_provider = EnvProvider()
     container_provider = ContainerProvider()
@@ -108,7 +116,7 @@ def _build_credential_resolver_with_sso_cache(
         cache=shared_cache,
         region_name=region_name,
         sso_token_cache=token_cache,
-        login_token_cache=token_cache,
+        login_token_cache=login_token_cache,
     )
     assume_role_provider = AssumeRoleProvider(
         load_config=lambda: session.full_config,
@@ -141,6 +149,19 @@ def _build_credential_resolver_with_sso_cache(
         providers.remove(env_provider)
 
     return CredentialResolver(providers=providers)
+
+
+def _derive_login_cache_dir(
+    *,
+    aws_config_file: str | None,
+    sso_cache_dir: str,
+) -> str:
+    if aws_config_file:
+        user_dir = Path(aws_config_file).parent
+        return str(user_dir / "home" / ".aws" / "login" / "cache")
+
+    sso_path = Path(sso_cache_dir)
+    return str(sso_path.parent.parent / "home" / ".aws" / "login" / "cache")
 
 
 def get_session(
