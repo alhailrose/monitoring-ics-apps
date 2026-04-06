@@ -1,6 +1,7 @@
 import backend.infra.cloud.aws.auth as auth
 import backend.infra.cloud.aws.clients as clients
 import backend.infra.cloud.aws.services.cloudwatch as cw_service
+from botocore.credentials import SSOProvider
 
 
 def test_resolve_execution_identity_includes_execution_mode():
@@ -83,3 +84,69 @@ def test_get_session_uses_custom_aws_config_file(monkeypatch, tmp_path):
     assert captured["profile_name"] == "demo"
     assert captured["region_name"] == "ap-southeast-3"
     assert captured["botocore_session"].get_config_variable("config_file") == str(cfg)
+
+
+def test_get_session_registers_custom_credential_provider_for_sso_cache(
+    monkeypatch, tmp_path
+):
+    captured = {}
+
+    class _BotocoreSession:
+        def __init__(self):
+            self._config = {}
+            self.registered = None
+
+        def set_config_variable(self, name, value):
+            self._config[name] = value
+
+        def get_config_variable(self, name):
+            return self._config.get(name)
+
+        def register_component(self, name, value):
+            self.registered = (name, value)
+
+    class _Session:
+        def __init__(self, *, botocore_session=None, **kwargs):
+            captured["botocore_session"] = botocore_session
+
+    monkeypatch.setattr(clients.botocore.session, "Session", _BotocoreSession)
+    monkeypatch.setattr(clients.boto3, "Session", _Session)
+
+    resolver = object()
+    monkeypatch.setattr(
+        clients,
+        "_build_credential_resolver_with_sso_cache",
+        lambda session, *, sso_cache_dir=None, region_name=None: resolver,
+    )
+
+    cfg = tmp_path / "users" / "alice" / "config"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("[profile demo]\nregion=ap-southeast-3\n", encoding="utf-8")
+
+    clients.get_session(
+        profile_name="demo",
+        region_name="ap-southeast-3",
+        aws_config_file=str(cfg),
+        sso_cache_dir=str(tmp_path / "users" / "alice" / "sso" / "cache"),
+    )
+
+    bsession = captured["botocore_session"]
+    assert bsession.registered == ("credential_provider", resolver)
+
+
+def test_custom_credential_resolver_uses_given_sso_cache_dir(tmp_path):
+    import botocore.session
+
+    bsession = botocore.session.Session()
+    cache_dir = tmp_path / "sso" / "cache"
+    cache_dir.mkdir(parents=True)
+
+    resolver = clients._build_credential_resolver_with_sso_cache(
+        bsession,
+        sso_cache_dir=str(cache_dir),
+    )
+
+    sso_provider = next(
+        provider for provider in resolver.providers if isinstance(provider, SSOProvider)
+    )
+    assert str(cache_dir) == sso_provider._token_cache._working_dir

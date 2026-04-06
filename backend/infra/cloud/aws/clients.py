@@ -8,6 +8,22 @@ from pathlib import Path
 
 import boto3
 import botocore.session
+from botocore.credentials import (
+    _DEFAULT_ADVISORY_REFRESH_TIMEOUT,
+    AssumeRoleProvider,
+    BotoProvider,
+    CanonicalNameCredentialSourcer,
+    ContainerProvider,
+    CredentialResolver,
+    EnvProvider,
+    InstanceMetadataFetcher,
+    InstanceMetadataProvider,
+    OriginalEC2Provider,
+    ProfileProviderBuilder,
+    _get_client_creator,
+    resolve_imds_endpoint_mode,
+)
+from botocore.utils import JSONFileCache
 
 logger = logging.getLogger(__name__)
 
@@ -25,16 +41,97 @@ def _build_botocore_session(
     sso_cache_dir: str | None = None,
 ) -> botocore.session.Session:
     session = botocore.session.Session()
-    if not aws_config_file:
-        return session
+    if aws_config_file:
+        session.set_config_variable("config_file", aws_config_file)
+        user_credentials_file = Path(aws_config_file).with_name("credentials")
+        if user_credentials_file.exists():
+            session.set_config_variable("credentials_file", str(user_credentials_file))
 
-    session.set_config_variable("config_file", aws_config_file)
-    user_credentials_file = Path(aws_config_file).with_name("credentials")
-    if user_credentials_file.exists():
-        session.set_config_variable("credentials_file", str(user_credentials_file))
     if sso_cache_dir:
-        session.set_config_variable("sso_cache_dir", sso_cache_dir)
+        os.makedirs(sso_cache_dir, exist_ok=True)
+        resolver = _build_credential_resolver_with_sso_cache(
+            session,
+            sso_cache_dir=sso_cache_dir,
+        )
+        session.register_component("credential_provider", resolver)
+
     return session
+
+
+def _build_credential_resolver_with_sso_cache(
+    session: botocore.session.Session,
+    *,
+    sso_cache_dir: str,
+    region_name: str | None = None,
+) -> CredentialResolver:
+    profile_name = session.get_config_variable("profile") or "default"
+    metadata_timeout = session.get_config_variable("metadata_service_timeout")
+    num_attempts = session.get_config_variable("metadata_service_num_attempts")
+    disable_env_vars = session.instance_variables().get("profile") is not None
+
+    imds_config = {
+        "ec2_metadata_service_endpoint": session.get_config_variable(
+            "ec2_metadata_service_endpoint"
+        ),
+        "ec2_metadata_service_endpoint_mode": resolve_imds_endpoint_mode(session),
+        "ec2_credential_refresh_window": _DEFAULT_ADVISORY_REFRESH_TIMEOUT,
+        "ec2_metadata_v1_disabled": session.get_config_variable(
+            "ec2_metadata_v1_disabled"
+        ),
+    }
+
+    shared_cache: dict = {}
+    token_cache = JSONFileCache(sso_cache_dir)
+
+    env_provider = EnvProvider()
+    container_provider = ContainerProvider()
+    instance_metadata_provider = InstanceMetadataProvider(
+        iam_role_fetcher=InstanceMetadataFetcher(
+            timeout=metadata_timeout,
+            num_attempts=num_attempts,
+            user_agent=session.user_agent(),
+            config=imds_config,
+        )
+    )
+
+    profile_provider_builder = ProfileProviderBuilder(
+        session,
+        cache=shared_cache,
+        region_name=region_name,
+        sso_token_cache=token_cache,
+        login_token_cache=token_cache,
+    )
+    assume_role_provider = AssumeRoleProvider(
+        load_config=lambda: session.full_config,
+        client_creator=_get_client_creator(session, region_name),
+        cache=shared_cache,
+        profile_name=profile_name,
+        credential_sourcer=CanonicalNameCredentialSourcer(
+            [env_provider, container_provider, instance_metadata_provider]
+        ),
+        profile_provider_builder=profile_provider_builder,
+    )
+
+    pre_profile = [
+        env_provider,
+        assume_role_provider,
+    ]
+    profile_providers = profile_provider_builder.providers(
+        profile_name=profile_name,
+        disable_env_vars=disable_env_vars,
+    )
+    post_profile = [
+        OriginalEC2Provider(),
+        BotoProvider(),
+        container_provider,
+        instance_metadata_provider,
+    ]
+    providers = pre_profile + profile_providers + post_profile
+
+    if disable_env_vars:
+        providers.remove(env_provider)
+
+    return CredentialResolver(providers=providers)
 
 
 def get_session(
@@ -54,7 +151,9 @@ def get_session(
         "aws_session_token": aws_session_token,
     }
     if aws_config_file or sso_cache_dir:
-        kwargs["botocore_session"] = _build_botocore_session(aws_config_file, sso_cache_dir)
+        kwargs["botocore_session"] = _build_botocore_session(
+            aws_config_file, sso_cache_dir
+        )
     return boto3.Session(**kwargs)
 
 
@@ -132,7 +231,7 @@ def sync_sso_profiles(
         for section in parser.sections():
             if section.startswith("sso-session "):
                 if parser.get(section, "sso_start_url", fallback="") == sso_start_url:
-                    sso_session_name = section[len("sso-session "):]
+                    sso_session_name = section[len("sso-session ") :]
                     break
 
         try:
@@ -164,7 +263,9 @@ def sync_sso_profiles(
                     if not role_name:
                         continue
                     # Build a profile name: "<account_name>-<role_name>" (sanitized)
-                    profile_name = f"{account_name}-{role_name}".replace(" ", "_").replace("/", "-")
+                    profile_name = f"{account_name}-{role_name}".replace(
+                        " ", "_"
+                    ).replace("/", "-")
                     section = f"profile {profile_name}"
 
                     parser[section] = {
@@ -189,6 +290,10 @@ def sync_sso_profiles(
         config_path.parent.mkdir(parents=True, exist_ok=True)
         with open(str(config_path), "w") as fh:
             parser.write(fh)
-        logger.info("sync_sso_profiles: wrote %d profiles to %s", profiles_written, aws_config_file)
+        logger.info(
+            "sync_sso_profiles: wrote %d profiles to %s",
+            profiles_written,
+            aws_config_file,
+        )
 
     return profiles_written
