@@ -1,5 +1,7 @@
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
+
 from backend.checks.aryanoble.alarm_verification import AlarmVerificationChecker
 
 
@@ -156,6 +158,36 @@ class AlarmVerificationCheckerTests(unittest.TestCase):
         self.assertIn("🟢 OK", text)
         self.assertIn("Pelaporan:", text)
         self.assertNotIn("|", text)
+
+    def test_check_supports_composite_alarm_details(self):
+        checker = AlarmVerificationChecker(
+            min_duration_minutes=10,
+            alarm_names=["composite-prod-alarm"],
+        )
+
+        cw = MagicMock()
+        cw.describe_alarms.return_value = {
+            "MetricAlarms": [],
+            "CompositeAlarms": [
+                {
+                    "AlarmName": "composite-prod-alarm",
+                    "StateValue": "ALARM",
+                    "StateReason": "Rule evaluated to true",
+                }
+            ],
+        }
+        cw.describe_alarm_history.return_value = {"AlarmHistoryItems": []}
+
+        session = MagicMock()
+        session.client.return_value = cw
+        checker._get_session = MagicMock(return_value=session)
+
+        result = checker.check(profile="corp", account_id="123456789012")
+
+        self.assertEqual("success", result["status"])
+        self.assertEqual(1, len(result["alarms"]))
+        self.assertEqual("ok", result["alarms"][0]["status"])
+        self.assertEqual("ALARM", result["alarms"][0]["alarm_state"])
 
 
 if __name__ == "__main__":

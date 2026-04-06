@@ -24,6 +24,7 @@ from backend.interfaces.api.routes.users import router as users_router
 from backend.interfaces.api.routes.settings import router as settings_router
 from backend.interfaces.api.routes.alarms import router as alarms_router
 from backend.interfaces.api.routes.tickets import router as tickets_router
+from backend.interfaces.api.routes.mailing import router as mailing_router
 from backend.config.settings import get_settings
 
 
@@ -136,6 +137,11 @@ def create_app() -> FastAPI:
     )
     application.include_router(
         tickets_router,
+        prefix="/api/v1",
+        dependencies=api_dependencies,
+    )
+    application.include_router(
+        mailing_router,
         prefix="/api/v1",
         dependencies=api_dependencies,
     )

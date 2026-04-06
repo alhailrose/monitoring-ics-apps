@@ -52,22 +52,25 @@ _EMAIL_TEMPLATES = {
 
 class TicketResponse(BaseModel):
     id: str
-    ticket_no: str
+    ticket_no: str | None = None
     customer_id: str | None = None
     task: str
     pic: str
     status: str
     description_solution: str | None = None
+    extra_data: dict | None = None
     created_at: str
     ended_at: str | None = None
 
 
 class CreateTicketRequest(BaseModel):
+    ticket_no: str | None = None
     customer_id: str
     task: str
     pic: str
     status: str = "open"
     description_solution: str | None = None
+    extra_data: dict | None = None
 
     @field_validator("status")
     @classmethod
@@ -84,13 +87,23 @@ class CreateTicketRequest(BaseModel):
             raise ValueError("customer_id is required")
         return cleaned
 
+    @field_validator("ticket_no")
+    @classmethod
+    def valid_ticket_no(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
 
 class UpdateTicketRequest(BaseModel):
+    ticket_no: str | None = None
     customer_id: str | None = None
     task: str | None = None
     pic: str | None = None
     status: str | None = None
     description_solution: str | None = None
+    extra_data: dict | None = None
 
     @field_validator("status")
     @classmethod
@@ -121,6 +134,7 @@ def _to_response(row) -> TicketResponse:
         pic=row.pic,
         status=row.status,
         description_solution=row.description_solution,
+        extra_data=row.extra_data,
         created_at=row.created_at.isoformat(),
         ended_at=row.ended_at.isoformat() if row.ended_at else None,
     )
@@ -267,12 +281,13 @@ def create_ticket(
 ):
     ended_at = datetime.now(timezone.utc) if body.status in _FINAL_STATUSES else None
     row = repo.create_ticket(
-        ticket_no=repo.next_ticket_number(),
+        ticket_no=body.ticket_no,
         customer_id=body.customer_id,
         task=body.task,
         pic=body.pic,
         status=body.status,
         description_solution=body.description_solution,
+        extra_data=body.extra_data,
         ended_at=ended_at,
     )
     repo.session.commit()
@@ -290,6 +305,8 @@ def update_ticket(
         raise HTTPException(status_code=404, detail="Ticket not found")
 
     updates: dict[str, object] = {}
+    if body.ticket_no is not None:
+        updates["ticket_no"] = body.ticket_no.strip() or None
     if body.customer_id is not None:
         updates["customer_id"] = body.customer_id
     if body.task is not None:
@@ -298,6 +315,8 @@ def update_ticket(
         updates["pic"] = body.pic
     if body.description_solution is not None:
         updates["description_solution"] = body.description_solution
+    if body.extra_data is not None:
+        updates["extra_data"] = body.extra_data
     if body.status is not None:
         updates["status"] = body.status
         if body.status in _FINAL_STATUSES:

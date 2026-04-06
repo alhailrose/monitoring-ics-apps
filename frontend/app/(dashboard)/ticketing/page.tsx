@@ -39,19 +39,28 @@ type EmailTemplateType = 'in_progress' | 'selesai'
 
 interface Ticket {
   id: string
-  ticket_no: string
+  ticket_no: string | null
   customer_id: string | null
   task: string
   pic: string
   status: TicketStatus
   description_solution: string | null
+  extra_data: Record<string, string> | null
   created_at: string
   ended_at: string | null
 }
 
 interface CustomerOption {
   id: string
+  name: string
   display_name: string
+}
+
+interface MailingContact {
+  id: string
+  customer_id: string | null
+  email: string
+  name: string | null
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -102,11 +111,14 @@ const MONTHS = [
 ]
 
 const defaultForm = {
+  ticket_no: '',
   customer_id: '',
   task: '',
   pic: '',
   status: 'open' as TicketStatus,
   description_solution: '',
+  token_account_id: '',
+  token_for_customer_id: '',
 }
 
 // ─── Inline status cell ───────────────────────────────────────────────────────
@@ -204,7 +216,16 @@ function EmailTemplateDialog({ ticket, customers, onClose }: {
   const [data, setData] = useState<{ subject: string; body: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState<'subject' | 'body' | null>(null)
+  const [mailingContacts, setMailingContacts] = useState<MailingContact[]>([])
   const loadedType = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (ticket.customer_id) {
+      apiFetch<MailingContact[]>(`/api/mailing?customer_id=${ticket.customer_id}`)
+        .then(setMailingContacts)
+        .catch(() => setMailingContacts([]))
+    }
+  }, [ticket.customer_id])
 
   useEffect(() => {
     if (loadedType.current === templateType) return
@@ -249,6 +270,20 @@ function EmailTemplateDialog({ ticket, customers, onClose }: {
               </SelectContent>
             </Select>
           </div>
+
+          {mailingContacts.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>Penerima ({customerName})</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {mailingContacts.map(c => (
+                  <Badge key={c.id} variant="outline" className="text-xs font-normal gap-1">
+                    {c.name && <span className="font-medium">{c.name}</span>}
+                    <span className="font-mono">{c.email}</span>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
 
           {loading && <p className="text-xs text-muted-foreground">Memuat...</p>}
 
@@ -329,8 +364,8 @@ export default function TicketingPage() {
   }, [buildQuery])
 
   useEffect(() => {
-    apiFetch<{ customers: Array<{ id: string; display_name: string }> }>('/api/customers')
-      .then(data => setCustomers((data.customers || []).map(c => ({ id: c.id, display_name: c.display_name }))))
+    apiFetch<{ customers: Array<{ id: string; name: string; display_name: string }> }>('/api/customers')
+      .then(data => setCustomers((data.customers || []).map(c => ({ id: c.id, name: c.name, display_name: c.display_name }))))
       .catch(() => setCustomers([]))
   }, [])
 
@@ -371,12 +406,26 @@ export default function TicketingPage() {
   const openEditDialog = (t: Ticket) => {
     setEditing(t)
     setForm({
+      ticket_no: t.ticket_no ?? '',
       customer_id: t.customer_id ?? '',
       task: t.task,
       pic: t.pic,
       status: t.status,
       description_solution: t.description_solution ?? '',
+      token_account_id: t.extra_data?.account_id ?? '',
+      token_for_customer_id: t.extra_data?.for_customer_id ?? '',
     })
+  }
+
+  const isTokenCustomer = (customerId: string) =>
+    customers.find(c => c.id === customerId)?.name === 'token'
+
+  const buildExtraData = () => {
+    if (!isTokenCustomer(form.customer_id)) return null
+    const ed: Record<string, string> = {}
+    if (form.token_account_id.trim()) ed.account_id = form.token_account_id.trim()
+    if (form.token_for_customer_id) ed.for_customer_id = form.token_for_customer_id
+    return Object.keys(ed).length ? ed : null
   }
 
   const createTicket = async () => {
@@ -387,11 +436,13 @@ export default function TicketingPage() {
       await apiFetch('/api/tickets', {
         method: 'POST',
         body: JSON.stringify({
+          ticket_no: form.ticket_no.trim() || null,
           customer_id: form.customer_id,
           task: form.task.trim(),
           pic: form.pic.trim(),
           status: form.status,
           description_solution: form.description_solution.trim() || null,
+          extra_data: buildExtraData(),
         }),
       })
       setOpenCreate(false)
@@ -412,11 +463,13 @@ export default function TicketingPage() {
       await apiFetch(`/api/tickets/${editing.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
+          ticket_no: form.ticket_no.trim() || null,
           customer_id: form.customer_id,
           task: form.task.trim(),
           pic: form.pic.trim(),
           status: form.status,
           description_solution: form.description_solution.trim() || null,
+          extra_data: buildExtraData(),
         }),
       })
       setEditing(null)
@@ -494,6 +547,7 @@ export default function TicketingPage() {
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/30">
+              <TableHead className="w-24">No. Ticket</TableHead>
               <TableHead>Customer</TableHead>
               <TableHead>Task</TableHead>
               <TableHead>PIC</TableHead>
@@ -507,15 +561,18 @@ export default function TicketingPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : tickets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">Belum ada ticket</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Belum ada ticket</TableCell>
               </TableRow>
             ) : (
               tickets.map(ticket => (
                 <TableRow key={ticket.id}>
+                  <TableCell className="text-xs font-mono text-muted-foreground whitespace-nowrap">
+                    {ticket.ticket_no || <span className="italic text-muted-foreground/50">—</span>}
+                  </TableCell>
                   <TableCell className="text-sm whitespace-nowrap">
                     {customers.find(c => c.id === ticket.customer_id)?.display_name ?? '-'}
                   </TableCell>
@@ -594,17 +651,56 @@ function TicketForm({
   setForm: React.Dispatch<React.SetStateAction<typeof defaultForm>>
   customers: CustomerOption[]
 }) {
+  const isToken = customers.find(c => c.id === form.customer_id)?.name === 'token'
+
   return (
     <div className="space-y-4 py-2">
       <div className="space-y-1.5">
+        <Label htmlFor="ticket_no">No. Ticket (Zoho)</Label>
+        <Input
+          id="ticket_no"
+          value={form.ticket_no}
+          placeholder="Ambil dari Zoho (opsional)"
+          onChange={e => setForm(p => ({ ...p, ticket_no: e.target.value }))}
+        />
+      </div>
+      <div className="space-y-1.5">
         <Label>Customer</Label>
-        <Select value={form.customer_id} onValueChange={v => setForm(p => ({ ...p, customer_id: v }))}>
+        <Select value={form.customer_id} onValueChange={v => setForm(p => ({ ...p, customer_id: v, token_account_id: '', token_for_customer_id: '' }))}>
           <SelectTrigger><SelectValue placeholder="Pilih customer" /></SelectTrigger>
           <SelectContent>
             {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.display_name}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
+
+      {isToken && (
+        <div className="rounded-md border border-dashed p-3 space-y-3 bg-muted/20">
+          <p className="text-xs font-medium text-muted-foreground">Info Token</p>
+          <div className="space-y-1.5">
+            <Label htmlFor="token_account_id">Account ID (AWS)</Label>
+            <Input
+              id="token_account_id"
+              value={form.token_account_id}
+              placeholder="123456789012"
+              onChange={e => setForm(p => ({ ...p, token_account_id: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Untuk Customer</Label>
+            <Select value={form.token_for_customer_id || '_none'} onValueChange={v => setForm(p => ({ ...p, token_for_customer_id: v === '_none' ? '' : v }))}>
+              <SelectTrigger><SelectValue placeholder="Pilih customer" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none">— Tidak dipilih —</SelectItem>
+                {customers.filter(c => c.name !== 'token').map(c => (
+                  <SelectItem key={c.id} value={c.id}>{c.display_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-1.5">
         <Label htmlFor="task">Task</Label>
         <Input id="task" value={form.task} onChange={e => setForm(p => ({ ...p, task: e.target.value }))} />

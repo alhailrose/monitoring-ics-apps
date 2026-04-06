@@ -187,9 +187,11 @@ class AlarmVerificationChecker(BaseChecker):
 
             for alarm_name in self.alarm_names:
                 described = cw.describe_alarms(AlarmNames=[alarm_name])
-                metric_alarms = described.get("MetricAlarms", [])
+                alarms = (described.get("MetricAlarms") or []) + (
+                    described.get("CompositeAlarms") or []
+                )
 
-                if not metric_alarms:
+                if not alarms:
                     alarms_result.append(
                         {
                             "alarm_name": alarm_name,
@@ -204,11 +206,19 @@ class AlarmVerificationChecker(BaseChecker):
                     )
                     continue
 
-                alarm = metric_alarms[0]
+                alarm = next(
+                    (
+                        item
+                        for item in alarms
+                        if item.get("AlarmName", "") == alarm_name
+                    ),
+                    alarms[0],
+                )
+                alarm_label = alarm.get("AlarmName", alarm_name)
                 alarm_state = alarm.get("StateValue", "INSUFFICIENT_DATA")
                 threshold_text = self._threshold_text(alarm)
                 history = cw.describe_alarm_history(
-                    AlarmName=alarm_name,
+                    AlarmName=alarm_label,
                     HistoryItemType="StateUpdate",
                     StartDate=history_start,
                     EndDate=now_utc,
@@ -217,7 +227,7 @@ class AlarmVerificationChecker(BaseChecker):
 
                 alarms_result.append(
                     self._build_alarm_result(
-                        alarm_name=alarm_name,
+                        alarm_name=alarm_label,
                         alarm_state=alarm_state,
                         threshold_text=threshold_text,
                         reason=alarm.get("StateReason", ""),

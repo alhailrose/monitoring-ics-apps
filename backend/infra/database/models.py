@@ -82,6 +82,20 @@ class Invite(Base):
     )
 
 
+class MailingContact(Base):
+    __tablename__ = "mailing_contacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    customer_id: Mapped[str | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    email: Mapped[str] = mapped_column(String(256), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )
+
+
 class Ticket(Base):
     __tablename__ = "tickets"
     __table_args__ = (
@@ -92,8 +106,8 @@ class Ticket(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    ticket_no: Mapped[str] = mapped_column(
-        String(32), unique=True, nullable=False, index=True
+    ticket_no: Mapped[str | None] = mapped_column(
+        String(32), unique=True, nullable=True, index=True
     )
     customer_id: Mapped[str | None] = mapped_column(
         ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
@@ -102,6 +116,7 @@ class Ticket(Base):
     pic: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
     description_solution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utc_now, nullable=False
     )

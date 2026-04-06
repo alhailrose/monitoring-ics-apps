@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 from sqlalchemy import desc, extract, select
 from sqlalchemy.orm import Session
 
@@ -33,33 +31,26 @@ class TicketRepository:
         stmt = select(Ticket).where(Ticket.id == ticket_id)
         return self.session.execute(stmt).scalar_one_or_none()
 
-    def next_ticket_number(self) -> str:
-        stmt = select(Ticket.ticket_no).order_by(desc(Ticket.created_at)).limit(1)
-        latest = self.session.execute(stmt).scalar_one_or_none()
-        if not latest:
-            return "TKT-0001"
-        match = re.search(r"(\d+)$", latest)
-        next_no = 1 if not match else int(match.group(1)) + 1
-        return f"TKT-{next_no:04d}"
-
     def create_ticket(
         self,
         *,
-        ticket_no: str,
+        ticket_no: str | None = None,
         customer_id: str | None,
         task: str,
         pic: str,
         status: str,
         description_solution: str | None,
+        extra_data: dict | None = None,
         ended_at=None,
     ) -> Ticket:
         ticket = Ticket(
-            ticket_no=ticket_no,
+            ticket_no=ticket_no or None,
             customer_id=customer_id,
             task=task,
             pic=pic,
             status=status,
             description_solution=description_solution,
+            extra_data=extra_data,
             ended_at=ended_at,
         )
         self.session.add(ticket)
