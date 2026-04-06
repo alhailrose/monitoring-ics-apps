@@ -113,10 +113,16 @@ def test_get_session_registers_custom_credential_provider_for_sso_cache(
     monkeypatch.setattr(clients.boto3, "Session", _Session)
 
     resolver = object()
+    captured_profile = {}
+
+    def _fake_build_resolver(session, *, sso_cache_dir=None, region_name=None):
+        captured_profile["profile"] = session.get_config_variable("profile")
+        return resolver
+
     monkeypatch.setattr(
         clients,
         "_build_credential_resolver_with_sso_cache",
-        lambda session, *, sso_cache_dir=None, region_name=None: resolver,
+        _fake_build_resolver,
     )
 
     cfg = tmp_path / "users" / "alice" / "config"
@@ -132,6 +138,47 @@ def test_get_session_registers_custom_credential_provider_for_sso_cache(
 
     bsession = captured["botocore_session"]
     assert bsession.registered == ("credential_provider", resolver)
+    assert captured_profile["profile"] == "demo"
+
+
+def test_get_session_does_not_register_custom_resolver_without_profile(
+    monkeypatch, tmp_path
+):
+    captured = {}
+
+    class _BotocoreSession:
+        def __init__(self):
+            self._config = {}
+            self.registered = None
+
+        def set_config_variable(self, name, value):
+            self._config[name] = value
+
+        def get_config_variable(self, name):
+            return self._config.get(name)
+
+        def register_component(self, name, value):
+            self.registered = (name, value)
+
+    class _Session:
+        def __init__(self, *, botocore_session=None, **kwargs):
+            captured["botocore_session"] = botocore_session
+
+    monkeypatch.setattr(clients.botocore.session, "Session", _BotocoreSession)
+    monkeypatch.setattr(clients.boto3, "Session", _Session)
+
+    cfg = tmp_path / "users" / "alice" / "config"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("[default]\nregion=ap-southeast-3\n", encoding="utf-8")
+
+    clients.get_session(
+        region_name="ap-southeast-3",
+        aws_config_file=str(cfg),
+        sso_cache_dir=str(tmp_path / "users" / "alice" / "sso" / "cache"),
+    )
+
+    bsession = captured["botocore_session"]
+    assert bsession.registered is None
 
 
 def test_custom_credential_resolver_uses_given_sso_cache_dir(tmp_path):

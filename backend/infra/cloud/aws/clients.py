@@ -39,19 +39,28 @@ def user_sso_cache_path(username: str) -> str:
 def _build_botocore_session(
     aws_config_file: str | None = None,
     sso_cache_dir: str | None = None,
+    profile_name: str | None = None,
+    region_name: str | None = None,
 ) -> botocore.session.Session:
     session = botocore.session.Session()
+
+    if profile_name:
+        session.set_config_variable("profile", profile_name)
+    if region_name:
+        session.set_config_variable("region", region_name)
+
     if aws_config_file:
         session.set_config_variable("config_file", aws_config_file)
         user_credentials_file = Path(aws_config_file).with_name("credentials")
         if user_credentials_file.exists():
             session.set_config_variable("credentials_file", str(user_credentials_file))
 
-    if sso_cache_dir:
+    if sso_cache_dir and profile_name:
         os.makedirs(sso_cache_dir, exist_ok=True)
         resolver = _build_credential_resolver_with_sso_cache(
             session,
             sso_cache_dir=sso_cache_dir,
+            region_name=region_name,
         )
         session.register_component("credential_provider", resolver)
 
@@ -152,7 +161,10 @@ def get_session(
     }
     if aws_config_file or sso_cache_dir:
         kwargs["botocore_session"] = _build_botocore_session(
-            aws_config_file, sso_cache_dir
+            aws_config_file,
+            sso_cache_dir,
+            profile_name=profile_name,
+            region_name=region_name,
         )
     return boto3.Session(**kwargs)
 
