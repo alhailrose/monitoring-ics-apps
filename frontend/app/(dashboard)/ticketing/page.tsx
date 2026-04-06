@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/table'
 
 type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
-type EmailTemplateType = 'in_progress' | 'resolved' | 'closed' | 'need_info'
+type EmailTemplateType = 'in_progress' | 'selesai'
 
 interface Ticket {
   id: string
@@ -48,7 +48,7 @@ interface CustomerOption {
   display_name: string
 }
 
-async function appApiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) ?? {}),
@@ -67,12 +67,6 @@ function formatDate(v: string | null): string {
   return new Date(v).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-function statusBadgeClass(s: TicketStatus): string {
-  if (s === 'resolved' || s === 'closed') return 'h-5 px-2 text-[10px] bg-green-500/10 text-green-400 border-green-500/20'
-  if (s === 'in_progress') return 'h-5 px-2 text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/20'
-  return 'h-5 px-2 text-[10px] bg-sky-500/10 text-sky-400 border-sky-500/20'
-}
-
 const STATUS_OPTIONS: TicketStatus[] = ['open', 'in_progress', 'resolved', 'closed']
 const STATUS_LABELS: Record<TicketStatus, string> = {
   open: 'Open',
@@ -80,11 +74,16 @@ const STATUS_LABELS: Record<TicketStatus, string> = {
   resolved: 'Resolved',
   closed: 'Closed',
 }
+
+function statusBadgeClass(s: TicketStatus): string {
+  if (s === 'resolved' || s === 'closed') return 'h-5 px-2 text-[10px] bg-green-500/10 text-green-400 border-green-500/20'
+  if (s === 'in_progress') return 'h-5 px-2 text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/20'
+  return 'h-5 px-2 text-[10px] bg-sky-500/10 text-sky-400 border-sky-500/20'
+}
+
 const TEMPLATE_OPTIONS: { value: EmailTemplateType; label: string }[] = [
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'resolved', label: 'Resolved' },
-  { value: 'closed', label: 'Closing' },
-  { value: 'need_info', label: 'Butuh Info' },
+  { value: 'in_progress', label: 'In Progress (sedang dikerjakan)' },
+  { value: 'selesai', label: 'Selesai (closing)' },
 ]
 
 const MONTHS = [
@@ -108,34 +107,77 @@ const defaultForm = {
 
 function StatusCell({ ticket, onUpdated }: { ticket: Ticket; onUpdated: () => void }) {
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const change = async (newStatus: TicketStatus) => {
     if (newStatus === ticket.status) return
     setSaving(true)
+    setError(null)
     try {
-      await appApiFetch(`/api/tickets/${ticket.id}`, {
+      await apiFetch(`/api/tickets/${ticket.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: newStatus }),
       })
       onUpdated()
-    } catch {
-      // ignore
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal update')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Select value={ticket.status} onValueChange={(v) => change(v as TicketStatus)} disabled={saving}>
-      <SelectTrigger className="h-6 w-28 text-[10px] border-0 bg-transparent px-1 focus:ring-0">
-        <Badge className={statusBadgeClass(ticket.status)}>{STATUS_LABELS[ticket.status]}</Badge>
-      </SelectTrigger>
-      <SelectContent>
-        {STATUS_OPTIONS.map(s => (
-          <SelectItem key={s} value={s} className="text-xs">{STATUS_LABELS[s]}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div>
+      <Select value={ticket.status} onValueChange={v => change(v as TicketStatus)} disabled={saving}>
+        <SelectTrigger className="h-7 w-32 text-[10px] px-2 border-transparent hover:border-border focus:ring-0">
+          <Badge className={statusBadgeClass(ticket.status)}>{STATUS_LABELS[ticket.status]}</Badge>
+        </SelectTrigger>
+        <SelectContent>
+          {STATUS_OPTIONS.map(s => (
+            <SelectItem key={s} value={s} className="text-xs">{STATUS_LABELS[s]}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error && <p className="text-[10px] text-destructive mt-0.5">{error}</p>}
+    </div>
+  )
+}
+
+// ─── Delete button ────────────────────────────────────────────────────────────
+
+function DeleteButton({ ticket, onDeleted }: { ticket: Ticket; onDeleted: () => void }) {
+  const [confirm, setConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const doDelete = async () => {
+    setDeleting(true)
+    try {
+      await apiFetch(`/api/tickets/${ticket.id}`, { method: 'DELETE' })
+      onDeleted()
+    } catch {
+      setDeleting(false)
+      setConfirm(false)
+    }
+  }
+
+  if (!confirm) {
+    return (
+      <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-destructive hover:text-destructive" onClick={() => setConfirm(true)}>
+        Hapus
+      </Button>
+    )
+  }
+
+  return (
+    <div className="flex gap-1 items-center">
+      <span className="text-[10px] text-destructive">Yakin?</span>
+      <Button size="sm" variant="destructive" className="h-6 text-[10px] px-2" onClick={doDelete} disabled={deleting}>
+        {deleting ? '...' : 'Ya'}
+      </Button>
+      <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setConfirm(false)}>
+        Batal
+      </Button>
+    </div>
   )
 }
 
@@ -150,13 +192,13 @@ function EmailTemplateDialog({ ticket, customers, onClose }: {
   const [data, setData] = useState<{ subject: string; body: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState<'subject' | 'body' | null>(null)
-  const prevType = useRef<EmailTemplateType | null>(null)
+  const loadedType = useRef<string | null>(null)
 
   useEffect(() => {
-    if (prevType.current === templateType) return
-    prevType.current = templateType
+    if (loadedType.current === templateType) return
+    loadedType.current = templateType
     setLoading(true)
-    appApiFetch<{ subject: string; body: string }>(
+    apiFetch<{ subject: string; body: string }>(
       `/api/tickets/${ticket.id}?template_type=${templateType}`
     )
       .then(setData)
@@ -177,15 +219,16 @@ function EmailTemplateDialog({ ticket, customers, onClose }: {
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Generate Email</DialogTitle>
-          <p className="text-xs text-muted-foreground mt-1">
-            {customerName} · {ticket.task}
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">{customerName} · {ticket.task}</p>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label>Jenis Template</Label>
-            <Select value={templateType} onValueChange={v => setTemplateType(v as EmailTemplateType)}>
+            <Label>Fase</Label>
+            <Select value={templateType} onValueChange={v => {
+              loadedType.current = null
+              setTemplateType(v as EmailTemplateType)
+            }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {TEMPLATE_OPTIONS.map(t => (
@@ -206,9 +249,7 @@ function EmailTemplateDialog({ ticket, customers, onClose }: {
                     {copied === 'subject' ? '✓ Copied' : 'Copy'}
                   </Button>
                 </div>
-                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm font-mono">
-                  {data.subject}
-                </div>
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm font-mono">{data.subject}</div>
               </div>
 
               <div className="space-y-1.5">
@@ -246,40 +287,66 @@ export default function TicketingPage() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(defaultForm)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
+  const [exporting, setExporting] = useState(false)
 
   // Filters
   const [filterCustomer, setFilterCustomer] = useState('')
   const [filterMonth, setFilterMonth] = useState('')
   const [filterYear, setFilterYear] = useState(String(new Date().getFullYear()))
 
-  const buildQuery = () => {
+  const buildQuery = useCallback(() => {
     const p = new URLSearchParams()
     if (filterCustomer) p.set('customer_id', filterCustomer)
     if (filterMonth) p.set('month', filterMonth)
     if (filterYear) p.set('year', filterYear)
     return p.toString() ? `?${p.toString()}` : ''
-  }
+  }, [filterCustomer, filterMonth, filterYear])
 
-  const loadTickets = async () => {
+  const loadTickets = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const rows = await appApiFetch<Ticket[]>(`/api/tickets${buildQuery()}`)
+      const rows = await apiFetch<Ticket[]>(`/api/tickets${buildQuery()}`)
       setTickets(rows)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load tickets')
     } finally {
       setLoading(false)
     }
-  }
+  }, [buildQuery])
 
   useEffect(() => {
-    appApiFetch<{ customers: Array<{ id: string; display_name: string }> }>('/api/customers')
+    apiFetch<{ customers: Array<{ id: string; display_name: string }> }>('/api/customers')
       .then(data => setCustomers((data.customers || []).map(c => ({ id: c.id, display_name: c.display_name }))))
       .catch(() => setCustomers([]))
   }, [])
 
-  useEffect(() => { loadTickets() }, [filterCustomer, filterMonth, filterYear])
+  useEffect(() => { loadTickets() }, [loadTickets])
+
+  const doExport = async () => {
+    setExporting(true)
+    try {
+      const p = new URLSearchParams()
+      if (filterMonth) p.set('month', filterMonth)
+      if (filterYear) p.set('year', filterYear)
+      const qs = p.toString() ? `?${p.toString()}` : ''
+      const res = await fetch(`/api/tickets/export${qs}`)
+      if (!res.ok) throw new Error('Export failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const cd = res.headers.get('Content-Disposition') ?? ''
+      const match = cd.match(/filename="?([^"]+)"?/)
+      a.download = match ? match[1] : 'tickets.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // silent fail
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const openCreateDialog = () => { setForm(defaultForm); setOpenCreate(true) }
   const openEditDialog = (t: Ticket) => {
@@ -298,7 +365,7 @@ export default function TicketingPage() {
     setSaving(true)
     setError(null)
     try {
-      await appApiFetch('/api/tickets', {
+      await apiFetch('/api/tickets', {
         method: 'POST',
         body: JSON.stringify({
           customer_id: form.customer_id,
@@ -323,7 +390,7 @@ export default function TicketingPage() {
     setSaving(true)
     setError(null)
     try {
-      await appApiFetch(`/api/tickets/${editing.id}`, {
+      await apiFetch(`/api/tickets/${editing.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           customer_id: form.customer_id,
@@ -353,7 +420,12 @@ export default function TicketingPage() {
           <h1 className="text-2xl font-semibold">Ticketing</h1>
           <p className="text-sm text-muted-foreground mt-1">Tracking task operasional dan solusi insiden.</p>
         </div>
-        <Button size="sm" onClick={openCreateDialog}>Tambah Ticket</Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={doExport} disabled={exporting}>
+            {exporting ? 'Exporting...' : 'Export Excel'}
+          </Button>
+          <Button size="sm" onClick={openCreateDialog}>Tambah Ticket</Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -393,6 +465,7 @@ export default function TicketingPage() {
             Reset Filter
           </Button>
         )}
+        <p className="text-xs text-muted-foreground self-end pb-1">{tickets.length} ticket</p>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -408,7 +481,7 @@ export default function TicketingPage() {
               <TableHead>Selesai</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Deskripsi/Solusi</TableHead>
-              <TableHead className="w-20" />
+              <TableHead className="w-32" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -423,29 +496,30 @@ export default function TicketingPage() {
             ) : (
               tickets.map(ticket => (
                 <TableRow key={ticket.id}>
-                  <TableCell className="text-sm">
+                  <TableCell className="text-sm whitespace-nowrap">
                     {customers.find(c => c.id === ticket.customer_id)?.display_name ?? '-'}
                   </TableCell>
-                  <TableCell className="font-medium max-w-[240px] truncate" title={ticket.task}>
+                  <TableCell className="font-medium max-w-[220px] truncate" title={ticket.task}>
                     {ticket.task}
                   </TableCell>
-                  <TableCell className="text-sm">{ticket.pic}</TableCell>
+                  <TableCell className="text-sm whitespace-nowrap">{ticket.pic}</TableCell>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(ticket.created_at)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(ticket.ended_at)}</TableCell>
                   <TableCell>
                     <StatusCell ticket={ticket} onUpdated={loadTickets} />
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate" title={ticket.description_solution ?? ''}>
+                  <TableCell className="text-sm text-muted-foreground max-w-[180px] truncate" title={ticket.description_solution ?? ''}>
                     {ticket.description_solution || '-'}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
+                    <div className="flex flex-wrap gap-1">
                       <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={() => setEmailTicket(ticket)}>
                         Email
                       </Button>
                       <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={() => openEditDialog(ticket)}>
                         Edit
                       </Button>
+                      <DeleteButton ticket={ticket} onDeleted={loadTickets} />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -485,11 +559,7 @@ export default function TicketingPage() {
 
       {/* Email template dialog */}
       {emailTicket && (
-        <EmailTemplateDialog
-          ticket={emailTicket}
-          customers={customers}
-          onClose={() => setEmailTicket(null)}
-        />
+        <EmailTemplateDialog ticket={emailTicket} customers={customers} onClose={() => setEmailTicket(null)} />
       )}
     </div>
   )

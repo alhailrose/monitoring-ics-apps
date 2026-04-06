@@ -64,3 +64,28 @@ export async function PATCH(
     return NextResponse.json({ detail: 'Failed to update ticket' }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const token = await authToken()
+  if (!token) return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
+
+  const { id } = await params
+
+  try {
+    const res = await fetch(`${apiBase()}/tickets/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.status === 204) return new Response(null, { status: 204 })
+    const body = await res.text()
+    return new Response(body, {
+      status: res.status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  } catch {
+    return NextResponse.json({ detail: 'Failed to delete ticket' }, { status: 500 })
+  }
+}

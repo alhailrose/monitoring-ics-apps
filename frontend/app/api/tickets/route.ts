@@ -10,12 +10,15 @@ async function authToken() {
   return cookieStore.get('access_token')?.value
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const token = await authToken()
   if (!token) return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
 
+  const { searchParams } = new URL(req.url)
+  const qs = searchParams.toString()
+
   try {
-    const res = await fetch(`${apiBase()}/tickets`, {
+    const res = await fetch(`${apiBase()}/tickets${qs ? `?${qs}` : ''}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
     })

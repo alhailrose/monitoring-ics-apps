@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import io
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, field_validator
 
 from backend.infra.database.repositories.ticket_repository import TicketRepository
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 _FINAL_STATUSES = {"resolved", "closed"}
 
+# 2 email template phases
 _EMAIL_TEMPLATES = {
     "in_progress": {
         "subject": "{task}",
@@ -31,44 +33,17 @@ _EMAIL_TEMPLATES = {
             "Salam,\n{pic}"
         ),
     },
-    "resolved": {
+    "selesai": {
         "subject": "Re: {task}",
         "body": (
             "Dengan hormat,\n\n"
             "Kami informasikan bahwa task berikut telah diselesaikan:\n"
             "  \"{task}\"\n\n"
             "PIC: {pic}\n"
-            "Status: Resolved\n"
+            "Status: Selesai\n"
             "{solution_line}"
             "\nMohon konfirmasi apabila ada yang perlu ditindaklanjuti.\n\n"
-            "Terima kasih.\n\n"
-            "Salam,\n{pic}"
-        ),
-    },
-    "closed": {
-        "subject": "Re: {task}",
-        "body": (
-            "Dengan hormat,\n\n"
-            "Kami informasikan bahwa task berikut telah selesai dan ditutup:\n"
-            "  \"{task}\"\n\n"
-            "PIC: {pic}\n"
-            "Status: Closed\n"
-            "{solution_line}"
-            "\nTerima kasih atas kepercayaan Anda.\n\n"
-            "Salam,\n{pic}"
-        ),
-    },
-    "need_info": {
-        "subject": "Re: {task}",
-        "body": (
-            "Dengan hormat,\n\n"
-            "Sehubungan dengan task:\n"
-            "  \"{task}\"\n\n"
-            "Kami membutuhkan informasi tambahan untuk dapat melanjutkan proses.\n"
-            "Mohon dapat memberikan klarifikasi mengenai hal berikut:\n\n"
-            "[Tuliskan informasi yang dibutuhkan]\n\n"
-            "PIC: {pic}\n\n"
-            "Terima kasih.\n\n"
+            "Terima kasih atas kepercayaan Anda.\n\n"
             "Salam,\n{pic}"
         ),
     },
@@ -167,6 +142,110 @@ def _get_customer_repo():
         session.close()
 
 
+@router.get("/export")
+def export_tickets(
+    month: int | None = Query(default=None, ge=1, le=12),
+    year: int | None = Query(default=None),
+    repo: Annotated[TicketRepository, Depends(_get_repo)] = None,
+    customer_repo: Annotated[CustomerRepository, Depends(_get_customer_repo)] = None,
+):
+    """Export tickets as Excel — one sheet per customer."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    tickets = repo.list_tickets(month=month, year=year)
+
+    # Build customer lookup
+    customers = {c.id: c.display_name for c in customer_repo.list_customers()}
+
+    # Group tickets by customer
+    from collections import defaultdict
+    by_customer: dict[str, list] = defaultdict(list)
+    for t in tickets:
+        key = t.customer_id or "__none__"
+        by_customer[key].append(t)
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)  # remove default sheet
+
+    HEADERS = ["Task", "PIC", "Status", "Dibuat", "Selesai", "Deskripsi / Solusi"]
+    HEADER_FILL = PatternFill("solid", fgColor="1E40AF")
+    HEADER_FONT = Font(bold=True, color="FFFFFF")
+    STATUS_COLORS = {
+        "open": "BFDBFE",
+        "in_progress": "FDE68A",
+        "resolved": "BBF7D0",
+        "closed": "BBF7D0",
+    }
+
+    def fmt_dt(val) -> str:
+        if val is None:
+            return "-"
+        if isinstance(val, str):
+            try:
+                val = datetime.fromisoformat(val)
+            except Exception:
+                return val
+        return val.strftime("%d %b %Y")
+
+    for customer_id, tkts in by_customer.items():
+        sheet_name = customers.get(customer_id, "Tanpa Customer")
+        # Excel sheet name max 31 chars, no special chars
+        safe_name = sheet_name[:31].replace("/", "-").replace("\\", "-").replace("*", "").replace("?", "").replace("[", "").replace("]", "").replace(":", "")
+        ws = wb.create_sheet(title=safe_name)
+
+        # Header row
+        for col, h in enumerate(HEADERS, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = HEADER_FONT
+            cell.fill = HEADER_FILL
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.row_dimensions[1].height = 20
+
+        for row_idx, t in enumerate(tkts, 2):
+            status_color = STATUS_COLORS.get(t.status, "FFFFFF")
+            row_data = [
+                t.task,
+                t.pic,
+                t.status.replace("_", " ").title(),
+                fmt_dt(t.created_at),
+                fmt_dt(t.ended_at),
+                t.description_solution or "",
+            ]
+            for col_idx, val in enumerate(row_data, 1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+                if col_idx == 3:  # status column
+                    cell.fill = PatternFill("solid", fgColor=status_color)
+
+        # Column widths
+        col_widths = [48, 16, 14, 14, 14, 52]
+        for i, w in enumerate(col_widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+        ws.freeze_panes = "A2"
+
+    if not wb.sheetnames:
+        ws = wb.create_sheet("Tickets")
+        ws.append(["Tidak ada data"])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    month_label = f"_{month:02d}" if month else ""
+    year_label = f"_{year}" if year else ""
+    filename = f"tickets{year_label}{month_label}.xlsx"
+
+    return Response(
+        content=buf.read(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("", response_model=list[TicketResponse])
 def list_tickets(
     customer_id: str | None = Query(default=None),
@@ -234,6 +313,18 @@ def update_ticket(
     return _to_response(row)
 
 
+@router.delete("/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_ticket(
+    ticket_id: str,
+    repo: Annotated[TicketRepository, Depends(_get_repo)],
+):
+    ticket = repo.get_ticket(ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    repo.session.delete(ticket)
+    repo.session.commit()
+
+
 @router.get("/{ticket_id}/email-template")
 def get_email_template(
     ticket_id: str,
@@ -241,7 +332,7 @@ def get_email_template(
     repo: Annotated[TicketRepository, Depends(_get_repo)] = None,
     customer_repo: Annotated[CustomerRepository, Depends(_get_customer_repo)] = None,
 ):
-    """Generate an email template for a ticket."""
+    """Generate email template for a ticket. template_type: in_progress | selesai"""
     ticket = repo.get_ticket(ticket_id)
     if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
