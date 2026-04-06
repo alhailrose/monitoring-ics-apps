@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, extract, select
 from sqlalchemy.orm import Session
 
 from backend.infra.database.models import Ticket
@@ -14,8 +14,19 @@ class TicketRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def list_tickets(self) -> list[Ticket]:
+    def list_tickets(
+        self,
+        customer_id: str | None = None,
+        month: int | None = None,
+        year: int | None = None,
+    ) -> list[Ticket]:
         stmt = select(Ticket).order_by(desc(Ticket.created_at))
+        if customer_id:
+            stmt = stmt.where(Ticket.customer_id == customer_id)
+        if month:
+            stmt = stmt.where(extract("month", Ticket.created_at) == month)
+        if year:
+            stmt = stmt.where(extract("year", Ticket.created_at) == year)
         return list(self.session.execute(stmt).scalars().all())
 
     def get_ticket(self, ticket_id: str) -> Ticket | None:
@@ -27,7 +38,6 @@ class TicketRepository:
         latest = self.session.execute(stmt).scalar_one_or_none()
         if not latest:
             return "TKT-0001"
-
         match = re.search(r"(\d+)$", latest)
         next_no = 1 if not match else int(match.group(1)) + 1
         return f"TKT-{next_no:04d}"

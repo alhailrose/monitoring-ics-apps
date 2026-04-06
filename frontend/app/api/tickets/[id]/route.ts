@@ -10,6 +10,32 @@ async function authToken() {
   return cookieStore.get('access_token')?.value
 }
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const token = await authToken()
+  if (!token) return NextResponse.json({ detail: 'Unauthorized' }, { status: 401 })
+
+  const { id } = await params
+  const { searchParams } = new URL(req.url)
+  const templateType = searchParams.get('template_type') ?? 'in_progress'
+
+  try {
+    const res = await fetch(
+      `${apiBase()}/tickets/${encodeURIComponent(id)}/email-template?template_type=${encodeURIComponent(templateType)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    const body = await res.text()
+    return new Response(body, {
+      status: res.status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  } catch {
+    return NextResponse.json({ detail: 'Failed to get email template' }, { status: 500 })
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

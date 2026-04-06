@@ -193,11 +193,12 @@ class AlarmVerificationChecker(BaseChecker):
                     alarms_result.append(
                         {
                             "alarm_name": alarm_name,
-                            "status": "not-found",
-                            "alarm_state": "UNKNOWN",
+                            "status": "error",
+                            "alarm_state": "NOT_FOUND",
+                            "error": f"Alarm '{alarm_name}' tidak ditemukan di CloudWatch",
                             "ongoing_minutes": 0,
                             "should_report": False,
-                            "recommended_action": "MONITOR",
+                            "recommended_action": "CHECK_CONFIG",
                             "message": "",
                         }
                     )
@@ -260,11 +261,13 @@ class AlarmVerificationChecker(BaseChecker):
             return text if len(text) <= width else text[: width - 3] + "..."
 
         def _row_status(item: Dict) -> tuple[int, str]:
-            if item.get("status") == "not-found":
-                return 3, "⚪ Tidak Ditemukan"
+            if item.get("status") == "error" or item.get("alarm_state") == "NOT_FOUND":
+                return 3, "🔴 Error / Tidak Ditemukan"
             action = item.get("recommended_action")
             if action == "REPORT_NOW":
                 return 0, "🔴 Report Now"
+            if action == "CHECK_CONFIG":
+                return 3, "🔴 Tidak Ditemukan"
             if action == "MONITOR":
                 return 1, "🟡 Monitor"
             return 2, "🟢 OK"
@@ -276,16 +279,17 @@ class AlarmVerificationChecker(BaseChecker):
             alarm_name = item.get("alarm_name", "N/A")
             threshold = item.get("threshold_text", "N/A")
 
-            if item.get("status") == "not-found":
+            if item.get("status") == "error" or item.get("alarm_state") == "NOT_FOUND":
+                err_msg = item.get("error", "Tidak ditemukan di CloudWatch")
                 table_rows.append(
                     {
                         "priority": priority,
                         "status": label,
                         "account": account,
                         "alarm_name": alarm_name,
-                        "state": "UNKNOWN",
+                        "state": "NOT_FOUND",
                         "threshold": "N/A",
-                        "time_range": "unknown",
+                        "time_range": err_msg,
                         "duration": "-",
                     }
                 )

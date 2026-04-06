@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useAlarms, type Alarm } from '@/components/providers/AlarmContext'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -18,7 +19,6 @@ function formatElapsed(seconds: number): string {
 }
 
 function ElapsedBar({ seconds, escalated }: { seconds: number; escalated: boolean }) {
-  // cap at 60 min for bar width
   const pct = Math.min((seconds / 3600) * 100, 100)
   const color = escalated
     ? 'bg-red-500'
@@ -52,7 +52,7 @@ function StatusBadge({ alarm }: { alarm: Alarm }) {
   )
 }
 
-// ─── Resolve dialog (inline, no modal lib needed) ────────────────────────────
+// ─── Resolve dialog ──────────────────────────────────────────────────────────
 
 function ResolveForm({
   alarm,
@@ -120,17 +120,23 @@ function ResolveForm({
   )
 }
 
+// ─── Single verify button ─────────────────────────────────────────────────────
+
+type VerifyResult = {
+  mapped_accounts: number
+  counts: Record<string, number>
+  alarm_states?: Record<string, string>
+  auto_resolved?: string[]
+  check_run_id?: string | null
+}
+
 type VerifyState = {
   loading: boolean
   error?: string
-  result?: {
-    mapped_accounts: number
-    counts: Record<string, number>
-    check_run_id?: string | null
-  }
+  result?: VerifyResult
 }
 
-function VerifyNowButton({ alarmName }: { alarmName: string }) {
+function VerifyNowButton({ alarmName, onAutoResolved }: { alarmName: string; onAutoResolved?: () => void }) {
   const [state, setState] = useState<VerifyState>({ loading: false })
 
   const verifyNow = async () => {
@@ -144,20 +150,25 @@ function VerifyNowButton({ alarmName }: { alarmName: string }) {
         setState({ loading: false, error: body?.detail ?? 'Gagal cek alarm' })
         return
       }
-      setState({
-        loading: false,
-        result: {
-          mapped_accounts: Number(body?.mapped_accounts ?? 0),
-          counts: (body?.counts ?? {}) as Record<string, number>,
-          check_run_id: (body?.check_run_id as string | null | undefined) ?? null,
-        },
-      })
+      const result: VerifyResult = {
+        mapped_accounts: Number(body?.mapped_accounts ?? 0),
+        counts: (body?.counts ?? {}) as Record<string, number>,
+        alarm_states: body?.alarm_states ?? {},
+        auto_resolved: body?.auto_resolved ?? [],
+        check_run_id: body?.check_run_id ?? null,
+      }
+      setState({ loading: false, result })
+      if (result.auto_resolved && result.auto_resolved.length > 0) {
+        onAutoResolved?.()
+      }
     } catch {
       setState({ loading: false, error: 'Terjadi kesalahan jaringan' })
     }
   }
 
   const counts = state.result?.counts ?? {}
+  const alarmState = state.result?.alarm_states?.[alarmName]
+  const autoResolved = state.result?.auto_resolved ?? []
   const summaryParts = [
     counts.ALARM ? `${counts.ALARM} ALARM` : null,
     counts.OK ? `${counts.OK} OK` : null,
@@ -172,13 +183,126 @@ function VerifyNowButton({ alarmName }: { alarmName: string }) {
       </Button>
       {state.error && <p className="text-[11px] text-destructive text-right max-w-72">{state.error}</p>}
       {state.result && (
-        <div className="text-[11px] text-muted-foreground text-right max-w-72">
-          <p>
-            {summaryParts.length > 0 ? summaryParts.join(' · ') : 'Tidak ada hasil'}
+        <div className="text-[11px] text-right max-w-72 space-y-0.5">
+          <p className={`${alarmState === 'OK' ? 'text-green-500' : alarmState === 'ALARM' ? 'text-red-500' : 'text-muted-foreground'}`}>
+            {alarmState ? `CloudWatch: ${alarmState}` : (summaryParts.length > 0 ? summaryParts.join(' · ') : 'Tidak ada hasil')}
             {state.result.mapped_accounts > 0 ? ` · ${state.result.mapped_accounts} akun` : ''}
           </p>
+          {autoResolved.length > 0 && (
+            <p className="text-green-500 font-medium">✓ Auto-resolved</p>
+          )}
           {state.result.check_run_id && (
             <Link href={`/history/${state.result.check_run_id}`} className="text-sky-400 hover:text-sky-300 underline">
+              Lihat detail run
+            </Link>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Batch verify bar ────────────────────────────────────────────────────────
+
+type BatchVerifyState = {
+  loading: boolean
+  error?: string
+  result?: {
+    verified: string[]
+    mapped_accounts: number
+    alarm_states: Record<string, string>
+    auto_resolved: string[]
+    check_run_id?: string | null
+  }
+}
+
+function BatchVerifyBar({
+  selected,
+  onDone,
+}: {
+  selected: string[]
+  onDone: () => void
+}) {
+  const [state, setState] = useState<BatchVerifyState>({ loading: false })
+
+  const runBatch = async () => {
+    setState({ loading: true, error: undefined, result: undefined })
+    try {
+      const res = await fetch('/api/alarms/verify-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alarm_names: selected }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        setState({ loading: false, error: body?.detail ?? 'Gagal verifikasi batch' })
+        return
+      }
+      setState({
+        loading: false,
+        result: {
+          verified: body?.verified ?? [],
+          mapped_accounts: Number(body?.mapped_accounts ?? 0),
+          alarm_states: body?.alarm_states ?? {},
+          auto_resolved: body?.auto_resolved ?? [],
+          check_run_id: body?.check_run_id ?? null,
+        },
+      })
+      if ((body?.auto_resolved ?? []).length > 0) onDone()
+    } catch {
+      setState({ loading: false, error: 'Terjadi kesalahan jaringan' })
+    }
+  }
+
+  const states = state.result?.alarm_states ?? {}
+  const autoResolved = state.result?.auto_resolved ?? []
+  const alarmCount = selected.length
+
+  if (alarmCount === 0) return null
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-4 py-3">
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{alarmCount}</span> alarm dipilih
+        </p>
+        <Button size="sm" onClick={runBatch} disabled={state.loading} className="h-7 text-xs">
+          {state.loading ? 'Mengecek...' : `Cek Semua (${alarmCount})`}
+        </Button>
+      </div>
+
+      {state.error && <p className="text-xs text-destructive">{state.error}</p>}
+
+      {state.result && (
+        <div className="space-y-1">
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(states).map(([name, st]) => (
+              <span
+                key={name}
+                className={`text-[11px] rounded px-2 py-0.5 font-mono ${
+                  st === 'OK'
+                    ? 'bg-green-500/15 text-green-500'
+                    : st === 'ALARM'
+                    ? 'bg-red-500/15 text-red-500'
+                    : st === 'NOT_FOUND'
+                    ? 'bg-red-500/15 text-red-400'
+                    : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {name}: {st}
+              </span>
+            ))}
+          </div>
+          {autoResolved.length > 0 && (
+            <p className="text-[11px] text-green-500 font-medium">
+              ✓ Auto-resolved: {autoResolved.join(', ')}
+            </p>
+          )}
+          {state.result.check_run_id && (
+            <Link
+              href={`/history/${state.result.check_run_id}`}
+              className="text-[11px] text-sky-400 hover:text-sky-300 underline"
+            >
               Lihat detail run
             </Link>
           )}
@@ -235,6 +359,35 @@ function StatsPanel() {
 
 export default function AlarmsPage() {
   const { alarms, count, loading, refresh } = useAlarms()
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const toggleSelect = (name: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selected.size === alarms.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(alarms.map(a => a.alarm_name)))
+    }
+  }
+
+  // Clear selection when alarm list changes (e.g., after refresh)
+  useEffect(() => {
+    setSelected(prev => {
+      const activeNames = new Set(alarms.map(a => a.alarm_name))
+      const next = new Set([...prev].filter(n => activeNames.has(n)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [alarms])
+
+  const selectedList = [...selected]
 
   return (
     <div className="space-y-6 p-6">
@@ -252,17 +405,40 @@ export default function AlarmsPage() {
 
       <StatsPanel />
 
+      {/* Batch verify bar */}
+      {selectedList.length > 0 && (
+        <BatchVerifyBar
+          selected={selectedList}
+          onDone={() => {
+            setSelected(new Set())
+            setTimeout(refresh, 1500)
+          }}
+        />
+      )}
+
       {/* Alarm list */}
       <div className="rounded-lg border bg-card">
         <div className="px-5 py-3 border-b flex items-center justify-between">
-          <h2 className="font-medium text-sm">
-            Alarm Aktif
-            {count > 0 && (
-              <span className="ml-2 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                {count}
-              </span>
+          <div className="flex items-center gap-3">
+            {alarms.length > 0 && (
+              <Checkbox
+                checked={selected.size === alarms.length && alarms.length > 0}
+                onCheckedChange={toggleSelectAll}
+                aria-label="Pilih semua"
+              />
             )}
-          </h2>
+            <h2 className="font-medium text-sm">
+              Alarm Aktif
+              {count > 0 && (
+                <span className="ml-2 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                  {count}
+                </span>
+              )}
+            </h2>
+          </div>
+          {selected.size > 0 && (
+            <p className="text-xs text-muted-foreground">{selected.size} dipilih</p>
+          )}
         </div>
 
         {loading ? (
@@ -275,22 +451,36 @@ export default function AlarmsPage() {
         ) : (
           <div className="divide-y">
             {alarms.map(alarm => (
-              <div key={alarm.alarm_name} className="px-5 py-4 space-y-2">
+              <div
+                key={alarm.alarm_name}
+                className={`px-5 py-4 space-y-2 transition-colors ${selected.has(alarm.alarm_name) ? 'bg-muted/40' : ''}`}
+              >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-mono font-medium truncate">{alarm.alarm_name}</p>
-                      <StatusBadge alarm={alarm} />
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <Checkbox
+                      checked={selected.has(alarm.alarm_name)}
+                      onCheckedChange={() => toggleSelect(alarm.alarm_name)}
+                      className="mt-0.5 shrink-0"
+                      aria-label={`Pilih ${alarm.alarm_name}`}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-mono font-medium truncate">{alarm.alarm_name}</p>
+                        <StatusBadge alarm={alarm} />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {alarm.source_name} · alarm sejak {alarm.alarm_at} ·{' '}
+                        <span className={alarm.escalated ? 'text-red-500 font-medium' : ''}>
+                          {formatElapsed(alarm.elapsed_seconds)}
+                        </span>
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {alarm.source_name} · alarm sejak {alarm.alarm_at} ·{' '}
-                      <span className={alarm.escalated ? 'text-red-500 font-medium' : ''}>
-                        {formatElapsed(alarm.elapsed_seconds)}
-                      </span>
-                    </p>
                   </div>
                   <div className="flex items-start gap-2">
-                    <VerifyNowButton alarmName={alarm.alarm_name} />
+                    <VerifyNowButton
+                      alarmName={alarm.alarm_name}
+                      onAutoResolved={() => setTimeout(refresh, 1500)}
+                    />
                     <ResolveForm alarm={alarm} onResolved={refresh} />
                   </div>
                 </div>
