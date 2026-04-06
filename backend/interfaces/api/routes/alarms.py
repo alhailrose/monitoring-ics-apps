@@ -134,9 +134,10 @@ def _run_alarm_verification(
         persist_mode="normalized",
     )
 
-    # Extract per-alarm states from raw result details
+    # Extract per-alarm states and formatted outputs
     alarm_states: dict[str, str] = {}
     auto_resolved: list[str] = []
+    outputs: list[dict] = []
 
     for item in result.get("results", []):
         for alarm_detail in (item.get("details") or {}).get("alarms") or []:
@@ -147,6 +148,13 @@ def _run_alarm_verification(
                 existing = alarm_states.get(name)
                 if not existing or existing == "OK":
                     alarm_states[name] = state
+
+        output_text = item.get("output", "")
+        if output_text:
+            outputs.append({
+                "account": item.get("account", {}).get("display_name", ""),
+                "output": output_text,
+            })
 
     # Auto-resolve alarms that are confirmed OK in CloudWatch
     for alarm_name, state in alarm_states.items():
@@ -165,6 +173,7 @@ def _run_alarm_verification(
         "result": result,
         "alarm_states": alarm_states,
         "auto_resolved": auto_resolved,
+        "outputs": outputs,
     }
 
 
@@ -219,6 +228,7 @@ def verify_alarm(alarm_name: str, executor=Depends(get_check_executor)):
         "counts": counts,
         "alarm_states": data["alarm_states"],
         "auto_resolved": data["auto_resolved"],
+        "outputs": data["outputs"],
         "check_run_id": check_run_id,
     }
 
@@ -258,5 +268,6 @@ def verify_alarm_batch(body: BatchVerifyRequest, executor=Depends(get_check_exec
         "counts": counts,
         "alarm_states": data["alarm_states"],
         "auto_resolved": data["auto_resolved"],
+        "outputs": data["outputs"],
         "check_run_id": check_run_id,
     }

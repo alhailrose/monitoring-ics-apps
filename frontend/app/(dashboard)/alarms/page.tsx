@@ -120,6 +120,37 @@ function ResolveForm({
   )
 }
 
+// ─── Output panel ─────────────────────────────────────────────────────────────
+
+function OutputPanel({ outputs }: { outputs: { account: string; output: string }[] }) {
+  const [open, setOpen] = useState(false)
+  if (!outputs || outputs.length === 0) return null
+  return (
+    <div className="mt-1">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="text-[11px] text-sky-400 hover:text-sky-300 underline"
+      >
+        {open ? 'Sembunyikan output' : 'Lihat output'}
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-2">
+          {outputs.map((o, i) => (
+            <div key={i}>
+              {o.account && (
+                <p className="text-[10px] text-muted-foreground mb-0.5">{o.account}</p>
+              )}
+              <pre className="text-[10px] leading-relaxed whitespace-pre-wrap font-mono rounded bg-muted/40 px-3 py-2 max-h-72 overflow-y-auto">
+                {o.output}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Single verify button ─────────────────────────────────────────────────────
 
 type VerifyResult = {
@@ -127,6 +158,7 @@ type VerifyResult = {
   counts: Record<string, number>
   alarm_states?: Record<string, string>
   auto_resolved?: string[]
+  outputs?: { account: string; output: string }[]
   check_run_id?: string | null
 }
 
@@ -155,6 +187,7 @@ function VerifyNowButton({ alarmName, onAutoResolved }: { alarmName: string; onA
         counts: (body?.counts ?? {}) as Record<string, number>,
         alarm_states: body?.alarm_states ?? {},
         auto_resolved: body?.auto_resolved ?? [],
+        outputs: body?.outputs ?? [],
         check_run_id: body?.check_run_id ?? null,
       }
       setState({ loading: false, result })
@@ -191,13 +224,9 @@ function VerifyNowButton({ alarmName, onAutoResolved }: { alarmName: string; onA
           {autoResolved.length > 0 && (
             <p className="text-green-500 font-medium">✓ Auto-resolved</p>
           )}
-          {state.result.check_run_id && (
-            <Link href={`/history/${state.result.check_run_id}`} className="text-sky-400 hover:text-sky-300 underline">
-              Lihat detail run
-            </Link>
-          )}
         </div>
       )}
+      {state.result && <OutputPanel outputs={state.result.outputs ?? []} />}
     </div>
   )
 }
@@ -212,6 +241,7 @@ type BatchVerifyState = {
     mapped_accounts: number
     alarm_states: Record<string, string>
     auto_resolved: string[]
+    outputs: { account: string; output: string }[]
     check_run_id?: string | null
   }
 }
@@ -245,6 +275,7 @@ function BatchVerifyBar({
           mapped_accounts: Number(body?.mapped_accounts ?? 0),
           alarm_states: body?.alarm_states ?? {},
           auto_resolved: body?.auto_resolved ?? [],
+          outputs: body?.outputs ?? [],
           check_run_id: body?.check_run_id ?? null,
         },
       })
@@ -298,16 +329,9 @@ function BatchVerifyBar({
               ✓ Auto-resolved: {autoResolved.join(', ')}
             </p>
           )}
-          {state.result.check_run_id && (
-            <Link
-              href={`/history/${state.result.check_run_id}`}
-              className="text-[11px] text-sky-400 hover:text-sky-300 underline"
-            >
-              Lihat detail run
-            </Link>
-          )}
         </div>
       )}
+      {state.result && <OutputPanel outputs={state.result.outputs} />}
     </div>
   )
 }
