@@ -20,6 +20,7 @@ import signal
 import struct
 import subprocess
 import termios
+import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
@@ -38,6 +39,64 @@ router = APIRouter(tags=["terminal"])
 logger = logging.getLogger(__name__)
 
 _SHELL = os.environ.get("SHELL", "/bin/bash")
+_SSO_SYNC_INTERVAL_SECONDS = max(
+    0,
+    int(os.environ.get("TERMINAL_SSO_SYNC_INTERVAL_SECONDS", "300")),
+)
+_LAST_SSO_SYNC_AT: dict[str, float] = {}
+_SSO_SYNC_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _should_sync_profiles(
+    last_synced_at: float | None,
+    *,
+    now_ts: float,
+    min_interval_sec: int,
+) -> bool:
+    if last_synced_at is None:
+        return True
+    return (now_ts - last_synced_at) >= min_interval_sec
+
+
+async def _sync_profiles_background(
+    username: str,
+    aws_config_file: str,
+    sso_cache_dir: str,
+) -> None:
+    now_ts = time.time()
+    last_synced_at = _LAST_SSO_SYNC_AT.get(username)
+    if not _should_sync_profiles(
+        last_synced_at,
+        now_ts=now_ts,
+        min_interval_sec=_SSO_SYNC_INTERVAL_SECONDS,
+    ):
+        return
+
+    lock = _SSO_SYNC_LOCKS.setdefault(username, asyncio.Lock())
+    if lock.locked():
+        return
+
+    async with lock:
+        now_ts = time.time()
+        last_synced_at = _LAST_SSO_SYNC_AT.get(username)
+        if not _should_sync_profiles(
+            last_synced_at,
+            now_ts=now_ts,
+            min_interval_sec=_SSO_SYNC_INTERVAL_SECONDS,
+        ):
+            return
+
+        try:
+            n = await asyncio.to_thread(
+                sync_sso_profiles,
+                aws_config_file=aws_config_file,
+                sso_cache_dir=sso_cache_dir,
+            )
+            _LAST_SSO_SYNC_AT[username] = time.time()
+            if n:
+                logger.info("terminal: synced %d SSO profiles for user=%s", n, username)
+        except Exception as sync_err:
+            logger.debug("terminal: sync_sso_profiles skipped: %s", sync_err)
 
 
 def _ensure_symlink(link_path: str, target_path: str) -> None:
@@ -159,16 +218,14 @@ async def terminal_ws(websocket: WebSocket, token: str = "") -> None:
             label = "template" if _source == _template else "system config"
             logger.info("terminal: synced aws %s to user=%s", label, username)
 
-    # Per-user SSO cache — tokens are isolated per user
-    # Auto-sync profiles from any valid SSO tokens in user's cache
-    try:
-        n = sync_sso_profiles(
-            aws_config_file=_user_config, sso_cache_dir=_user_sso_cache
+    # Per-user SSO cache — sync in background to avoid blocking terminal startup
+    asyncio.create_task(
+        _sync_profiles_background(
+            username,
+            aws_config_file=_user_config,
+            sso_cache_dir=_user_sso_cache,
         )
-        if n:
-            logger.info("terminal: synced %d SSO profiles for user=%s", n, username)
-    except Exception as _sync_err:
-        logger.debug("terminal: sync_sso_profiles skipped: %s", _sync_err)
+    )
 
     env = os.environ.copy()
     env["HOME"] = _isolated_home

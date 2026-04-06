@@ -22,3 +22,19 @@ def test_prepare_isolated_aws_home_links_cli_cache_to_user_cache(tmp_path):
     assert config_link.resolve() == Path(user_config)
     assert cache_link.is_symlink()
     assert cache_link.resolve() == Path(user_cache)
+
+
+def test_should_sync_profiles_when_never_synced():
+    assert terminal._should_sync_profiles(None, now_ts=100.0, min_interval_sec=300)
+
+
+def test_should_not_sync_profiles_within_interval():
+    assert not terminal._should_sync_profiles(
+        100.0,
+        now_ts=250.0,
+        min_interval_sec=300,
+    )
+
+
+def test_should_sync_profiles_after_interval():
+    assert terminal._should_sync_profiles(100.0, now_ts=401.0, min_interval_sec=300)
