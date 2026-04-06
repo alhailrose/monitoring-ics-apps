@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { useCallback, useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -32,6 +32,7 @@ import {
   PencilEdit01Icon,
   Delete01Icon,
   AlertCircleIcon,
+  RefreshIcon,
 } from '@hugeicons/core-free-icons'
 import type { Customer, Account, SessionsHealth, ProfileHealth } from '@/lib/types/api'
 import { cn } from '@/lib/utils'
@@ -85,6 +86,8 @@ const CHECK_LABELS: Record<string, string> = {
   health: 'Health',
 }
 
+const SESSIONS_HEALTH_CACHE_KEY = 'customers:sessions-health:v1'
+
 // ── props ─────────────────────────────────────────────────────────────────────
 
 interface CustomerListProps {
@@ -110,23 +113,46 @@ export function CustomerList({ customers, role }: CustomerListProps) {
   const [detailsAccountTarget, setDetailsAccountTarget] = useState<Account | null>(null)
   const [isPending, startTransition] = useTransition()
   const [sessionsHealth, setSessionsHealth] = useState<SessionsHealth | null>(null)
-  const [healthLoading, setHealthLoading] = useState(true)
+  const [healthLoading, setHealthLoading] = useState(false)
   const [healthError, setHealthError] = useState(false)
+  const [lastHealthCheckedAt, setLastHealthCheckedAt] = useState<number | null>(null)
+
+  const loadSessionsHealth = useCallback(async () => {
+    setHealthLoading(true)
+    setHealthError(false)
+    try {
+      const r = await fetch('/api/sessions-health')
+      if (!r.ok) throw new Error('health check failed')
+      const data = (await r.json()) as SessionsHealth
+      const checkedAt = Date.now()
+      setSessionsHealth(data)
+      setLastHealthCheckedAt(checkedAt)
+      window.sessionStorage.setItem(
+        SESSIONS_HEALTH_CACHE_KEY,
+        JSON.stringify({ checkedAt, data }),
+      )
+    } catch {
+      setHealthError(true)
+    } finally {
+      setHealthLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    fetch('/api/sessions-health')
-      .then((r) => {
-        if (!r.ok) throw new Error('health check failed')
-        return r.json()
-      })
-      .then((data) => {
-        setSessionsHealth(data)
-        setHealthLoading(false)
-      })
-      .catch(() => {
-        setHealthError(true)
-        setHealthLoading(false)
-      })
+    const raw = window.sessionStorage.getItem(SESSIONS_HEALTH_CACHE_KEY)
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw) as {
+        checkedAt?: number
+        data?: SessionsHealth
+      }
+      if (parsed?.data) {
+        setSessionsHealth(parsed.data)
+        setLastHealthCheckedAt(parsed.checkedAt ?? null)
+      }
+    } catch {
+      window.sessionStorage.removeItem(SESSIONS_HEALTH_CACHE_KEY)
+    }
   }, [])
 
   const healthMap: Record<string, ProfileHealth> = {}
@@ -237,14 +263,29 @@ export function CustomerList({ customers, role }: CustomerListProps) {
               </span>
             </>
           )}
+          {!healthLoading && !healthError && lastHealthCheckedAt && (
+            <>
+              <span className="text-border">|</span>
+              <span className="text-xs text-muted-foreground/70">
+                Last check {new Date(lastHealthCheckedAt).toLocaleTimeString()}
+              </span>
+            </>
+          )}
         </div>
 
-        {role === 'super_user' && (
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4 mr-1.5" />
-            New Customer
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={loadSessionsHealth} disabled={healthLoading}>
+            <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className="size-4 mr-1.5" />
+            {healthLoading ? 'Refreshing...' : 'Refresh Session'}
           </Button>
-        )}
+
+          {role === 'super_user' && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <HugeiconsIcon icon={Add01Icon} strokeWidth={2} className="size-4 mr-1.5" />
+              New Customer
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* ── Customer cards ──────────────────────────────────────────────────── */}
