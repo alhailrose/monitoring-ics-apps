@@ -1,8 +1,21 @@
-# ICS Monitoring Hub
+<div align="center">
 
-> Centralized AWS monitoring platform — multi-customer health, security, cost anomaly, backup, and utilization visibility with a modern web dashboard and WhatsApp-ready reports.
+# ☁️ ICS Monitoring Hub
 
-**🌐 Live:** https://msmonitoring.bagusganteng.app
+**Centralized AWS monitoring — multi-customer health, security, cost, backup, and utilization visibility**<br>
+with a modern web dashboard and WhatsApp-ready reports.
+
+<br>
+
+[![Live](https://img.shields.io/badge/🌐_Live-msmonitoring.bagusganteng.app-22c55e?style=flat-square)](https://msmonitoring.bagusganteng.app)
+&nbsp;
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js)](https://nextjs.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Python_3.11-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://postgresql.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docker.com)
+
+</div>
 
 ---
 
@@ -10,45 +23,61 @@
 
 ICS Monitoring Hub is an internal platform built by the ICS team to monitor AWS infrastructure across multiple customers from a single dashboard. Instead of logging into each AWS account manually, operators run checks from one place and get consolidated reports — sent to Slack or formatted for WhatsApp.
 
-The platform supports three report modes per customer:
-- **Simple** — clean alarm list, ready to copy-paste
-- **Summary** — compact WhatsApp-friendly daily report with utilization metrics
-- **Detailed** — full technical report with all findings and per-account breakdown
+The platform supports **three report modes** per customer:
 
----
-
-## Stack
-
-| | |
+| Mode | Description |
 |---|---|
-| **Frontend** | Next.js 15 (App Router) · TypeScript · Tailwind CSS · shadcn/ui · Hugeicons |
-| **Backend** | FastAPI · SQLAlchemy 2 · Alembic · Python 3.11 · uv |
-| **Database** | PostgreSQL 16 |
-| **Auth** | JWT · Google OAuth |
-| **Infra** | Docker Compose · AWS EC2 (behind bastion) · GitHub Container Registry |
-| **CI/CD** | GitHub Actions — split per target (backend / frontend) |
+| `simple` | Clean alarm list — ready to copy-paste |
+| `summary` | Compact WhatsApp-friendly daily report with utilization metrics |
+| `detailed` | Full technical report with all findings and per-account breakdown |
 
 ---
 
 ## Features
 
-**Monitoring**
-- Multi-customer, multi-account AWS checks running in parallel
-- Checks: GuardDuty · CloudWatch Alarms · Cost Anomaly · Backup · Health Events · Notifications · RDS/EC2 Utilization · Budget · Alarm Verification
-- Per-customer check configuration, Slack webhook, and report mode
-- Findings tracked over time with severity levels and age
+<table>
+<tr>
+<td valign="top" width="50%">
 
-**Reports**
-- WhatsApp-ready daily reports with greeting, utilization metrics, and alert notes
-- Cost anomaly detail: contributing accounts with AWS IDs, services, and impact ($)
-- Monthly workload report — metric fluctuations, stuck issues, cost highlights
+**🔍 Monitoring**
+- Multi-customer, multi-account AWS checks in parallel
+- GuardDuty · CloudWatch · Cost Anomaly · Backup
+- Health Events · Notifications · RDS/EC2 Utilization
+- Budget · Alarm Verification
+- Findings tracked over time with severity and age
+
+</td>
+<td valign="top" width="50%">
+
+**📊 Reports**
+- WhatsApp-ready daily reports with greeting & utilization
+- Cost anomaly: contributing accounts, services, impact ($)
+- Monthly workload report — fluctuations & cost highlights
 - Export as HTML preview or CSV download
 
-**Operations**
-- Ticketing system with Zoho ticket no., PIC, and status tracking
-- Mailing list — manage notification email contacts per customer
-- Session health monitoring — detect expired AWS SSO sessions across all accounts
-- Role-based access: `super_user` (full admin) and regular users
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**⚙️ Operations**
+- Ticketing with Zoho ticket no., PIC, and status tracking
+- Mailing list — email contacts per customer
+- Session health — detect expired AWS SSO sessions
+- Role-based access: `super_user` and regular users
+
+</td>
+<td valign="top">
+
+**🏗️ Tech Stack**
+- **Frontend:** Next.js 15 · TypeScript · Tailwind · shadcn/ui
+- **Backend:** FastAPI · SQLAlchemy 2 · Alembic · uv
+- **Auth:** JWT · Google OAuth
+- **Infra:** Docker Compose · EC2 · GHCR · GitHub Actions
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -154,7 +183,10 @@ npm run dev --prefix frontend
 
 ## Environment Variables
 
-### Backend
+<details>
+<summary><strong>Backend</strong></summary>
+<br>
+
 | Variable | Default | Description |
 |---|---|---|
 | `DATABASE_URL` | `postgresql+psycopg://monitor:monitor@localhost:5432/monitoring` | PostgreSQL connection string |
@@ -166,12 +198,19 @@ npm run dev --prefix frontend
 | `GOOGLE_CLIENT_ID` | — | Google OAuth client ID |
 | `SMTP_USER` / `SMTP_PASSWORD` | — | Gmail App Password for invite emails |
 
-### Frontend (`frontend/.env.local`)
+</details>
+
+<details>
+<summary><strong>Frontend <code>frontend/.env.local</code></strong></summary>
+<br>
+
 | Variable | Description |
 |---|---|
 | `JWT_SECRET` | Must match backend exactly |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials |
 | `GOOGLE_REDIRECT_URI` | OAuth callback URL |
+
+</details>
 
 ---
 
@@ -184,14 +223,17 @@ Push → CI (tests + typecheck) → Build Docker image → Push to GHCR
      → SSH to EC2 → alembic upgrade head → docker compose up → smoke test
 ```
 
-| Workflow | Trigger path | Quality gate |
+| Workflow | Trigger | Quality gate |
 |---|---|---|
 | `ci-backend` | `backend/**` | 41 pytest unit tests + app import |
 | `ci-frontend` | `frontend/**` | TypeScript strict typecheck |
 | `deploy-backend` | CI Backend ✅ on `main` | Build → migrate → restart backend |
 | `deploy-frontend` | CI Frontend ✅ on `main` | Build → restart frontend + nginx |
 
-**Run CI locally:**
+<details>
+<summary><strong>Run CI locally</strong></summary>
+<br>
+
 ```bash
 # Backend — must pass before pushing
 uv run --with pytest --with httpx pytest tests/unit/ -q
@@ -200,6 +242,8 @@ uv run python -c "from backend.interfaces.api.main import create_app; create_app
 # Frontend — must pass before pushing
 npm run --prefix frontend typecheck
 ```
+
+</details>
 
 ---
 
@@ -215,5 +259,5 @@ npm run --prefix frontend typecheck
 ---
 
 <div align="center">
-  <sub>Built with ☕ by the ICS team · Powered by FastAPI, Next.js & PostgreSQL</sub>
+  <sub>Built with ☕ by the ICS team &nbsp;·&nbsp; Powered by FastAPI, Next.js & PostgreSQL</sub>
 </div>
