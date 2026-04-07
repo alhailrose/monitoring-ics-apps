@@ -875,15 +875,59 @@ def _build_summary_report(
         # Cost Anomaly
         if "cost" in checks:
             total_anomalies = 0
+            anomaly_briefs: list[str] = []
             for profile in profiles:
                 res = all_results.get(profile, {}).get("cost", {})
-                total_anomalies += int(res.get("total_anomalies", 0))
+                count = int(res.get("total_anomalies", 0))
+                total_anomalies += count
+                if count > 0:
+                    for anomaly in res.get("anomalies", []):
+                        impact = anomaly.get("Impact", {})
+                        impact_val = float(impact.get("TotalImpact", 0))
+                        impact_pct = impact.get("TotalImpactPercentage")
+                        monitor = anomaly.get("MonitorName", "")
+                        root_causes = anomaly.get("RootCauses", [])
+
+                        from backend.checks.generic.cost_anomalies import _linked_accounts
+                        linked = _linked_accounts(root_causes)
+                        acct_str = ""
+                        if linked:
+                            names = [a["name"] or a["id"] for a in linked[:2]]
+                            acct_str = ", ".join(names)
+                            if len(linked) > 2:
+                                acct_str += f" +{len(linked)-2} lainnya"
+
+                        # Top unique services causing the anomaly
+                        services = list(dict.fromkeys(
+                            rc.get("Service", "") for rc in root_causes if rc.get("Service")
+                        ))
+                        svc_str = ", ".join(services[:3])
+                        if len(services) > 3:
+                            svc_str += f" +{len(services)-3} lainnya"
+
+                        impact_str = f"${impact_val:,.0f}"
+                        if impact_pct:
+                            impact_str += f" (+{impact_pct:.1f}%)"
+
+                        # Account labels with ID
+                        acct_labels = []
+                        for a in linked[:2]:
+                            name = a["name"] or a["id"]
+                            acct_labels.append(f"{name} ({a['id']})" if a["name"] else a["id"])
+                        acct_full = ", ".join(acct_labels)
+                        if len(linked) > 2:
+                            acct_full += f" +{len(linked)-2} lainnya"
+
+                        brief = f"  • {acct_full}" if acct_full else "  • (unknown account)"
+                        if svc_str:
+                            brief += f"\n    Service: {svc_str}"
+                        brief += f"\n    Impact : {impact_str}"
+                        anomaly_briefs.append(brief)
             if total_anomalies == 0:
                 lines.append("- Cost Anomaly: tidak ada cost anomaly")
             else:
-                lines.append(
-                    f"- Cost Anomaly: {total_anomalies} cost anomaly terdeteksi"
-                )
+                lines.append(f"- Cost Anomaly: {total_anomalies} anomaly terdeteksi")
+                lines.extend(anomaly_briefs)
 
         # GuardDuty
         if "guardduty" in checks:
@@ -959,14 +1003,26 @@ def _build_summary_report(
 
         # Backup
         if "backup" in checks:
-            failed = 0
+            total_failed = 0
+            total_completed = 0
+            failed_accounts = []
             for profile in profiles:
                 res = all_results.get(profile, {}).get("backup", {})
-                failed += int(res.get("failed_jobs", 0))
-            if failed == 0:
-                lines.append("- Backup: semua backup berhasil")
+                failed = int(res.get("failed_jobs", 0))
+                completed = int(res.get("completed_jobs", 0))
+                total_failed += failed
+                total_completed += completed
+                if failed > 0:
+                    acct_name = profile_display.get(profile, profile)
+                    acct_id = res.get("account_id") or profile_aws_id.get(profile, "")
+                    label = f"{acct_name} ({acct_id})" if acct_id else acct_name
+                    failed_accounts.append(f"{label}: {failed} gagal")
+            if total_failed == 0:
+                lines.append(f"- Backup: semua backup berhasil ({total_completed} job selesai)")
             else:
-                lines.append(f"- Backup: {failed} job backup gagal")
+                lines.append(f"- Backup: {total_failed} job gagal")
+                for acct in failed_accounts:
+                    lines.append(f"  • {acct}")
 
     # Check errors at the end
     if check_errors:
