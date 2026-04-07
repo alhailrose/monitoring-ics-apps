@@ -198,6 +198,14 @@ export function CustomerList({ customers, role }: CustomerListProps) {
     0,
   )
   const expiredSessions = sessionsHealth?.expired ?? 0
+  const lastCheckLabel = lastHealthCheckedAt
+    ? new Date(lastHealthCheckedAt).toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      })
+    : '--:--:--'
 
   if (customers.length === 0) {
     return (
@@ -238,45 +246,47 @@ export function CustomerList({ customers, role }: CustomerListProps) {
             <span className="font-semibold text-foreground tabular-nums">{activeAccounts}</span>
             <span className="text-muted-foreground/60">/{totalAccounts}</span> accounts active
           </span>
-          {healthLoading && (
-            <>
-              <span className="text-border">|</span>
+          <span className="text-border">|</span>
+          <span className="inline-flex min-w-[190px] items-center text-xs">
+            {healthLoading ? (
               <Skeleton className="h-4 w-28 rounded" />
-            </>
-          )}
-          {!healthLoading && healthError && (
-            <>
-              <span className="text-border">|</span>
-              <span className="flex items-center gap-1 text-amber-400/80 text-xs">
+            ) : healthError ? (
+              <span className="flex items-center gap-1 text-amber-400/80">
                 <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3.5" />
                 Session status unavailable
               </span>
-            </>
-          )}
-          {!healthLoading && !healthError && expiredSessions > 0 && (
-            <>
-              <span className="text-border">|</span>
+            ) : expiredSessions > 0 ? (
               <span className="flex items-center gap-1 text-red-400">
                 <HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} className="size-3.5" />
                 <span className="font-semibold tabular-nums">{expiredSessions}</span> session
                 {expiredSessions !== 1 ? 's' : ''} expired
               </span>
-            </>
-          )}
-          {!healthLoading && !healthError && lastHealthCheckedAt && (
-            <>
-              <span className="text-border">|</span>
-              <span className="text-xs text-muted-foreground/70">
-                Last check {new Date(lastHealthCheckedAt).toLocaleTimeString()}
-              </span>
-            </>
-          )}
+            ) : sessionsHealth ? (
+              <span className="text-emerald-500/80">All sessions active</span>
+            ) : (
+              <span className="text-muted-foreground/60">Session status not checked</span>
+            )}
+          </span>
+          <span className="text-border">|</span>
+          <span className="inline-flex min-w-[128px] text-xs text-muted-foreground/70 tabular-nums">
+            Last check {lastCheckLabel}
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={loadSessionsHealth} disabled={healthLoading}>
-            <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className="size-4 mr-1.5" />
-            {healthLoading ? 'Refreshing...' : 'Refresh Session'}
+          <Button
+            size="sm"
+            variant="outline"
+            className="min-w-[138px] justify-center"
+            onClick={loadSessionsHealth}
+            disabled={healthLoading}
+          >
+            <HugeiconsIcon
+              icon={RefreshIcon}
+              strokeWidth={2}
+              className={cn('size-4 mr-1.5', healthLoading && 'animate-spin')}
+            />
+            Refresh Session
           </Button>
 
           {role === 'super_user' && (
@@ -344,9 +354,11 @@ export function CustomerList({ customers, role }: CustomerListProps) {
                             'h-4 px-1.5 text-[10px]',
                             customer.report_mode === 'detailed'
                               ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                              : customer.report_mode === 'simple'
+                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                               : 'bg-muted text-muted-foreground border-border/50',
                           )}>
-                            {customer.report_mode === 'detailed' ? 'Detailed' : 'Summary'}
+                            {customer.report_mode === 'detailed' ? 'Detailed' : customer.report_mode === 'simple' ? 'Simple' : 'Summary'}
                           </Badge>
                           {customer.slack_enabled && (
                             <Badge className="h-4 px-1.5 text-[10px] bg-green-500/10 text-green-400 border-green-500/20">

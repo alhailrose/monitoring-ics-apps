@@ -21,7 +21,7 @@ class CreateCustomerRequest(BaseModel):
     slack_channel: str | None = None
     slack_enabled: bool = False
     sso_session: str | None = None
-    report_mode: str = Field(default="summary", pattern="^(summary|detailed)$")
+    report_mode: str = Field(default="summary", pattern="^(simple|summary|detailed)$")
     label: str | None = Field(default=None, max_length=256)
 
 
@@ -32,7 +32,7 @@ class UpdateCustomerRequest(BaseModel):
     slack_channel: str | None = None
     slack_enabled: bool | None = None
     sso_session: str | None = None
-    report_mode: str | None = Field(default=None, pattern="^(summary|detailed)$")
+    report_mode: str | None = Field(default=None, pattern="^(simple|summary|detailed)$")
     label: str | None = None
 
 

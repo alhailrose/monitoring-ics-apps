@@ -40,7 +40,7 @@ export interface Account {
   alarm_names?: string[] | null
 }
 
-export type ReportMode = 'summary' | 'detailed'
+export type ReportMode = 'simple' | 'summary' | 'detailed'
 
 export interface Customer {
   id: string

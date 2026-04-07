@@ -1231,6 +1231,18 @@ class CheckExecutor:
                 for chk_name, raw_result in check_results.items():
                     status = _normalize_status(raw_result, chk_name)
                     summary = _build_summary(raw_result, chk_name)
+
+                    # Inject account display name so format_report can use it for
+                    # customer-facing single-check output (e.g. cost anomaly notification)
+                    raw_result.setdefault("_account_display_name", account.display_name)
+                    raw_result.setdefault("_account_aws_id", account.account_id or "")
+                    checker_inst = raw_result.get("_checker_instance")
+                    if checker_inst is not None:
+                        try:
+                            raw_result["_formatted_output"] = checker_inst.format_report(raw_result)
+                        except Exception:
+                            pass
+
                     output = raw_result.get("_formatted_output", "")
 
                     details = _json_safe(

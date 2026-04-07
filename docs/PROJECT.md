@@ -69,10 +69,10 @@ TUI (Textual) / CLI
 
 ### Web Platform
 
-- **Frontend**: React 18 + TypeScript + Vite, tanpa router library (client-side routing manual via `History API`)
+- **Frontend**: Next.js (App Router) + TypeScript + shadcn/ui + Hugeicons, di folder `frontend/`
 - **Backend**: FastAPI + SQLAlchemy 2.0 + Alembic, eksekusi sinkron (tanpa job queue)
 - **Database**: PostgreSQL 16 (via Docker)
-- **Deployment**: Docker Compose (postgres + api + nginx)
+- **Deployment**: Docker Compose (postgres + backend + frontend + nginx)
 
 ### TUI
 
@@ -94,6 +94,9 @@ TUI (Textual) / CLI
 | slack_webhook_url | string | URL webhook Slack (opsional) |
 | slack_channel | string | Channel Slack (opsional) |
 | slack_enabled | bool | Aktifkan notifikasi Slack |
+| report_mode | string | Mode output report: `simple`, `summary` (default), `detailed` |
+| label | string | Label opsional untuk tampilan, contoh: `Enterprise`, `Trial` |
+| sso_session | string | Nama SSO session AWS (opsional) |
 
 ### `accounts`
 | Kolom | Tipe | Keterangan |
@@ -151,6 +154,30 @@ TUI (Textual) / CLI
 | config | JSON | Konfigurasi per-check per-account |
 | created_at | timestamp | Waktu dibuat |
 | updated_at | timestamp | Waktu diubah |
+
+### `tickets`
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| id | UUID | Primary key |
+| customer_id | UUID | FK ke customers (SET NULL on delete) |
+| ticket_no | string | Nomor tiket manual dari Zoho (opsional/nullable) |
+| task | string | Deskripsi task/pekerjaan |
+| pic | string | Nama PIC |
+| status | string | `open`, `in_progress`, `done`, `cancelled` |
+| description_solution | text | Deskripsi solusi (opsional) |
+| extra_data | JSON | Data tambahan fleksibel, contoh Token: `{account_id, for_customer_id}` |
+| created_at | timestamp | Waktu dibuat |
+| ended_at | timestamp | Waktu selesai (opsional) |
+| updated_at | timestamp | Waktu diubah |
+
+### `mailing_contacts`
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| id | UUID | Primary key |
+| customer_id | UUID | FK ke customers (SET NULL on delete, opsional) |
+| email | string | Alamat email kontak |
+| name | string | Nama penerima (opsional) |
+| created_at | timestamp | Waktu dibuat |
 
 ### `metric_samples`
 | Kolom | Tipe | Keterangan |
@@ -254,8 +281,16 @@ Alarm names tidak perlu dikirim via `check_params` — sudah tersimpan di `confi
 | Mode | Keterangan |
 |---|---|
 | `single` | Satu check, satu atau beberapa akun. Output detail per akun. |
-| `all` | Semua check yang dikonfigurasi di `customer.checks`, semua akun. Output consolidated report. |
+| `all` | Semua check yang dikonfigurasi di `customer.checks`, semua akun. Output consolidated report. Format output bergantung `report_mode` customer. |
 | `arbel` | Preset khusus Aryanoble: check `cost`, `guardduty`, `cloudwatch`, `notifications`, `backup`, `daily-arbel`. |
+
+### Report Mode (untuk mode `all`)
+
+| report_mode | Fungsi Backend | Keterangan |
+|---|---|---|
+| `simple` | `_build_simple_report()` | Alarm list only, satu baris per alarm. Cocok untuk customer CloudWatch-only (contoh: Frisian Flag). |
+| `summary` (default) | `_build_summary_report()` | Compact WhatsApp-friendly, utilization metrics + ringkasan per check. |
+| `detailed` | `_build_consolidated_report()` | Full report semua check, semua detail per akun dan temuan. |
 
 ---
 
@@ -263,14 +298,20 @@ Alarm names tidak perlu dikirim via `check_params` — sudah tersimpan di `confi
 
 | Nama | Kelas | Keterangan |
 |---|---|---|
-| `cost` | `CostAnomaliesChecker` | Deteksi anomali biaya AWS |
+| `cost` | `CostAnomalyChecker` | Deteksi anomali biaya AWS. Output single: format notifikasi WhatsApp dengan greeting + detail per kontributor akun + cost per akun. |
 | `guardduty` | `GuardDutyChecker` | Temuan GuardDuty aktif |
-| `cloudwatch` | `CloudWatchAlarmsChecker` | Alarm CloudWatch dalam status ALARM |
-| `notifications` | `NotificationsChecker` | Notifikasi AWS Health Events |
+| `cloudwatch` | `CloudWatchAlarmChecker` | Alarm CloudWatch dalam status ALARM |
+| `notifications` | `NotificationChecker` | Notifikasi AWS Health Events |
+| `health` | `HealthChecker` | AWS Health Events |
 | `backup` | `BackupStatusChecker` | Status AWS Backup jobs |
 | `daily-arbel` | `DailyArbelChecker` | Monitoring metrik RDS & EC2 harian. Param: `window_hours` (default 12) |
+| `daily-arbel-rds` | — | Varian RDS saja |
+| `daily-arbel-ec2` | — | Varian EC2 saja |
 | `alarm_verification` | `AlarmVerificationChecker` | Verifikasi status CloudWatch alarm & riwayat breach. Param: `alarm_names` (dari DB), `min_duration_minutes` (default 10) |
 | `daily-budget` | `DailyBudgetChecker` | Cek threshold AWS Budgets & alert over-budget |
+| `ec2list` | `EC2ListChecker` | EC2 instance listing & status |
+| `ec2_utilization` | `AWSUtilization3CoreChecker` | EC2 utilization 3 core metrics |
+| `huawei-ecs-util` | `HuaweiECSUtilizationChecker` | Huawei ECS utilization |
 
 ---
 
@@ -420,13 +461,8 @@ pytest tests/integration/test_e2e_api.py
 # Endpoint integration tests
 pytest tests/integration/test_new_endpoints.py
 
-# Frontend tests
-cd web && npm test
-
-# Frontend quality gates
-cd web && npm run typecheck
-cd web && npm run lint
-cd web && npm run format:check
+# Frontend typecheck (CI gate)
+npm run --prefix frontend typecheck
 ```
 
 ---
@@ -451,3 +487,6 @@ cd web && npm run format:check
 | `asg` | Agung Sedayu | non-SSO | 1 |
 | `arista-web` | Arista Web | non-SSO | 1 |
 | `frisianflag` | Frisian Flag Indonesia | non-SSO | 1 |
+| `token` | Token | — | 0 (special) |
+
+> **Token** adalah customer khusus untuk ticketing. Tiket dengan customer Token memerlukan field tambahan: Account ID (AWS) dan "Untuk Customer" (customer mana yang dituju). Data ini disimpan di `extra_data` JSON pada tabel `tickets`.

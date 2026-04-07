@@ -30,12 +30,19 @@ def upgrade() -> None:
     op.create_table(
         "mailing_contacts",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("customer_id", sa.String(36), sa.ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True),
+        sa.Column(
+            "customer_id",
+            sa.String(36),
+            sa.ForeignKey("customers.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("email", sa.String(256), nullable=False),
         sa.Column("name", sa.String(256), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
-    op.create_index("ix_mailing_contacts_customer_id", "mailing_contacts", ["customer_id"])
+    op.create_index(
+        "ix_mailing_contacts_customer_id", "mailing_contacts", ["customer_id"]
+    )
 
     # 4. Seed Token customer (only if not already present)
     conn = op.get_bind()
