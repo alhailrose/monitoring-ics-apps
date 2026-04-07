@@ -18,9 +18,9 @@ _MONTH_ID = {
 
 
 def _fmt_date(date_str: str) -> str:
-    """Format 'YYYY-MM-DD' → '3 April 2026'."""
+    """Format 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM:SSZ' → '3 April 2026'."""
     try:
-        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        d = datetime.strptime(date_str[:10], "%Y-%m-%d").date()
         return f"{d.day} {_MONTH_ID[d.month]} {d.year}"
     except Exception:
         return date_str
@@ -104,7 +104,7 @@ def _fetch_account_costs(ce, linked_account_ids: list[str], start: str, end: str
 
         resp = ce.get_cost_and_usage(
             TimePeriod={"Start": start, "End": end_exclusive},
-            Granularity="MONTHLY",
+            Granularity="DAILY",
             Filter={
                 "Dimensions": {
                     "Key": "LINKED_ACCOUNT",
@@ -290,7 +290,7 @@ class CostAnomalyChecker(BaseChecker):
             lines.append(f"    Period     : {_fmt_date_range(start_date, end_date)}")
             impact_line = f"    Impact     : ${impact_val:,.2f}"
             if impact_pct:
-                impact_line += f" (+{impact_pct:.1f}%)"
+                impact_line += f" (+{float(impact_pct):.1f}%)"
             if max_impact:
                 impact_line += f" | Peak: ${float(max_impact):,.2f}/day"
             lines.append(impact_line)
@@ -363,7 +363,7 @@ class CostAnomalyChecker(BaseChecker):
 
                 impact_str = f"${impact_val:,.2f}"
                 if impact_pct:
-                    impact_str += f" (+{impact_pct:.1f}%)"
+                    impact_str += f" (+{float(impact_pct):.1f}%)"
                 if max_impact:
                     impact_str += f" | Peak: ${float(max_impact):,.2f}/day"
 
@@ -375,11 +375,9 @@ class CostAnomalyChecker(BaseChecker):
                 if by_account:
                     lines.append(f"    Contributors ({len(by_account)} accounts):")
                     for acct_id, info in by_account.items():
-                        name = info["name"]
-                        label = f"{name} ({acct_id})" if name else acct_id
                         cost = account_costs.get(acct_id)
                         cost_str = f"  →  ${cost:,.2f}" if cost is not None else ""
-                        lines.append(f"      • {label}{cost_str}")
+                        lines.append(f"      • {acct_id}{cost_str}")
                         for svc in info["services"]:
                             lines.append(f"          - {svc}")
 
