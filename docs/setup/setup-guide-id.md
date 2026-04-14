@@ -1,6 +1,8 @@
-# Setup Guide Monitoring Hub (AWS + Huawei)
+# Setup Guide Monitoring Hub (TUI + Huawei)
 
-Dokumen ini merangkum setup dari nol sampai siap menjalankan check Huawei dengan flow token sinkron.
+Dokumen ini khusus untuk setup **TUI/CLI** dan **Huawei** di mesin operator lokal.
+Untuk setup web platform (Docker Compose), lihat `docs/operations/single-server-deploy.md`.
+Untuk setup development lokal, lihat `docs/PROJECT.md`.
 
 ## 1) Prasyarat
 

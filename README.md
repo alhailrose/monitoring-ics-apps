@@ -137,9 +137,12 @@ monitoring-ics-apps/
 │   └── docker/                     # Docker Compose configs (dev & prod)
 │
 ├── docs/
-│   ├── PROJECT.md                  # Full technical reference
-│   ├── architecture/               # Folder structure, migration status
-│   └── operations/                 # Deploy runbook, release checklist
+│   ├── PROJECT.md                  # Index utama — gambaran sistem & quick start
+│   ├── backend/README.md           # Backend lengkap: checks, API, DB schema
+│   ├── frontend/README.md          # Frontend lengkap: semua halaman & komponen
+│   ├── architecture/               # Foldering guide
+│   ├── operations/                 # Deploy runbook, release checklist
+│   └── setup/                      # AWS & Huawei setup guide
 │
 └── .github/workflows/              # CI/CD pipelines
     ├── ci-backend.yml
@@ -251,10 +254,12 @@ npm run --prefix frontend typecheck
 
 | | |
 |---|---|
-| [`docs/PROJECT.md`](docs/PROJECT.md) | Full technical reference: DB schema, API endpoints, all checks |
+| [`docs/PROJECT.md`](docs/PROJECT.md) | Index utama: gambaran sistem, folder structure, cara jalankan |
+| [`docs/backend/README.md`](docs/backend/README.md) | Backend lengkap: semua checks, API endpoints, DB schema, cara develop |
+| [`docs/frontend/README.md`](docs/frontend/README.md) | Frontend lengkap: semua halaman, komponen, alur UI, cara develop |
 | [`docs/operations/deployment-flow.md`](docs/operations/deployment-flow.md) | Deploy pipeline in detail |
 | [`docs/operations/single-server-deploy.md`](docs/operations/single-server-deploy.md) | Production server runbook |
-| [`docs/setup/setup-guide-id.md`](docs/setup/setup-guide-id.md) | AWS & environment setup guide |
+| [`docs/setup/setup-guide-id.md`](docs/setup/setup-guide-id.md) | TUI & Huawei setup guide |
 
 ---
 

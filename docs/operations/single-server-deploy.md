@@ -6,7 +6,7 @@ Dokumen ini menjelaskan stack minimum untuk menjalankan web + API di satu server
 
 - `postgres`: database utama.
 - `api`: FastAPI (`backend.interfaces.api.main:app`) di port internal `8000`.
-- `nginx`: reverse proxy + static hosting `web/dist` di `http://localhost:8080`.
+- `nginx`: reverse proxy + frontend Next.js di `http://localhost:8080`.
 
 Catatan: saat ini **tidak ada service `redis`/`worker`** di compose file.
 
@@ -18,11 +18,11 @@ Catatan: saat ini **tidak ada service `redis`/`worker`** di compose file.
 cp infra/docker/.env.example infra/docker/.env
 ```
 
-2. Build frontend statis yang akan disajikan Nginx:
+2. (Opsional) Build frontend lokal untuk verifikasi:
 
 ```bash
-npm ci --prefix web
-npm --prefix web run build
+npm ci --prefix frontend
+npm run --prefix frontend build
 ```
 
 3. Validasi konfigurasi compose:
@@ -125,13 +125,12 @@ mkdir -p ~/.aws/sso/cache
 - Lihat status service: `docker compose -f infra/docker/docker-compose.yml ps`
 - Lihat log API: `docker compose -f infra/docker/docker-compose.yml logs -f api`
 - Restart API setelah update kode backend: `docker compose -f infra/docker/docker-compose.yml restart api`
-- Rebuild web setelah update frontend: `npm --prefix web run build && docker compose -f infra/docker/docker-compose.yml restart nginx`
+- Restart frontend setelah update: `docker compose -f infra/docker/docker-compose.yml restart frontend nginx`
 
 ## Rollback cepat
 
 1. Checkout commit rilis sebelumnya.
-2. Rebuild frontend: `npm --prefix web run build`.
-3. Restart service: `docker compose -f infra/docker/docker-compose.yml up -d --force-recreate api nginx`.
+2. Restart service: `docker compose -f infra/docker/docker-compose.yml up -d --force-recreate api frontend nginx`.
 4. Validasi ulang `/health` dan `/api/v1/checks/available`.
 
 ## Notes
