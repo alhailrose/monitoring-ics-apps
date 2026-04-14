@@ -1,14 +1,63 @@
 """Check execution endpoints."""
 
+from datetime import datetime, timezone
 from typing import Annotated
 import logging
 import threading
+import time
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from backend.interfaces.api.dependencies import get_check_executor
+from backend.interfaces.api.dependencies import get_check_executor, require_auth
+
+# ---------------------------------------------------------------------------
+# Simple in-memory rate limiter for /checks/execute
+# Max 3 concurrent or recent executions per user within a 60-second window.
+# ---------------------------------------------------------------------------
+_RATE_WINDOW_SECONDS = 60
+_RATE_MAX_CALLS = 3
+_rate_store: dict[str, list[float]] = {}  # user_id → list of call timestamps
+_rate_lock = threading.Lock()
+
+
+def _check_rate_limit(user_id: str) -> None:
+    now = time.monotonic()
+    with _rate_lock:
+        timestamps = _rate_store.get(user_id, [])
+        # Drop timestamps outside the window
+        timestamps = [t for t in timestamps if now - t < _RATE_WINDOW_SECONDS]
+        if len(timestamps) >= _RATE_MAX_CALLS:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"Rate limit exceeded: max {_RATE_MAX_CALLS} check executions "
+                    f"per {_RATE_WINDOW_SECONDS}s per user."
+                ),
+            )
+        timestamps.append(now)
+        _rate_store[user_id] = timestamps
+
+# Allowed check_params keys per check name.
+# Only listed keys are accepted — unknown keys are rejected to prevent
+# passing arbitrary constructor arguments to checker classes.
+_ALLOWED_CHECK_PARAMS: dict[str, set[str]] = {
+    "daily-arbel":        {"window_hours", "section_scope"},
+    "daily-arbel-rds":    {"window_hours"},
+    "daily-arbel-ec2":    {"window_hours"},
+    "alarm_verification": {"min_duration_minutes"},
+    "backup":             {"vault_mode"},
+    "cost":               {"window_hours"},
+    "cloudwatch":         set(),
+    "guardduty":          set(),
+    "notifications":      set(),
+    "health":             set(),
+    "ec2list":            set(),
+    "ec2_utilization":    set(),
+    "daily-budget":       set(),
+    "huawei-ecs-util":    set(),
+}
 
 router = APIRouter(prefix="/checks", tags=["checks"])
 logger = logging.getLogger(__name__)
@@ -22,21 +71,57 @@ _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 
 
-def _store_job(job_id: str, status: str, result=None, error: str | None = None) -> None:
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _store_job(
+    job_id: str,
+    status: str,
+    result=None,
+    error: str | None = None,
+    *,
+    customer_ids: list[str] | None = None,
+    mode: str | None = None,
+    check_name: str | None = None,
+    started_at: str | None = None,
+    completed_at: str | None = None,
+) -> None:
     with _jobs_lock:
-        if len(_jobs) >= _MAX_JOBS:
-            oldest = next(iter(_jobs))
-            del _jobs[oldest]
-        _jobs[job_id] = {
-            "job_id": job_id,
-            "status": status,
-            "result": result,
-            "error": error,
-        }
+        if job_id in _jobs:
+            # Update existing entry — merge only supplied fields
+            entry = _jobs[job_id]
+            entry["status"] = status
+            if result is not None:
+                entry["result"] = result
+            if error is not None:
+                entry["error"] = error
+            if started_at is not None:
+                entry["started_at"] = started_at
+            if completed_at is not None:
+                entry["completed_at"] = completed_at
+        else:
+            if len(_jobs) >= _MAX_JOBS:
+                oldest = next(iter(_jobs))
+                del _jobs[oldest]
+            _jobs[job_id] = {
+                "job_id": job_id,
+                "status": status,
+                "customer_ids": customer_ids or [],
+                "mode": mode,
+                "check_name": check_name,
+                "started_at": started_at,
+                "completed_at": completed_at,
+                "result": result,
+                "error": error,
+                "created_at": _now_iso(),
+            }
 
 
 def _run_job(job_id: str, payload, executor) -> None:
     """Background task: execute checks and update job store."""
+    started = _now_iso()
+    _store_job(job_id, status="running", started_at=started)
     try:
         result = executor.execute(
             customer_ids=payload.customer_ids or [],
@@ -49,10 +134,20 @@ def _run_job(job_id: str, payload, executor) -> None:
             run_source="api",
             persist_mode="normalized",
         )
-        _store_job(job_id, status="done", result=result)
+        _store_job(
+            job_id,
+            status="done",
+            result=result,
+            completed_at=_now_iso(),
+        )
     except Exception as exc:
         logger.exception("Async check job %s failed", job_id)
-        _store_job(job_id, status="error", error=str(exc))
+        _store_job(
+            job_id,
+            status="error",
+            error=str(exc),
+            completed_at=_now_iso(),
+        )
 
 
 class ExecuteCheckRequest(BaseModel):
@@ -83,6 +178,25 @@ class ExecuteCheckRequest(BaseModel):
         if len(cleaned) != len(set(cleaned)):
             raise ValueError("account_ids must not contain duplicates")
         return cleaned
+
+    @model_validator(mode="after")
+    def validate_check_params_keys(self):
+        if not self.check_params:
+            return self
+        check_name = self.check_name
+        if not check_name:
+            return self
+        allowed = _ALLOWED_CHECK_PARAMS.get(check_name)
+        if allowed is None:
+            # Unknown check name — executor will reject it anyway
+            return self
+        unknown = set(self.check_params.keys()) - allowed
+        if unknown:
+            raise ValueError(
+                f"Unknown check_params keys for '{check_name}': {sorted(unknown)}. "
+                f"Allowed: {sorted(allowed) or 'none'}"
+            )
+        return self
 
     @model_validator(mode="after")
     def normalize_and_validate_compat_fields(self):
@@ -150,7 +264,15 @@ class AvailableChecksResponse(BaseModel):
 
 
 @router.post("/execute", response_model=ExecuteCheckResponse)
-def execute_check(payload: ExecuteCheckRequest, executor=Depends(get_check_executor)):
+def execute_check(
+    payload: ExecuteCheckRequest,
+    request: Request,
+    executor=Depends(get_check_executor),
+    _auth=Depends(require_auth),
+):
+    user_id = getattr(request.state, "auth_user", None)
+    _check_rate_limit(getattr(user_id, "user_id", "anonymous"))
+
     try:
         if payload.mode == "single" and not payload.check_name:
             raise HTTPException(
@@ -194,21 +316,32 @@ def execute_check(payload: ExecuteCheckRequest, executor=Depends(get_check_execu
 @router.post("/execute/async")
 async def execute_check_async(
     payload: ExecuteCheckRequest,
+    request: Request,
     background_tasks: BackgroundTasks,
     executor=Depends(get_check_executor),
+    _auth=Depends(require_auth),
 ):
     """Queue a check execution and return a job_id immediately.
 
     Poll GET /checks/jobs/{job_id} to retrieve the result when status == "done".
     Use this for large multi-customer / all-mode runs to avoid HTTP timeouts.
     """
+    user_id = getattr(request.state, "auth_user", None)
+    _check_rate_limit(getattr(user_id, "user_id", "anonymous"))
+
     if payload.mode == "single" and not payload.check_name:
         raise HTTPException(
             status_code=400, detail="check_name required for single mode"
         )
 
     job_id = str(uuid4())
-    _store_job(job_id, status="queued")
+    _store_job(
+        job_id,
+        status="queued",
+        customer_ids=payload.customer_ids or [],
+        mode=payload.mode,
+        check_name=payload.check_name,
+    )
     background_tasks.add_task(_run_job, job_id, payload, executor)
     return {"job_id": job_id, "status": "queued"}
 
@@ -227,6 +360,27 @@ def get_job_status(job_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+@router.get("/jobs")
+def list_jobs():
+    """Return last 100 check jobs (most recent first), without result/details payload.
+
+    Each item: job_id, status, customer_ids, mode, check_name,
+                started_at, completed_at, created_at, error
+    """
+    with _jobs_lock:
+        jobs_snapshot = list(_jobs.values())
+
+    # Most recent first; limit to 100
+    jobs_snapshot.sort(key=lambda j: j.get("created_at") or "", reverse=True)
+    jobs_snapshot = jobs_snapshot[:100]
+
+    # Strip heavy result payload for list view
+    return [
+        {k: v for k, v in job.items() if k != "result"}
+        for job in jobs_snapshot
+    ]
 
 
 @router.get("/available", response_model=AvailableChecksResponse)
