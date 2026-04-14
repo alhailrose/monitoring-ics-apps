@@ -183,6 +183,11 @@ def require_auth(
     )
 
 
+def create_db_session():
+    """Create a raw DB session for use in background tasks (outside FastAPI DI)."""
+    return _get_session_factory()()
+
+
 def get_invite_service():
     session = _get_session()
     settings = get_settings()

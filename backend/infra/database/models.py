@@ -390,3 +390,25 @@ class MetricSample(Base):
 
     check_run: Mapped[CheckRun] = relationship(back_populates="metric_samples")
     account: Mapped[Account] = relationship(back_populates="metric_samples")
+
+
+class CheckJob(Base):
+    """Persistent record of an async check execution job."""
+
+    __tablename__ = "check_jobs"
+    __table_args__ = (
+        Index("idx_check_jobs_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    customer_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    check_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utc_now, nullable=False
+    )

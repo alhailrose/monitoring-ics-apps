@@ -10,7 +10,11 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from backend.interfaces.api.dependencies import get_check_executor, require_auth
+from backend.interfaces.api.dependencies import (
+    create_db_session,
+    get_check_executor,
+    require_auth,
+)
 
 # ---------------------------------------------------------------------------
 # Simple in-memory rate limiter for /checks/execute
@@ -63,8 +67,9 @@ router = APIRouter(prefix="/checks", tags=["checks"])
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# In-memory job store for async execution
+# In-memory job store for async execution (primary fast-path)
 # Stores up to ~500 recent jobs; old entries evicted when limit is reached.
+# DB persistence is a parallel write for cross-restart durability.
 # ---------------------------------------------------------------------------
 _MAX_JOBS = 500
 _jobs: dict[str, dict] = {}
@@ -118,6 +123,54 @@ def _store_job(
             }
 
 
+def _db_upsert_job(job_id: str, entry: dict) -> None:
+    """Persist job entry to DB. Silently skips if DB is unavailable."""
+    from backend.infra.database.models import CheckJob
+
+    try:
+        session = create_db_session()
+        try:
+            existing = session.get(CheckJob, job_id)
+            if existing is None:
+                existing = CheckJob(
+                    id=job_id,
+                    status=entry["status"],
+                    customer_ids=entry.get("customer_ids") or [],
+                    mode=entry.get("mode"),
+                    check_name=entry.get("check_name"),
+                    started_at=_parse_dt(entry.get("started_at")),
+                    completed_at=_parse_dt(entry.get("completed_at")),
+                    result=entry.get("result"),
+                    error=entry.get("error"),
+                    created_at=_parse_dt(entry.get("created_at")) or datetime.now(timezone.utc),
+                )
+                session.add(existing)
+            else:
+                existing.status = entry["status"]
+                if entry.get("started_at"):
+                    existing.started_at = _parse_dt(entry["started_at"])
+                if entry.get("completed_at"):
+                    existing.completed_at = _parse_dt(entry["completed_at"])
+                if entry.get("result") is not None:
+                    existing.result = entry["result"]
+                if entry.get("error") is not None:
+                    existing.error = entry["error"]
+            session.commit()
+        finally:
+            session.close()
+    except Exception:
+        logger.debug("DB persist skipped for job %s (DB unavailable)", job_id)
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def _run_job(job_id: str, payload, executor) -> None:
     """Background task: execute checks and update job store."""
     started = _now_iso()
@@ -148,6 +201,12 @@ def _run_job(job_id: str, payload, executor) -> None:
             error=str(exc),
             completed_at=_now_iso(),
         )
+    finally:
+        # Persist final state to DB regardless of success/failure
+        with _jobs_lock:
+            entry = dict(_jobs.get(job_id, {}))
+        if entry:
+            _db_upsert_job(job_id, entry)
 
 
 class ExecuteCheckRequest(BaseModel):
@@ -351,36 +410,94 @@ def get_job_status(job_id: str):
     """Poll the status of an async check job.
 
     Returns:
-        status: "queued" | "done" | "error"
+        status: "queued" | "running" | "done" | "error"
         result: ExecuteCheckResponse payload (when status == "done")
         error: error message (when status == "error")
+
+    In-memory is checked first (fast path for active jobs).
+    Falls back to DB for completed jobs that survived a server restart.
     """
     with _jobs_lock:
         job = _jobs.get(job_id)
-    if job is None:
+    if job is not None:
+        return job
+
+    # Fallback: try DB
+    try:
+        from backend.infra.database.models import CheckJob
+
+        session = create_db_session()
+        try:
+            db_job = session.get(CheckJob, job_id)
+        finally:
+            session.close()
+        if db_job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return _db_job_to_dict(db_job)
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+
+
+def _db_job_to_dict(db_job) -> dict:
+    return {
+        "job_id": db_job.id,
+        "status": db_job.status,
+        "customer_ids": db_job.customer_ids or [],
+        "mode": db_job.mode,
+        "check_name": db_job.check_name,
+        "started_at": db_job.started_at.isoformat() if db_job.started_at else None,
+        "completed_at": db_job.completed_at.isoformat() if db_job.completed_at else None,
+        "created_at": db_job.created_at.isoformat() if db_job.created_at else None,
+        "result": db_job.result,
+        "error": db_job.error,
+    }
 
 
 @router.get("/jobs")
 def list_jobs():
     """Return last 100 check jobs (most recent first), without result/details payload.
 
+    Merges in-memory (active) jobs with DB (historical) jobs.
     Each item: job_id, status, customer_ids, mode, check_name,
                 started_at, completed_at, created_at, error
     """
     with _jobs_lock:
-        jobs_snapshot = list(_jobs.values())
+        mem_jobs = {jid: dict(j) for jid, j in _jobs.items()}
 
-    # Most recent first; limit to 100
-    jobs_snapshot.sort(key=lambda j: j.get("created_at") or "", reverse=True)
-    jobs_snapshot = jobs_snapshot[:100]
+    # Fetch from DB (historical + completed jobs)
+    db_jobs: dict[str, dict] = {}
+    try:
+        from backend.infra.database.models import CheckJob
+        from sqlalchemy import desc
 
-    # Strip heavy result payload for list view
-    return [
-        {k: v for k, v in job.items() if k != "result"}
-        for job in jobs_snapshot
-    ]
+        session = create_db_session()
+        try:
+            rows = (
+                session.query(CheckJob)
+                .order_by(desc(CheckJob.created_at))
+                .limit(200)
+                .all()
+            )
+            for row in rows:
+                db_jobs[row.id] = _db_job_to_dict(row)
+        finally:
+            session.close()
+    except Exception:
+        pass  # DB unavailable — serve in-memory only
+
+    # Merge: in-memory takes priority (has live status for active jobs)
+    merged: dict[str, dict] = {**db_jobs, **mem_jobs}
+
+    # Sort by created_at descending, limit 100, strip result payload
+    sorted_jobs = sorted(
+        merged.values(),
+        key=lambda j: j.get("created_at") or "",
+        reverse=True,
+    )[:100]
+
+    return [{k: v for k, v in job.items() if k != "result"} for job in sorted_jobs]
 
 
 @router.get("/available", response_model=AvailableChecksResponse)
