@@ -1,9 +1,11 @@
-"""add check_jobs table for async job persistence
+"""add check_jobs and check_job_results tables for async job persistence
 
 Revision ID: 4d5e6f7a8b9c
 Revises: 3c4d5e6f7a8b
 Create Date: 2026-04-14 00:00:00.000000
 
+check_jobs  — lean metadata (status, customer_ids, mode, timing, error)
+check_job_results — heavy result payload, 1-to-1 FK, only fetched on detail view
 """
 
 from typing import Sequence, Union
@@ -20,6 +22,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # --- check_jobs: metadata only, no result payload ---
     op.create_table(
         "check_jobs",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -29,7 +32,6 @@ def upgrade() -> None:
         sa.Column("check_name", sa.String(128), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("result", sa.JSON(), nullable=True),
         sa.Column("error", sa.Text(), nullable=True),
         sa.Column(
             "created_at",
@@ -43,8 +45,21 @@ def upgrade() -> None:
         "idx_check_jobs_status_created", "check_jobs", ["status", "created_at"]
     )
 
+    # --- check_job_results: heavy payload, only loaded on detail view ---
+    op.create_table(
+        "check_job_results",
+        sa.Column(
+            "job_id",
+            sa.String(36),
+            sa.ForeignKey("check_jobs.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("result", sa.JSON(), nullable=False),
+    )
+
 
 def downgrade() -> None:
+    op.drop_table("check_job_results")
     op.drop_index("idx_check_jobs_status_created", table_name="check_jobs")
     op.drop_index("ix_check_jobs_status", table_name="check_jobs")
     op.drop_table("check_jobs")

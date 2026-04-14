@@ -393,7 +393,11 @@ class MetricSample(Base):
 
 
 class CheckJob(Base):
-    """Persistent record of an async check execution job."""
+    """Persistent record of an async check execution job (metadata only).
+
+    Heavy result payload lives in CheckJobResult (separate table) so that
+    list queries on check_jobs stay lean.
+    """
 
     __tablename__ = "check_jobs"
     __table_args__ = (
@@ -407,8 +411,30 @@ class CheckJob(Base):
     check_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utc_now, nullable=False
     )
+
+    job_result: Mapped["CheckJobResult | None"] = relationship(
+        back_populates="job", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class CheckJobResult(Base):
+    """Stores the heavy result payload for a completed CheckJob.
+
+    Separated from CheckJob so list queries never load this data.
+    One-to-one: job_id is both PK and FK.
+    """
+
+    __tablename__ = "check_job_results"
+
+    job_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("check_jobs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    job: Mapped["CheckJob"] = relationship(back_populates="job_result")

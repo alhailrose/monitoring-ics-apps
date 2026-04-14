@@ -124,8 +124,14 @@ def _store_job(
 
 
 def _db_upsert_job(job_id: str, entry: dict) -> None:
-    """Persist job entry to DB. Silently skips if DB is unavailable."""
-    from backend.infra.database.models import CheckJob
+    """Persist job metadata + result to DB (separate tables).
+
+    check_jobs  — lean metadata, always written
+    check_job_results — heavy result payload, written only when status==done
+
+    Silently skips if DB is unavailable.
+    """
+    from backend.infra.database.models import CheckJob, CheckJobResult
 
     try:
         session = create_db_session()
@@ -140,7 +146,6 @@ def _db_upsert_job(job_id: str, entry: dict) -> None:
                     check_name=entry.get("check_name"),
                     started_at=_parse_dt(entry.get("started_at")),
                     completed_at=_parse_dt(entry.get("completed_at")),
-                    result=entry.get("result"),
                     error=entry.get("error"),
                     created_at=_parse_dt(entry.get("created_at")) or datetime.now(timezone.utc),
                 )
@@ -151,10 +156,15 @@ def _db_upsert_job(job_id: str, entry: dict) -> None:
                     existing.started_at = _parse_dt(entry["started_at"])
                 if entry.get("completed_at"):
                     existing.completed_at = _parse_dt(entry["completed_at"])
-                if entry.get("result") is not None:
-                    existing.result = entry["result"]
                 if entry.get("error") is not None:
                     existing.error = entry["error"]
+
+            # Write heavy result payload to separate table (only once, on completion)
+            if entry.get("result") is not None and entry["status"] == "done":
+                existing_result = session.get(CheckJobResult, job_id)
+                if existing_result is None:
+                    session.add(CheckJobResult(job_id=job_id, result=entry["result"]))
+
             session.commit()
         finally:
             session.close()
@@ -422,25 +432,33 @@ def get_job_status(job_id: str):
     if job is not None:
         return job
 
-    # Fallback: try DB
+    # Fallback: try DB (for jobs that survived a server restart)
     try:
-        from backend.infra.database.models import CheckJob
+        from backend.infra.database.models import CheckJob, CheckJobResult
 
         session = create_db_session()
         try:
             db_job = session.get(CheckJob, job_id)
+            if db_job is None:
+                raise HTTPException(status_code=404, detail="Job not found")
+            # Load result from separate table
+            db_result = session.get(CheckJobResult, job_id)
+            result_payload = db_result.result if db_result else None
         finally:
             session.close()
-        if db_job is None:
-            raise HTTPException(status_code=404, detail="Job not found")
-        return _db_job_to_dict(db_job)
+        return _db_job_to_dict(db_job, result_payload)
     except HTTPException:
         raise
     except Exception:
         raise HTTPException(status_code=404, detail="Job not found")
 
 
-def _db_job_to_dict(db_job) -> dict:
+def _db_job_to_dict(db_job, result_payload=None) -> dict:
+    """Convert a CheckJob ORM row to the canonical job dict.
+
+    result_payload should be pre-fetched from CheckJobResult to avoid
+    an extra query when the caller already has it (or when it's not needed).
+    """
     return {
         "job_id": db_job.id,
         "status": db_job.status,
@@ -450,23 +468,22 @@ def _db_job_to_dict(db_job) -> dict:
         "started_at": db_job.started_at.isoformat() if db_job.started_at else None,
         "completed_at": db_job.completed_at.isoformat() if db_job.completed_at else None,
         "created_at": db_job.created_at.isoformat() if db_job.created_at else None,
-        "result": db_job.result,
+        "result": result_payload,
         "error": db_job.error,
     }
 
 
 @router.get("/jobs")
 def list_jobs():
-    """Return last 100 check jobs (most recent first), without result/details payload.
+    """Return last 100 check jobs (most recent first), without result payload.
 
-    Merges in-memory (active) jobs with DB (historical) jobs.
-    Each item: job_id, status, customer_ids, mode, check_name,
-                started_at, completed_at, created_at, error
+    Merges in-memory (active/recent) jobs with DB (historical) jobs.
+    Result payload is never included — fetch GET /jobs/{id} for full result.
     """
     with _jobs_lock:
         mem_jobs = {jid: dict(j) for jid, j in _jobs.items()}
 
-    # Fetch from DB (historical + completed jobs)
+    # Fetch metadata-only from DB (no join to check_job_results)
     db_jobs: dict[str, dict] = {}
     try:
         from backend.infra.database.models import CheckJob
@@ -481,7 +498,7 @@ def list_jobs():
                 .all()
             )
             for row in rows:
-                db_jobs[row.id] = _db_job_to_dict(row)
+                db_jobs[row.id] = _db_job_to_dict(row)  # no result_payload
         finally:
             session.close()
     except Exception:
@@ -490,7 +507,7 @@ def list_jobs():
     # Merge: in-memory takes priority (has live status for active jobs)
     merged: dict[str, dict] = {**db_jobs, **mem_jobs}
 
-    # Sort by created_at descending, limit 100, strip result payload
+    # Sort desc by created_at, limit 100, always strip result payload
     sorted_jobs = sorted(
         merged.values(),
         key=lambda j: j.get("created_at") or "",
