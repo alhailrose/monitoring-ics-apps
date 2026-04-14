@@ -329,7 +329,14 @@ export function TerminalDrawer() {
     ws.binaryType = 'arraybuffer'
     wsRef.current = ws
 
-    ws.onopen = () => setStatus('connected')
+    ws.onopen = () => {
+      setStatus('connected')
+      // Sync backend PTY size immediately; otherwise it stays at default 80x24
+      // until a manual resize event happens.
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+      }
+    }
     ws.onmessage = (e) => {
       // Check for JSON control messages from backend
       if (typeof e.data === 'string') {
