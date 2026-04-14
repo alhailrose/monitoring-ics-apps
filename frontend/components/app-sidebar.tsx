@@ -6,6 +6,11 @@ import { usePathname } from "next/navigation"
 import { NavUser } from "@/components/nav-user"
 import { useAlarms } from "@/components/providers/AlarmContext"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -26,11 +31,15 @@ import {
   Chart01Icon,
   CheckListIcon,
   MonitorDotIcon,
-  TaskIcon,
+  Analytics01Icon,
+  Ticket01Icon,
+  Task01Icon,
+  Note01Icon,
   UserSettings01Icon,
   Mail01Icon,
   ComputerTerminal01Icon,
   AlarmClockIcon,
+  ArrowRight01Icon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types/api"
@@ -43,13 +52,13 @@ const navItems = [
   { title: "History", url: "/history", icon: Clock01Icon },
   { title: "Findings", url: "/findings", icon: Alert01Icon },
   { title: "Metrics", url: "/metrics", icon: Chart01Icon },
-  { title: "Reports", url: "/reports", icon: TaskIcon },
+  { title: "Reports", url: "/reports", icon: Analytics01Icon },
 ]
 
 const opsItems = [
-  { title: "Ticketing", url: "/ticketing", icon: TaskIcon },
+  { title: "Ticketing", url: "/ticketing", icon: Ticket01Icon },
   { title: "Mailing", url: "/mailing", icon: Mail01Icon },
-  { title: "Tasks", url: "/tasks", icon: TaskIcon },
+  { title: "Tasks", url: "/tasks", icon: Task01Icon },
   { title: "Checks", url: "/checks", icon: CheckListIcon },
 ]
 
@@ -77,165 +86,195 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       </SidebarHeader>
 
       <SidebarContent className="pt-2">
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase tracking-widest text-[10px]">
-            Main
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {navItems.map((item) => {
-              const isActive = pathname.startsWith(item.url)
-              return (
-                <SidebarMenuItem key={item.title}>
+        <Collapsible defaultOpen className="group/section">
+          <SidebarGroup>
+            <CollapsibleTrigger asChild>
+              <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase tracking-widest text-[10px] flex items-center cursor-pointer hover:text-sidebar-foreground/70">
+                <span>Operations</span>
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  strokeWidth={2}
+                  className="ml-auto size-3 transition-transform duration-200 group-data-[state=open]/section:rotate-90"
+                />
+              </SidebarGroupLabel>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarMenu>
+                {opsItems.map((item) => {
+                  const isActive = pathname.startsWith(item.url)
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        tooltip={item.title}
+                        className={cn(
+                          isActive && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                        )}
+                      >
+                        <Link href={item.url}>
+                          <HugeiconsIcon icon={item.icon} strokeWidth={2} />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+                <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
-                    isActive={isActive}
-                    tooltip={item.title}
+                    isActive={pathname.startsWith('/alarms')}
+                    tooltip="Alarms"
                     className={cn(
-                      isActive && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                      pathname.startsWith('/alarms') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
                     )}
                   >
-                    <Link href={item.url}>
-                      <HugeiconsIcon icon={item.icon} strokeWidth={2} />
-                      <span>{item.title}</span>
+                    <Link href="/alarms" className="flex items-center justify-between w-full">
+                      <span className="flex items-center gap-2">
+                        <HugeiconsIcon icon={AlarmClockIcon} strokeWidth={2} />
+                        <span>Alarms</span>
+                      </span>
+                      {alarmCount > 0 && (
+                        <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                          {alarmCount > 99 ? '99+' : alarmCount}
+                        </span>
+                      )}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              )
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
+              </SidebarMenu>
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
 
         <SidebarSeparator />
 
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase tracking-widest text-[10px]">
-            Operations
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {opsItems.map((item) => {
-              const isActive = pathname.startsWith(item.url)
-              return (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive}
-                    tooltip={item.title}
-                    className={cn(
-                      isActive && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
-                    )}
-                  >
-                    <Link href={item.url}>
-                      <HugeiconsIcon icon={item.icon} strokeWidth={2} />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )
-            })}
-            {/* Alarms — always visible, badge when active */}
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={pathname.startsWith('/alarms')}
-                tooltip="Alarms"
-                className={cn(
-                  pathname.startsWith('/alarms') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+        <Collapsible defaultOpen className="group/section">
+          <SidebarGroup>
+            <CollapsibleTrigger asChild>
+              <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase tracking-widest text-[10px] flex items-center cursor-pointer hover:text-sidebar-foreground/70">
+                <span>Monitoring</span>
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  strokeWidth={2}
+                  className="ml-auto size-3 transition-transform duration-200 group-data-[state=open]/section:rotate-90"
+                />
+              </SidebarGroupLabel>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarMenu>
+                {navItems.map((item) => {
+                  const isActive = pathname.startsWith(item.url)
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        tooltip={item.title}
+                        className={cn(
+                          isActive && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                        )}
+                      >
+                        <Link href={item.url}>
+                          <HugeiconsIcon icon={item.icon} strokeWidth={2} />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
+
+        <SidebarSeparator />
+
+        <Collapsible defaultOpen className="group/section">
+          <SidebarGroup>
+            <CollapsibleTrigger asChild>
+              <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase tracking-widest text-[10px] flex items-center cursor-pointer hover:text-sidebar-foreground/70">
+                <span>Settings</span>
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  strokeWidth={2}
+                  className="ml-auto size-3 transition-transform duration-200 group-data-[state=open]/section:rotate-90"
+                />
+              </SidebarGroupLabel>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarMenu>
+                {user.role !== 'super_user' && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname.startsWith('/settings/my-config')}
+                      tooltip="My AWS Config"
+                      className={cn(
+                        pathname.startsWith('/settings/my-config') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                      )}
+                    >
+                      <Link href="/settings/my-config">
+                        <HugeiconsIcon icon={ComputerTerminal01Icon} strokeWidth={2} />
+                        <span>My Config</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 )}
-              >
-                <Link href="/alarms" className="flex items-center justify-between w-full">
-                  <span className="flex items-center gap-2">
-                    <HugeiconsIcon icon={AlarmClockIcon} strokeWidth={2} />
-                    <span>Alarms</span>
-                  </span>
-                  {alarmCount > 0 && (
-                    <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                      {alarmCount > 99 ? '99+' : alarmCount}
-                    </span>
-                  )}
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
 
-        {/* Settings */}
-        <SidebarSeparator />
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/40 uppercase tracking-widest text-[10px]">
-            Settings
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {/* My Config — visible to all users */}
-            {user.role !== 'super_user' && (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname.startsWith('/settings/my-config')}
-                  tooltip="My AWS Config"
-                  className={cn(
-                    pathname.startsWith('/settings/my-config') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
-                  )}
-                >
-                  <Link href="/settings/my-config">
-                    <HugeiconsIcon icon={ComputerTerminal01Icon} strokeWidth={2} />
-                    <span>My Config</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
-
-            {/* Admin-only settings */}
-            {user.role === 'super_user' && (
-              <>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname.startsWith('/settings/users')}
-                    tooltip="User Management"
-                    className={cn(
-                      pathname.startsWith('/settings/users') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
-                    )}
-                  >
-                    <Link href="/settings/users">
-                      <HugeiconsIcon icon={UserSettings01Icon} strokeWidth={2} />
-                      <span>Users</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname.startsWith('/settings/invites')}
-                    tooltip="Undangan"
-                    className={cn(
-                      pathname.startsWith('/settings/invites') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
-                    )}
-                  >
-                    <Link href="/settings/invites">
-                      <HugeiconsIcon icon={Mail01Icon} strokeWidth={2} />
-                      <span>Invites</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname.startsWith('/settings/aws-config')}
-                    tooltip="AWS Config"
-                    className={cn(
-                      pathname.startsWith('/settings/aws-config') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
-                    )}
-                  >
-                    <Link href="/settings/aws-config">
-                      <HugeiconsIcon icon={ComputerTerminal01Icon} strokeWidth={2} />
-                      <span>AWS Config</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </>
-            )}
-          </SidebarMenu>
-        </SidebarGroup>
+                {user.role === 'super_user' && (
+                  <>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={pathname.startsWith('/settings/users')}
+                        tooltip="User Management"
+                        className={cn(
+                          pathname.startsWith('/settings/users') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                        )}
+                      >
+                        <Link href="/settings/users">
+                          <HugeiconsIcon icon={UserSettings01Icon} strokeWidth={2} />
+                          <span>Users</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={pathname.startsWith('/settings/invites')}
+                        tooltip="Undangan"
+                        className={cn(
+                          pathname.startsWith('/settings/invites') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                        )}
+                      >
+                        <Link href="/settings/invites">
+                          <HugeiconsIcon icon={Mail01Icon} strokeWidth={2} />
+                          <span>Invites</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={pathname.startsWith('/settings/aws-config')}
+                        tooltip="AWS Config"
+                        className={cn(
+                          pathname.startsWith('/settings/aws-config') && "bg-sidebar-primary/20 text-sidebar-primary font-medium border-l-2 border-sidebar-primary rounded-l-none"
+                        )}
+                      >
+                        <Link href="/settings/aws-config">
+                          <HugeiconsIcon icon={ComputerTerminal01Icon} strokeWidth={2} />
+                          <span>AWS Config</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </>
+                )}
+              </SidebarMenu>
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border pt-2">
