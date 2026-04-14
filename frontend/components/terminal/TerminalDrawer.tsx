@@ -2,6 +2,8 @@
 // Floating terminal drawer — GCP Cloud Shell style, fixed at bottom of viewport
 // Always mounted (never unmounted) so xterm instance survives open/close/minimize
 
+import '@xterm/xterm/css/xterm.css'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -316,9 +318,14 @@ export function TerminalDrawer() {
     fitAddonRef.current = fitAddon
     hasConnectedOnce.current = true
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsBase = `${protocol}//${window.location.host}`
-    const ws = new WebSocket(`${wsBase}/api/v1/terminal?token=${token}`)
+    const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL
+    const wsBase = configuredApiUrl && /^https?:\/\//.test(configuredApiUrl)
+      ? configuredApiUrl
+          .replace(/^http:/, 'ws:')
+          .replace(/^https:/, 'wss:')
+          .replace(/\/api\/v1\/?$/, '')
+      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+    const ws = new WebSocket(`${wsBase}/api/v1/terminal?token=${encodeURIComponent(token)}`)
     ws.binaryType = 'arraybuffer'
     wsRef.current = ws
 
@@ -344,7 +351,7 @@ export function TerminalDrawer() {
       }
 
       term.write(data, () => {
-        if (autoFollowRef.current) {
+        if (autoFollowRef.current && !term.hasSelection()) {
           term.scrollToBottom()
         }
       })
@@ -359,8 +366,41 @@ export function TerminalDrawer() {
     }
 
     term.onData((data) => { if (ws.readyState === WebSocket.OPEN) ws.send(data) })
+    term.onSelectionChange(() => {
+      if (term.hasSelection() && autoFollowRef.current) {
+        setAutoFollow(false)
+      }
+    })
     term.onResize(({ cols, rows }) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols, rows }))
+    })
+
+    // Ctrl+Shift+C → copy selection (standard terminal convention)
+    // Ctrl+Shift+V → paste from clipboard
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      // xterm calls this for keydown/keypress/keyup; handle once only.
+      if (e.type !== 'keydown') {
+        return true
+      }
+
+      const key = (e.key || '').toLowerCase()
+
+      if (e.ctrlKey && e.shiftKey && key === 'c') {
+        e.preventDefault()
+        const sel = term.getSelection()
+        if (sel) {
+          navigator.clipboard.writeText(sel).then(() => flashCopyNotice('Copied'))
+        }
+        return false
+      }
+      if (e.ctrlKey && e.shiftKey && key === 'v') {
+        e.preventDefault()
+        navigator.clipboard.readText().then((text) => {
+          if (text && ws.readyState === WebSocket.OPEN) ws.send(text)
+        })
+        return false
+      }
+      return true
     })
   }, [fetchTerminalToken])
 
@@ -449,8 +489,13 @@ export function TerminalDrawer() {
         {!minimized && (
           <button
             className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5"
-            onClick={copySelection}
-            aria-label="Copy selected terminal text"
+            onMouseDown={(e) => {
+              // Prevent focus shift to button so xterm selection stays intact
+              e.preventDefault()
+              copySelection()
+            }}
+            aria-label="Copy selected terminal text (Ctrl+Shift+C)"
+            title="Copy selected (Ctrl+Shift+C)"
           >
             Copy selected
           </button>
