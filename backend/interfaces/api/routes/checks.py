@@ -123,11 +123,31 @@ def _store_job(
             }
 
 
+def _strip_result_text(result: dict) -> dict:
+    """Remove derived text fields from a result payload before DB storage.
+
+    Kept:  results[].details, results[].status/summary/account/check_name,
+           check_runs, check_run_id, execution_time_seconds,
+           backup_overviews, customer_labels
+    Stripped: results[].output (full text report, re-renderable from details),
+              consolidated_outputs, consolidated_output (same)
+    """
+    TEXT_KEYS = {"consolidated_outputs", "consolidated_output"}
+    stripped = {k: v for k, v in result.items() if k not in TEXT_KEYS}
+    if "results" in stripped and isinstance(stripped["results"], list):
+        stripped["results"] = [
+            {k: v for k, v in r.items() if k != "output"}
+            for r in stripped["results"]
+        ]
+    return stripped
+
+
 def _db_upsert_job(job_id: str, entry: dict) -> None:
     """Persist job metadata + result to DB (separate tables).
 
-    check_jobs  — lean metadata, always written
-    check_job_results — heavy result payload, written only when status==done
+    check_jobs        — lean metadata, always written
+    check_job_results — structured raw data only (text output stripped),
+                        written once on status==done
 
     Silently skips if DB is unavailable.
     """
@@ -159,11 +179,15 @@ def _db_upsert_job(job_id: str, entry: dict) -> None:
                 if entry.get("error") is not None:
                     existing.error = entry["error"]
 
-            # Write heavy result payload to separate table (only once, on completion)
+            # Write stripped result to separate table (only once, on completion)
+            # Text output fields removed — raw details are the source of truth
             if entry.get("result") is not None and entry["status"] == "done":
                 existing_result = session.get(CheckJobResult, job_id)
                 if existing_result is None:
-                    session.add(CheckJobResult(job_id=job_id, result=entry["result"]))
+                    session.add(CheckJobResult(
+                        job_id=job_id,
+                        result=_strip_result_text(entry["result"]),
+                    ))
 
             session.commit()
         finally:
