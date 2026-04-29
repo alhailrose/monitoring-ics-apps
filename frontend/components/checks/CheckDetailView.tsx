@@ -119,6 +119,7 @@ function ArbelInstanceTable({ instances, serviceType }: { instances: Record<stri
 
   return (
     <div className="space-y-2">
+      <div className="overflow-x-auto rounded-md border border-border/40">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -159,6 +160,7 @@ function ArbelInstanceTable({ instances, serviceType }: { instances: Record<stri
           })}
         </TableBody>
       </Table>
+      </div>
       {detailMessages.length > 0 && (
         <div className="rounded-md border border-border/60 bg-muted/20 p-2">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Details</p>
@@ -247,42 +249,44 @@ function UtilizationDetail({ details }: { details: Record<string, unknown> }) {
   if (instances.length === 0) return <p className="text-[11px] text-muted-foreground italic">No instance data</p>
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow className="hover:bg-transparent">
-          <TableHead>Instance</TableHead>
-          <TableHead className="text-right">CPU avg</TableHead>
-          <TableHead className="text-right">CPU peak</TableHead>
-          <TableHead className="text-right">MEM avg</TableHead>
-          <TableHead className="text-right">MEM peak</TableHead>
-          <TableHead className="text-right">Disk Free</TableHead>
-          <TableHead className="text-center">Status</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {instances.map((row, i) => {
-          const instanceId = String(row.instance_id ?? '')
-          const name = (row.name as string) || instanceId || '-'
-          const status = ((row.status as string) ?? 'NORMAL').toUpperCase()
-          return (
-            <TableRow key={i}>
-              <TableCell className="font-mono text-foreground">
-                {name}
-                {instanceId && instanceId !== name && (
-                  <span className="block text-[10px] text-muted-foreground">{instanceId}</span>
-                )}
-              </TableCell>
-              <TableCell className="text-right font-mono">{fmtPct(row.cpu_avg_12h)}</TableCell>
-              <TableCell className="text-right font-mono">{fmtPct(row.cpu_peak_12h)}</TableCell>
-              <TableCell className="text-right font-mono">{fmtPct(row.memory_avg_12h)}</TableCell>
-              <TableCell className="text-right font-mono">{fmtPct(row.memory_peak_12h)}</TableCell>
-              <TableCell className="text-right font-mono">{fmtPct(row.disk_free_min_percent)}</TableCell>
-              <TableCell className="text-center">{statusBadge(status)}</TableCell>
-            </TableRow>
-          )
-        })}
-      </TableBody>
-    </Table>
+    <div className="overflow-x-auto rounded-md border border-border/40">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Instance</TableHead>
+            <TableHead className="text-right">CPU avg</TableHead>
+            <TableHead className="text-right">CPU peak</TableHead>
+            <TableHead className="text-right">MEM avg</TableHead>
+            <TableHead className="text-right">MEM peak</TableHead>
+            <TableHead className="text-right">Disk Free</TableHead>
+            <TableHead className="text-center">Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {instances.map((row, i) => {
+            const instanceId = String(row.instance_id ?? '')
+            const name = (row.name as string) || instanceId || '-'
+            const status = ((row.status as string) ?? 'NORMAL').toUpperCase()
+            return (
+              <TableRow key={i}>
+                <TableCell className="font-mono text-foreground">
+                  {name}
+                  {instanceId && instanceId !== name && (
+                    <span className="block text-[10px] text-muted-foreground">{instanceId}</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right font-mono">{fmtPct(row.cpu_avg_12h)}</TableCell>
+                <TableCell className="text-right font-mono">{fmtPct(row.cpu_peak_12h)}</TableCell>
+                <TableCell className="text-right font-mono">{fmtPct(row.memory_avg_12h)}</TableCell>
+                <TableCell className="text-right font-mono">{fmtPct(row.memory_peak_12h)}</TableCell>
+                <TableCell className="text-right font-mono">{fmtPct(row.disk_free_min_percent)}</TableCell>
+                <TableCell className="text-center">{statusBadge(status)}</TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </div>
   )
 }
 
@@ -336,6 +340,7 @@ function AlarmVerificationDetail({ details }: { details: Record<string, unknown>
         </span>
       </div>
 
+      <div className="overflow-x-auto rounded-md border border-border/40">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -404,6 +409,7 @@ function AlarmVerificationDetail({ details }: { details: Record<string, unknown>
           })}
         </TableBody>
       </Table>
+      </div>
 
     </div>
   )

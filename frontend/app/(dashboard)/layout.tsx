@@ -9,6 +9,7 @@ import { TerminalProvider } from '@/components/terminal/TerminalContext'
 import { TerminalDrawer } from '@/components/terminal/TerminalDrawer'
 import { TerminalToggleButton } from '@/components/terminal/TerminalToggleButton'
 import { AlarmIndicator } from '@/components/AlarmIndicator'
+import { Breadcrumb } from '@/components/common/Breadcrumb'
 
 export default async function DashboardLayout({
   children,
@@ -19,16 +20,17 @@ export default async function DashboardLayout({
   if (!session) redirect('/login')
 
   return (
-    <AuthProvider>
+    <AuthProvider initialUser={{ id: session.sub, username: session.username, role: session.role }}>
       <AlarmProvider>
         <SidebarProvider className="!h-svh overflow-x-hidden">
           <TerminalProvider>
             <AppSidebar user={{ username: session.username, role: session.role }} />
             <SidebarInset className="flex min-h-0 min-w-0 flex-col overflow-hidden">
               <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center justify-between border-b bg-background px-4">
-                <div className="flex items-center gap-2">
-                  <SidebarTrigger className="-ml-1" />
-                  <Separator orientation="vertical" className="h-4" />
+                <div className="flex items-center gap-2 min-w-0">
+                  <SidebarTrigger className="-ml-1 shrink-0" />
+                  <Separator orientation="vertical" className="h-4 shrink-0" />
+                  <Breadcrumb />
                 </div>
                 <div className="flex items-center gap-2">
                   <AlarmIndicator />

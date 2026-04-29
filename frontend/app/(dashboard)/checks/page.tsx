@@ -1,7 +1,7 @@
 import { getToken } from '@/lib/server-token'
 import { getCustomers } from '@/lib/api/customers'
 import { PageHeader } from '@/components/common/PageHeader'
-import { ChecksTabs } from '@/components/checks/ChecksTabs'
+import { ChecksTabsHydrated } from '@/components/checks/ChecksTabsHydrated'
 
 export default async function ChecksPage() {
   const token = await getToken()
@@ -14,7 +14,7 @@ export default async function ChecksPage() {
         title="Checks"
         description="Run specific, bundled, or dedicated checks across your customers"
       />
-      <ChecksTabs customers={customers} />
+      <ChecksTabsHydrated customers={customers} />
     </div>
   )
 }

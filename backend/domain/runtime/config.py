@@ -27,6 +27,11 @@ from backend.checks.generic.ec2_list import EC2ListChecker
 from backend.checks.aryanoble.alarm_verification import AlarmVerificationChecker
 from backend.checks.aryanoble.daily_budget import DailyBudgetChecker
 from backend.checks.huawei.ecs_utilization import HuaweiECSUtilizationChecker
+from backend.checks.generic.lambda_functions import LambdaFunctionChecker
+from backend.checks.generic.ecs_services import ECSServiceChecker
+from backend.checks.generic.s3_buckets import S3BucketChecker
+from backend.checks.generic.vpc_flow_logs import VPCFlowLogChecker
+from backend.checks.generic.iam_hygiene import IAMHygieneChecker
 
 from .config_loader import (
     get_profile_groups,
@@ -120,6 +125,11 @@ AVAILABLE_CHECKS = {
     "alarm_verification": AlarmVerificationChecker,
     "huawei-ecs-util": HuaweiECSUtilizationChecker,
     "ec2_utilization": AWSUtilization3CoreChecker,
+    "lambda": LambdaFunctionChecker,
+    "ecs": ECSServiceChecker,
+    "s3": S3BucketChecker,
+    "vpc": VPCFlowLogChecker,
+    "iam": IAMHygieneChecker,
 }
 
 # Checks to run in --all mode (default for all customers)

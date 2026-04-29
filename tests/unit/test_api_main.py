@@ -50,6 +50,7 @@ def test_readiness_endpoint_returns_db_check(monkeypatch):
 def test_api_auth_enforced_when_enabled(monkeypatch):
     monkeypatch.setenv("API_AUTH_ENABLED", "true")
     monkeypatch.setenv("API_KEYS", "top-secret")
+    monkeypatch.setenv("JWT_SECRET", "test-secret-not-default-value-32x")
 
     from backend.interfaces.api.main import create_app
 
@@ -64,6 +65,7 @@ def test_api_auth_enforced_when_enabled(monkeypatch):
 def test_api_auth_accepts_x_api_key_header(monkeypatch):
     monkeypatch.setenv("API_AUTH_ENABLED", "true")
     monkeypatch.setenv("API_KEYS", "top-secret")
+    monkeypatch.setenv("JWT_SECRET", "test-secret-not-default-value-32x")
 
     from backend.interfaces.api.main import create_app
 
@@ -81,6 +83,7 @@ def test_api_auth_accepts_x_api_key_header(monkeypatch):
 def test_api_auth_accepts_bearer_token(monkeypatch):
     monkeypatch.setenv("API_AUTH_ENABLED", "true")
     monkeypatch.setenv("API_KEYS", "top-secret")
+    monkeypatch.setenv("JWT_SECRET", "test-secret-not-default-value-32x")
 
     from backend.interfaces.api.main import create_app
 

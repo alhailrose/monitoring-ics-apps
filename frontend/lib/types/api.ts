@@ -201,6 +201,7 @@ export interface DashboardSummary {
 
 export interface ExecuteResponse {
   mode: string
+  check_run_id?: string | null
   check_runs: Array<{
     customer_id: string
     check_run_id: string
@@ -209,6 +210,7 @@ export interface ExecuteResponse {
   execution_time_seconds: number
   results: CheckResult[]
   consolidated_outputs: Record<string, string>
+  consolidated_output?: string | null
   customer_labels: Record<string, string>
   backup_overviews: Record<string, unknown>
 }

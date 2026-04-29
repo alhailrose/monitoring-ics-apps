@@ -72,6 +72,13 @@ def get_settings() -> Settings:
     if api_auth_enabled and not api_keys:
         raise ValueError("API_AUTH_ENABLED requires API_KEYS to be set")
 
+    jwt_secret_value = os.getenv("JWT_SECRET", "change-me-in-production")
+    if api_auth_enabled and jwt_secret_value == "change-me-in-production":
+        raise ValueError(
+            "JWT_SECRET must be changed from the default value when API_AUTH_ENABLED=true. "
+            "Generate one with: openssl rand -hex 32"
+        )
+
     return Settings(
         database_url=os.getenv(
             "DATABASE_URL",
@@ -86,7 +93,7 @@ def get_settings() -> Settings:
         api_auth_enabled=api_auth_enabled,
         api_keys=api_keys,
         api_key_header=os.getenv("API_KEY_HEADER", "X-API-Key"),
-        jwt_secret=os.getenv("JWT_SECRET", "change-me-in-production"),
+        jwt_secret=jwt_secret_value,
         jwt_expire_hours=int(os.getenv("JWT_EXPIRE_HOURS", "8")),
         google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
         smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),

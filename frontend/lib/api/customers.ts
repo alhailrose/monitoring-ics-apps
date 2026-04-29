@@ -6,6 +6,10 @@ export async function getCustomers(token: string): Promise<Customer[]> {
   return Array.isArray(res) ? res : (res as { customers: Customer[] }).customers ?? []
 }
 
+export async function getCustomer(id: string, token: string): Promise<Customer> {
+  return apiFetch<Customer>(`/customers/${id}`, { token })
+}
+
 export async function createCustomer(
   data: Partial<Customer>,
   token: string,

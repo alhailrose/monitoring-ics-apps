@@ -22,7 +22,6 @@ export async function runChecks(formData: FormData): Promise<{ data?: ExecuteRes
       payload.account_ids = formData.getAll('account_ids') as string[]
     }
 
-    // Pass check_params (e.g. window_hours for utilization checks)
     const checkParamsRaw = formData.get('check_params') as string | null
     if (checkParamsRaw) {
       try {

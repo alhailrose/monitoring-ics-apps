@@ -12,11 +12,21 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue>({ user: null, isLoading: true })
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+export function AuthProvider({
+  children,
+  initialUser = null,
+}: {
+  children: React.ReactNode
+  initialUser?: User | null
+}) {
+  const [user, setUser] = useState<User | null>(initialUser)
+  const [isLoading, setIsLoading] = useState(initialUser ? false : true)
 
   useEffect(() => {
+    if (initialUser) {
+      return
+    }
+
     getMe('')
       .then(setUser)
       .catch((err) => {
@@ -25,7 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .finally(() => setIsLoading(false))
-  }, [])
+  }, [initialUser])
 
   return <AuthContext.Provider value={{ user, isLoading }}>{children}</AuthContext.Provider>
 }

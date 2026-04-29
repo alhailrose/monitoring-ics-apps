@@ -1,17 +1,14 @@
 """Check execution endpoints."""
 
-from datetime import datetime, timezone
 from typing import Annotated
 import logging
 import threading
 import time
-from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.interfaces.api.dependencies import (
-    create_db_session,
     get_check_executor,
     require_auth,
 )
@@ -43,204 +40,29 @@ def _check_rate_limit(user_id: str) -> None:
         timestamps.append(now)
         _rate_store[user_id] = timestamps
 
+
 # Allowed check_params keys per check name.
 # Only listed keys are accepted — unknown keys are rejected to prevent
 # passing arbitrary constructor arguments to checker classes.
 _ALLOWED_CHECK_PARAMS: dict[str, set[str]] = {
-    "daily-arbel":        {"window_hours", "section_scope"},
-    "daily-arbel-rds":    {"window_hours"},
-    "daily-arbel-ec2":    {"window_hours"},
+    "daily-arbel": {"window_hours", "section_scope"},
+    "daily-arbel-rds": {"window_hours"},
+    "daily-arbel-ec2": {"window_hours"},
     "alarm_verification": {"min_duration_minutes"},
-    "backup":             {"vault_mode"},
-    "cost":               {"window_hours"},
-    "cloudwatch":         set(),
-    "guardduty":          set(),
-    "notifications":      set(),
-    "health":             set(),
-    "ec2list":            set(),
-    "ec2_utilization":    set(),
-    "daily-budget":       set(),
-    "huawei-ecs-util":    set(),
+    "backup": {"vault_mode"},
+    "cost": {"window_hours"},
+    "cloudwatch": set(),
+    "guardduty": set(),
+    "notifications": set(),
+    "health": set(),
+    "ec2list": set(),
+    "ec2_utilization": set(),
+    "daily-budget": set(),
+    "huawei-ecs-util": set(),
 }
 
 router = APIRouter(prefix="/checks", tags=["checks"])
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# In-memory job store for async execution (primary fast-path)
-# Stores up to ~500 recent jobs; old entries evicted when limit is reached.
-# DB persistence is a parallel write for cross-restart durability.
-# ---------------------------------------------------------------------------
-_MAX_JOBS = 500
-_jobs: dict[str, dict] = {}
-_jobs_lock = threading.Lock()
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _store_job(
-    job_id: str,
-    status: str,
-    result=None,
-    error: str | None = None,
-    *,
-    customer_ids: list[str] | None = None,
-    mode: str | None = None,
-    check_name: str | None = None,
-    started_at: str | None = None,
-    completed_at: str | None = None,
-) -> None:
-    with _jobs_lock:
-        if job_id in _jobs:
-            # Update existing entry — merge only supplied fields
-            entry = _jobs[job_id]
-            entry["status"] = status
-            if result is not None:
-                entry["result"] = result
-            if error is not None:
-                entry["error"] = error
-            if started_at is not None:
-                entry["started_at"] = started_at
-            if completed_at is not None:
-                entry["completed_at"] = completed_at
-        else:
-            if len(_jobs) >= _MAX_JOBS:
-                oldest = next(iter(_jobs))
-                del _jobs[oldest]
-            _jobs[job_id] = {
-                "job_id": job_id,
-                "status": status,
-                "customer_ids": customer_ids or [],
-                "mode": mode,
-                "check_name": check_name,
-                "started_at": started_at,
-                "completed_at": completed_at,
-                "result": result,
-                "error": error,
-                "created_at": _now_iso(),
-            }
-
-
-def _strip_result_text(result: dict) -> dict:
-    """Remove derived text fields from a result payload before DB storage.
-
-    Kept:  results[].details, results[].status/summary/account/check_name,
-           check_runs, check_run_id, execution_time_seconds,
-           backup_overviews, customer_labels
-    Stripped: results[].output (full text report, re-renderable from details),
-              consolidated_outputs, consolidated_output (same)
-    """
-    TEXT_KEYS = {"consolidated_outputs", "consolidated_output"}
-    stripped = {k: v for k, v in result.items() if k not in TEXT_KEYS}
-    if "results" in stripped and isinstance(stripped["results"], list):
-        stripped["results"] = [
-            {k: v for k, v in r.items() if k != "output"}
-            for r in stripped["results"]
-        ]
-    return stripped
-
-
-def _db_upsert_job(job_id: str, entry: dict) -> None:
-    """Persist job metadata + result to DB (separate tables).
-
-    check_jobs        — lean metadata, always written
-    check_job_results — structured raw data only (text output stripped),
-                        written once on status==done
-
-    Silently skips if DB is unavailable.
-    """
-    from backend.infra.database.models import CheckJob, CheckJobResult
-
-    try:
-        session = create_db_session()
-        try:
-            existing = session.get(CheckJob, job_id)
-            if existing is None:
-                existing = CheckJob(
-                    id=job_id,
-                    status=entry["status"],
-                    customer_ids=entry.get("customer_ids") or [],
-                    mode=entry.get("mode"),
-                    check_name=entry.get("check_name"),
-                    started_at=_parse_dt(entry.get("started_at")),
-                    completed_at=_parse_dt(entry.get("completed_at")),
-                    error=entry.get("error"),
-                    created_at=_parse_dt(entry.get("created_at")) or datetime.now(timezone.utc),
-                )
-                session.add(existing)
-            else:
-                existing.status = entry["status"]
-                if entry.get("started_at"):
-                    existing.started_at = _parse_dt(entry["started_at"])
-                if entry.get("completed_at"):
-                    existing.completed_at = _parse_dt(entry["completed_at"])
-                if entry.get("error") is not None:
-                    existing.error = entry["error"]
-
-            # Write stripped result to separate table (only once, on completion)
-            # Text output fields removed — raw details are the source of truth
-            if entry.get("result") is not None and entry["status"] == "done":
-                existing_result = session.get(CheckJobResult, job_id)
-                if existing_result is None:
-                    session.add(CheckJobResult(
-                        job_id=job_id,
-                        result=_strip_result_text(entry["result"]),
-                    ))
-
-            session.commit()
-        finally:
-            session.close()
-    except Exception:
-        logger.debug("DB persist skipped for job %s (DB unavailable)", job_id)
-
-
-def _parse_dt(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except (ValueError, TypeError):
-        return None
-
-
-def _run_job(job_id: str, payload, executor) -> None:
-    """Background task: execute checks and update job store."""
-    started = _now_iso()
-    _store_job(job_id, status="running", started_at=started)
-    try:
-        result = executor.execute(
-            customer_ids=payload.customer_ids or [],
-            mode=payload.mode,
-            check_name=payload.check_name,
-            account_ids=payload.account_ids,
-            send_slack=payload.send_slack,
-            region=payload.region,
-            check_params=payload.check_params,
-            run_source="api",
-            persist_mode="normalized",
-        )
-        _store_job(
-            job_id,
-            status="done",
-            result=result,
-            completed_at=_now_iso(),
-        )
-    except Exception as exc:
-        logger.exception("Async check job %s failed", job_id)
-        _store_job(
-            job_id,
-            status="error",
-            error=str(exc),
-            completed_at=_now_iso(),
-        )
-    finally:
-        # Persist final state to DB regardless of success/failure
-        with _jobs_lock:
-            entry = dict(_jobs.get(job_id, {}))
-        if entry:
-            _db_upsert_job(job_id, entry)
 
 
 class ExecuteCheckRequest(BaseModel):
@@ -404,141 +226,6 @@ def execute_check(
     except Exception as exc:
         logger.exception("Check execution failed")
         raise HTTPException(status_code=500, detail=f"Execution failed: {exc}") from exc
-
-
-@router.post("/execute/async")
-async def execute_check_async(
-    payload: ExecuteCheckRequest,
-    request: Request,
-    background_tasks: BackgroundTasks,
-    executor=Depends(get_check_executor),
-    _auth=Depends(require_auth),
-):
-    """Queue a check execution and return a job_id immediately.
-
-    Poll GET /checks/jobs/{job_id} to retrieve the result when status == "done".
-    Use this for large multi-customer / all-mode runs to avoid HTTP timeouts.
-    """
-    user_id = getattr(request.state, "auth_user", None)
-    _check_rate_limit(getattr(user_id, "user_id", "anonymous"))
-
-    if payload.mode == "single" and not payload.check_name:
-        raise HTTPException(
-            status_code=400, detail="check_name required for single mode"
-        )
-
-    job_id = str(uuid4())
-    _store_job(
-        job_id,
-        status="queued",
-        customer_ids=payload.customer_ids or [],
-        mode=payload.mode,
-        check_name=payload.check_name,
-    )
-    background_tasks.add_task(_run_job, job_id, payload, executor)
-    return {"job_id": job_id, "status": "queued"}
-
-
-@router.get("/jobs/{job_id}")
-def get_job_status(job_id: str):
-    """Poll the status of an async check job.
-
-    Returns:
-        status: "queued" | "running" | "done" | "error"
-        result: ExecuteCheckResponse payload (when status == "done")
-        error: error message (when status == "error")
-
-    In-memory is checked first (fast path for active jobs).
-    Falls back to DB for completed jobs that survived a server restart.
-    """
-    with _jobs_lock:
-        job = _jobs.get(job_id)
-    if job is not None:
-        return job
-
-    # Fallback: try DB (for jobs that survived a server restart)
-    try:
-        from backend.infra.database.models import CheckJob, CheckJobResult
-
-        session = create_db_session()
-        try:
-            db_job = session.get(CheckJob, job_id)
-            if db_job is None:
-                raise HTTPException(status_code=404, detail="Job not found")
-            # Load result from separate table
-            db_result = session.get(CheckJobResult, job_id)
-            result_payload = db_result.result if db_result else None
-        finally:
-            session.close()
-        return _db_job_to_dict(db_job, result_payload)
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-
-def _db_job_to_dict(db_job, result_payload=None) -> dict:
-    """Convert a CheckJob ORM row to the canonical job dict.
-
-    result_payload should be pre-fetched from CheckJobResult to avoid
-    an extra query when the caller already has it (or when it's not needed).
-    """
-    return {
-        "job_id": db_job.id,
-        "status": db_job.status,
-        "customer_ids": db_job.customer_ids or [],
-        "mode": db_job.mode,
-        "check_name": db_job.check_name,
-        "started_at": db_job.started_at.isoformat() if db_job.started_at else None,
-        "completed_at": db_job.completed_at.isoformat() if db_job.completed_at else None,
-        "created_at": db_job.created_at.isoformat() if db_job.created_at else None,
-        "result": result_payload,
-        "error": db_job.error,
-    }
-
-
-@router.get("/jobs")
-def list_jobs():
-    """Return last 100 check jobs (most recent first), without result payload.
-
-    Merges in-memory (active/recent) jobs with DB (historical) jobs.
-    Result payload is never included — fetch GET /jobs/{id} for full result.
-    """
-    with _jobs_lock:
-        mem_jobs = {jid: dict(j) for jid, j in _jobs.items()}
-
-    # Fetch metadata-only from DB (no join to check_job_results)
-    db_jobs: dict[str, dict] = {}
-    try:
-        from backend.infra.database.models import CheckJob
-        from sqlalchemy import desc
-
-        session = create_db_session()
-        try:
-            rows = (
-                session.query(CheckJob)
-                .order_by(desc(CheckJob.created_at))
-                .limit(200)
-                .all()
-            )
-            for row in rows:
-                db_jobs[row.id] = _db_job_to_dict(row)  # no result_payload
-        finally:
-            session.close()
-    except Exception:
-        pass  # DB unavailable — serve in-memory only
-
-    # Merge: in-memory takes priority (has live status for active jobs)
-    merged: dict[str, dict] = {**db_jobs, **mem_jobs}
-
-    # Sort desc by created_at, limit 100, always strip result payload
-    sorted_jobs = sorted(
-        merged.values(),
-        key=lambda j: j.get("created_at") or "",
-        reverse=True,
-    )[:100]
-
-    return [{k: v for k, v in job.items() if k != "result"} for job in sorted_jobs]
 
 
 @router.get("/available", response_model=AvailableChecksResponse)

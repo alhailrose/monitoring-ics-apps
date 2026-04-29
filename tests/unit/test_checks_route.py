@@ -130,3 +130,29 @@ def test_execute_single_mode_requires_check_name():
         },
     )
     assert r.status_code == 400
+
+
+def test_async_execute_endpoint_is_not_available():
+    """Background job execution endpoint is removed; sync execute is canonical."""
+    mock_executor = MagicMock()
+    client = TestClient(_make_app(mock_executor))
+
+    r = client.post(
+        "/api/v1/checks/execute/async",
+        json={
+            "customer_ids": ["cust-1"],
+            "mode": "all",
+            "send_slack": False,
+        },
+    )
+    assert r.status_code == 404
+
+
+@pytest.mark.parametrize("path", ["/api/v1/checks/jobs", "/api/v1/checks/jobs/job-123"])
+def test_async_job_endpoints_are_not_available(path: str):
+    """Job polling/list endpoints are removed with async execution flow."""
+    mock_executor = MagicMock()
+    client = TestClient(_make_app(mock_executor))
+
+    r = client.get(path)
+    assert r.status_code == 404

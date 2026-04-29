@@ -1,11 +1,11 @@
 'use client'
 // Client component — needs useState/useTransition for customer selection and results
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { runChecks } from '@/app/(dashboard)/checks/actions'
-import { ResultsTable } from '@/components/checks/ResultsTable'
 import { CheckProgress } from '@/components/checks/CheckProgress'
+import { ResultsTable } from '@/components/checks/ResultsTable'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -34,6 +34,14 @@ export function BundledCheckForm({ customers }: BundledCheckFormProps) {
   const [results, setResults] = useState<ExecuteResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const resultAnchorRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!results) return
+    if (typeof resultAnchorRef.current?.scrollIntoView === 'function') {
+      resultAnchorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [results])
 
   const toggleCustomer = (id: string) => {
     setSelectedCustomerIds((prev) =>
@@ -43,6 +51,7 @@ export function BundledCheckForm({ customers }: BundledCheckFormProps) {
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+
     const formData = new FormData(e.currentTarget)
 
     setError(null)
@@ -64,6 +73,10 @@ export function BundledCheckForm({ customers }: BundledCheckFormProps) {
   }
 
   const hasCustomer = selectedCustomerIds.length > 0
+  const latestRunId = results?.check_run_id ?? results?.check_runs?.[0]?.check_run_id ?? null
+  const runBlockedReason = !hasCustomer
+    ? 'Select at least one customer'
+    : null
 
   return (
     <div className="space-y-6">
@@ -162,13 +175,30 @@ export function BundledCheckForm({ customers }: BundledCheckFormProps) {
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 
-        <Button type="submit" disabled={isPending || !hasCustomer}>
+        <Button type="submit" disabled={isPending || !!runBlockedReason}>
           {isPending ? 'Running…' : 'Run Checks'}
         </Button>
+        {runBlockedReason && (
+          <p className="text-xs text-amber-300">Run blocked: {runBlockedReason}</p>
+        )}
       </form>
 
       {isPending && <CheckProgress label="Running bundled checks…" />}
-      {results && <ResultsTable data={results} />}
+      {results && (
+        <div ref={resultAnchorRef} className="space-y-3">
+          <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              Run completed. Review the results below.
+            </p>
+            {latestRunId ? (
+              <Link href={`/history?run=${latestRunId}`} className="text-xs font-medium underline underline-offset-2">
+                View latest run
+              </Link>
+            ) : null}
+          </div>
+          <ResultsTable data={results} />
+        </div>
+      )}
     </div>
   )
 }

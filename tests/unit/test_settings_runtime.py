@@ -84,6 +84,7 @@ def test_runtime_settings_enables_api_auth_from_env(monkeypatch):
     monkeypatch.setenv("API_AUTH_ENABLED", "true")
     monkeypatch.setenv("API_KEYS", "token-a, token-b")
     monkeypatch.setenv("API_KEY_HEADER", "X-Internal-Key")
+    monkeypatch.setenv("JWT_SECRET", "test-secret-not-default-value-32x")
 
     settings = get_settings()
 
@@ -97,4 +98,13 @@ def test_runtime_settings_rejects_enabled_auth_without_keys(monkeypatch):
     monkeypatch.delenv("API_KEYS", raising=False)
 
     with pytest.raises(ValueError):
+        get_settings()
+
+
+def test_runtime_settings_rejects_default_jwt_secret_when_auth_enabled(monkeypatch):
+    monkeypatch.setenv("API_AUTH_ENABLED", "true")
+    monkeypatch.setenv("API_KEYS", "some-key")
+    monkeypatch.setenv("JWT_SECRET", "change-me-in-production")
+
+    with pytest.raises(ValueError, match="JWT_SECRET must be changed"):
         get_settings()

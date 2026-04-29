@@ -328,7 +328,7 @@ def test_account_connection(account_id: str, service=Depends(get_customer_servic
         }
 
 
-@router.post("/{customer_id}/reimport")
+@router.post("/{customer_id}/reimport", dependencies=[Depends(require_role("super_user"))])
 def reimport_customer(customer_id: str, service=Depends(get_customer_service)):
     """Re-import customer config from YAML file and update DB."""
     from backend.config.loader import load_customer_config

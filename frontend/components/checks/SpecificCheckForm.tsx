@@ -18,6 +18,11 @@ import {
   Database01Icon,
   ComputerIcon,
   Alert01Icon,
+  CodeSimpleIcon,
+  ContainerIcon,
+  FolderCloudIcon,
+  CellularNetworkIcon,
+  Key01Icon,
 } from '@hugeicons/core-free-icons'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
@@ -49,6 +54,11 @@ const CHECK_CARDS = [
   { value: 'ec2_utilization',    label: 'EC2 Utilization',     icon: ComputerIcon,       color: 'text-sky-400' },
   { value: 'alarm_verification', label: 'Alarm Verification',  icon: Alert01Icon,        color: 'text-red-400' },
   { value: 'daily-budget',       label: 'Daily Budget',        icon: DollarCircleIcon,   color: 'text-green-400' },
+  { value: 'lambda',             label: 'Lambda',              icon: CodeSimpleIcon,      color: 'text-yellow-400' },
+  { value: 'ecs',                label: 'ECS Services',        icon: ContainerIcon,       color: 'text-teal-400' },
+  { value: 's3',                 label: 'S3 Buckets',          icon: FolderCloudIcon,     color: 'text-orange-300' },
+  { value: 'vpc',                label: 'VPC Security',        icon: CellularNetworkIcon, color: 'text-indigo-400' },
+  { value: 'iam',                label: 'IAM Hygiene',         icon: Key01Icon,           color: 'text-rose-400' },
 ]
 
 // Checks that support time window selection
@@ -78,6 +88,7 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
   const [results, setResults] = useState<ExecuteResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const resultAnchorRef = useRef<HTMLDivElement | null>(null)
 
   // EC2 instance selection (for ec2_utilization)
   const [snapshotMap, setSnapshotMap] = useState<SnapshotMap>({})
@@ -116,6 +127,13 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
     setSelectedInstanceIds([])
     setInstanceSearch('')
   }, [selectedCheckName, selectedAccountIds])
+
+  useEffect(() => {
+    if (!results) return
+    if (typeof resultAnchorRef.current?.scrollIntoView === 'function') {
+      resultAnchorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [results])
 
   const toggleInstance = (id: string) => {
     setSelectedInstanceIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
@@ -205,6 +223,32 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+
+    const accountsToRun = (selectedAccountIds.length > 0
+      ? allAccounts.filter((a) => selectedAccountIds.includes(a.id))
+      : allAccounts
+    ).filter((a) => a.is_active)
+
+    if (isAlarmCheck && selectedAccountIds.length > 0 && alarmNames.length === 0) {
+      const msg = 'Selected accounts have no configured alarm names. Configure alarms in Customers first.'
+      setError(msg)
+      toast.error('Cannot run check', { description: msg })
+      return
+    }
+
+    if (isEc2Check && selectedAccountIds.length > 0) {
+      const notDiscovered = accountsToRun.filter((a) => {
+        const snap = snapshotMap[a.id]
+        return !snap || (!snap.loading && snap.noData)
+      })
+      if (notDiscovered.length > 0) {
+        const msg = `Instance discovery missing for: ${notDiscovered.map((a) => a.display_name).join(', ')}`
+        setError(msg)
+        toast.error('Cannot run check', { description: msg })
+        return
+      }
+    }
+
     const formData = new FormData()
     formData.set('mode', 'single')
     formData.set('send_slack', 'false')
@@ -265,6 +309,25 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
 
   const hasCustomers = customers.length > 0
   const isAlarmCheck = selectedCheckName === 'alarm_verification'
+  const latestRunId = results?.check_run_id ?? results?.check_runs?.[0]?.check_run_id ?? null
+  const preflightAccounts = (selectedAccountIds.length > 0
+    ? allAccounts.filter((a) => selectedAccountIds.includes(a.id))
+    : allAccounts
+  ).filter((a) => a.is_active)
+  const alarmConfigMissing = isAlarmCheck && selectedAccountIds.length > 0 && alarmNames.length === 0
+  const discoveryMissing = isEc2Check && selectedAccountIds.length > 0
+    ? preflightAccounts.filter((a) => {
+        const snap = snapshotMap[a.id]
+        return !snap || (!snap.loading && snap.noData)
+      })
+    : []
+  const runBlockedReason = !hasCustomers
+    ? 'No customers available'
+    : alarmConfigMissing
+      ? 'Selected accounts have no alarm names configured'
+      : discoveryMissing.length > 0
+        ? `Instance discovery missing for ${discoveryMissing.length} account(s)`
+        : null
 
   return (
     <div className="space-y-6">
@@ -728,13 +791,30 @@ export function SpecificCheckForm({ customers }: SpecificCheckFormProps) {
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 
-        <Button type="submit" disabled={isPending || !hasCustomers}>
+        <Button type="submit" disabled={isPending || !!runBlockedReason}>
           {isPending ? 'Running…' : 'Run Check'}
         </Button>
+        {runBlockedReason && (
+          <p className="text-xs text-amber-300">Run blocked: {runBlockedReason}</p>
+        )}
       </form>
 
       {isPending && <CheckProgress label="Running check…" />}
-      {results && <ResultsTable data={results} />}
+      {results && (
+        <div ref={resultAnchorRef} className="space-y-3">
+          <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              Run completed. Review the results below.
+            </p>
+            {latestRunId ? (
+              <Link href={`/history?run=${latestRunId}`} className="text-xs font-medium underline underline-offset-2">
+                View latest run
+              </Link>
+            ) : null}
+          </div>
+          <ResultsTable data={results} />
+        </div>
+      )}
     </div>
   )
 }

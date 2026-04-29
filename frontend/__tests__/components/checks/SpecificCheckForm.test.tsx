@@ -1,10 +1,13 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SpecificCheckForm } from '@/components/checks/SpecificCheckForm'
+import { runChecks } from '@/app/(dashboard)/checks/actions'
 import type { Customer } from '@/lib/types/api'
 
 jest.mock('@/app/(dashboard)/checks/actions', () => ({
   runChecks: jest.fn(),
 }))
+
+const mockRunChecks = jest.mocked(runChecks)
 
 const mockCustomers: Customer[] = [
   {
@@ -61,13 +64,33 @@ const mockCustomers: Customer[] = [
 ]
 
 describe('SpecificCheckForm', () => {
-  it('renders check cards for all 9 check types', () => {
+  beforeEach(() => {
+    mockRunChecks.mockReset()
+    mockRunChecks.mockResolvedValue({
+      data: {
+        mode: 'single',
+        check_runs: [],
+        execution_time_seconds: 0.5,
+        results: [],
+        consolidated_outputs: {},
+        customer_labels: {},
+        backup_overviews: {},
+      },
+    })
+  })
+
+  it('renders check cards for legacy and new AWS checks', () => {
     render(<SpecificCheckForm customers={mockCustomers} />)
     expect(screen.getByRole('button', { name: /guardduty/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /rds utilization/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /ec2 utilization/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /alarm verification/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /daily budget/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /lambda/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /ecs services/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /s3 buckets/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /vpc security/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /iam hygiene/i })).toBeInTheDocument()
   })
 
   it('renders collapsible customer headers', () => {
@@ -78,7 +101,7 @@ describe('SpecificCheckForm', () => {
 
   it('renders search input for accounts', () => {
     render(<SpecificCheckForm customers={mockCustomers} />)
-    expect(screen.getByPlaceholderText(/search accounts/i)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/cari akun atau customer/i)).toBeInTheDocument()
   })
 
   it('shows time window selector for utilization checks', () => {
@@ -108,6 +131,40 @@ describe('SpecificCheckForm', () => {
 
   it('renders with empty customers list', () => {
     render(<SpecificCheckForm customers={[]} />)
-    expect(screen.getByText(/no customers available/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/no customers available/i).length).toBeGreaterThan(0)
   })
+
+  it('submits through the synchronous checks action', async () => {
+    render(<SpecificCheckForm customers={mockCustomers} />)
+
+    fireEvent.click(screen.getByText('Production'))
+    fireEvent.click(screen.getByRole('button', { name: /run check/i }))
+
+    await waitFor(() => {
+      expect(mockRunChecks).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('shows history CTA after successful run when check_run_id exists', async () => {
+    mockRunChecks.mockResolvedValueOnce({
+      data: {
+        mode: 'single',
+        check_run_id: 'run-123',
+        check_runs: [{ customer_id: 'cust-1', check_run_id: 'run-123', slack_sent: false }],
+        execution_time_seconds: 0.5,
+        results: [],
+        consolidated_outputs: {},
+        customer_labels: {},
+        backup_overviews: {},
+      },
+    })
+
+    render(<SpecificCheckForm customers={mockCustomers} />)
+    fireEvent.click(screen.getByText('Production'))
+    fireEvent.click(screen.getByRole('button', { name: /run check/i }))
+
+    const link = await screen.findByRole('link', { name: /view latest run/i })
+    expect(link).toHaveAttribute('href', '/history?run=run-123')
+  })
+
 })

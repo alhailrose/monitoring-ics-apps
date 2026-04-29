@@ -43,6 +43,13 @@ def create_app() -> FastAPI:
     settings = get_settings()
     _configure_logging(settings.log_level)
 
+    if not settings.api_auth_enabled:
+        logger.warning(
+            "⚠️  SECURITY WARNING: API_AUTH_ENABLED is not set — "
+            "all endpoints are publicly accessible with super_user privileges. "
+            "Set API_AUTH_ENABLED=true in production."
+        )
+
     application = FastAPI(
         title="Monitoring Hub API",
         version="0.2.0",
@@ -166,14 +173,13 @@ def create_app() -> FastAPI:
             finally:
                 session.close()
         except Exception as exc:
-            logger.exception("request_id=health-readiness readiness check failed")
+            logger.exception("request_id=health-readiness readiness check failed: %s", exc)
             return JSONResponse(
                 status_code=503,
                 content={
                     "status": "not_ready",
                     "version": "0.2.0",
                     "checks": {"database": "error"},
-                    "detail": str(exc),
                 },
             )
 
