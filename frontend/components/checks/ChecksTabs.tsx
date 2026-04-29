@@ -5,6 +5,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { SpecificCheckForm } from '@/components/checks/SpecificCheckForm'
 import { BundledCheckForm } from '@/components/checks/BundledCheckForm'
 import { DedicatedCheckForm } from '@/components/checks/DedicatedCheckForm'
+import { SessionStatusPopup } from '@/components/checks/SessionStatusPopup'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -47,6 +48,9 @@ export function ChecksTabs({ customers }: ChecksTabsProps) {
 
   return (
     <Tabs defaultValue="specific" className="space-y-6">
+      <div className="flex justify-end">
+        <SessionStatusPopup customers={customers} />
+      </div>
       <TabsList className="h-10">
         <TabsTrigger value="specific">Specific</TabsTrigger>
         <TabsTrigger value="bundled">Bundled</TabsTrigger>

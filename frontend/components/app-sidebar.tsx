@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { NavUser } from "@/components/nav-user"
 import { useAlarms } from "@/components/providers/AlarmContext"
@@ -30,7 +31,6 @@ import {
   Alert01Icon,
   Chart01Icon,
   CheckListIcon,
-  MonitorDotIcon,
   Analytics01Icon,
   Ticket01Icon,
   Task01Icon,
@@ -43,6 +43,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types/api"
+import logoHeadIcs from "@/assets/logo-head-ics.jpeg"
 
 // Terminal toggle button removed from sidebar — now lives in the top header bar
 
@@ -75,11 +76,18 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
       {/* Branded header */}
       <SidebarHeader className="border-b border-sidebar-border pb-3">
         <div className="flex items-center gap-3 px-2 py-1">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shadow-md">
-            <HugeiconsIcon icon={MonitorDotIcon} strokeWidth={2} className="size-4" />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg ring-1 ring-sidebar-border/50">
+            <Image
+              src={logoHeadIcs}
+              alt="ICS logo"
+              width={32}
+              height={32}
+              className="h-8 w-8 object-cover"
+              priority
+            />
           </div>
           <div className="grid flex-1 leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate font-bold text-sm text-sidebar-foreground">ICS Monitor</span>
+            <span className="truncate font-bold text-sm text-sidebar-foreground">MS Monitoring Apps</span>
             <span className="truncate text-[10px] text-sidebar-foreground/50 uppercase tracking-widest">Cloud Platform</span>
           </div>
         </div>

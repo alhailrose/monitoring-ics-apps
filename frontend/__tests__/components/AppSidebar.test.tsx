@@ -43,4 +43,9 @@ describe('AppSidebar', () => {
     renderSidebar()
     expect(screen.getAllByText('admin').length).toBeGreaterThan(0)
   })
+
+  it('renders brand logo image from assets', () => {
+    renderSidebar()
+    expect(screen.getByAltText('ICS logo')).toBeInTheDocument()
+  })
 })

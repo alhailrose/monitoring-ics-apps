@@ -356,12 +356,18 @@ export function TerminalPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const envName = (process.env.NEXT_PUBLIC_APP_ENV ?? process.env.NODE_ENV ?? 'development').toUpperCase()
+  const isProd = envName === 'PRODUCTION' || envName === 'PROD'
+
   return (
     <div className="relative flex flex-col h-full">
       {/* Top bar */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/50 bg-muted/20 shrink-0">
         <span className="text-xs font-mono text-muted-foreground">bash — server</span>
         <div className="flex items-center gap-2">
+          <Badge className={isProd ? 'text-[10px] h-5 px-2 bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'text-[10px] h-5 px-2 bg-amber-500/10 text-amber-300 border-amber-500/20'}>
+            {isProd ? 'PROD' : 'DEV'}
+          </Badge>
           <StatusBadge status={status} />
           <Button
             size="sm"
