@@ -6,6 +6,13 @@ import '@xterm/xterm/css/xterm.css'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { RefreshIcon, Cancel01Icon, MinusSignIcon, ArrowUp01Icon, InformationCircleIcon, Copy01Icon } from '@hugeicons/core-free-icons'
 import { cn } from '@/lib/utils'
@@ -67,8 +74,8 @@ function LoginHint({ autoExpand = false }: { autoExpand?: boolean }) {
         apiFetch<{ login_session_profiles: string[] }>('/profiles/login-session-profiles', { token }),
       ]))
       .then(([sso, login]) => {
-        setSsoSessions(sso.sso_sessions)
-        setLoginProfiles(login.login_session_profiles)
+        setSsoSessions(Array.isArray(sso?.sso_sessions) ? sso.sso_sessions : [])
+        setLoginProfiles(Array.isArray(login?.login_session_profiles) ? login.login_session_profiles : [])
       })
       .catch(() => {})
   }, [])
@@ -76,78 +83,81 @@ function LoginHint({ autoExpand = false }: { autoExpand?: boolean }) {
   const hasAny = ssoSessions.length > 0 || loginProfiles.length > 0
 
   return (
-    <div className="border-b border-border/30 bg-[#0d1117] text-xs select-none">
+    <>
       <button
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 w-full px-3 py-1.5 text-slate-300 hover:text-white transition-colors"
+        className="inline-flex items-center gap-1.5 rounded border border-sky-500/30 bg-sky-950/20 px-2 py-1 text-[11px] text-sky-300 hover:text-sky-200 transition-colors"
       >
         <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-3.5 shrink-0 text-sky-400" />
-        <span className="font-semibold tracking-wide">AWS Login</span>
-        {autoExpand && !open && (
-          <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-400 font-medium">
-            Setup diperlukan
-          </span>
-        )}
-        <span className="ml-auto text-slate-500 text-[10px]">{open ? '▲' : '▼'}</span>
+        <span className="font-semibold tracking-wide">SSO Login detected</span>
+        <span className="text-[10px] underline underline-offset-2">View details</span>
       </button>
 
-      {open && (
-        <div className="px-3 pb-3 space-y-3">
-          {autoExpand && (
-            <div className="rounded border border-sky-500/20 bg-sky-950/30 px-3 py-2">
-              <p className="text-sky-300 font-semibold mb-0.5">Selamat datang! Setup AWS pertama kali:</p>
-              <p className="text-slate-400">
-                Jalankan salah satu perintah di bawah di terminal untuk login ke AWS.
-                Buka URL yang muncul di browser, masukkan kode verifikasi, lalu kembali ke terminal.
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="right" className="bg-[#0d1117] text-slate-100 border-border/60">
+          <SheetHeader>
+            <SheetTitle>AWS Login</SheetTitle>
+            <SheetDescription>
+              Login helper ini tidak menutup area terminal, jadi kamu tetap bisa scroll dan mengetik command.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="px-6 pb-6 space-y-3 text-xs">
+            {autoExpand && (
+              <div className="rounded border border-sky-500/20 bg-sky-950/30 px-3 py-2">
+                <p className="text-sky-300 font-semibold mb-0.5">Setup AWS pertama kali:</p>
+                <p className="text-slate-400">
+                  Jalankan salah satu perintah di bawah di terminal. Buka URL dari output browser login, masukkan kode verifikasi, lalu kembali ke terminal.
+                </p>
+              </div>
+            )}
+
+            {!hasAny && (
+              <p className="text-amber-400/80 italic">
+                ~/.aws/config belum ada atau tidak ada sso-session / login_session profile.
+                Hubungi admin untuk setup config.
               </p>
-            </div>
-          )}
+            )}
 
-          {!hasAny && (
-            <p className="text-amber-400/80 italic">
-              ~/.aws/config belum ada atau tidak ada sso-session / login_session profile.
-              Hubungi admin untuk setup config.
-            </p>
-          )}
+            {ssoSessions.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-slate-400">
+                  <span className="text-emerald-400 font-semibold">SSO session</span>
+                  {' '}— salin perintah dan jalankan di terminal.
+                </p>
+                {ssoSessions.map(s => (
+                  <CopyableCommand key={s} cmd={`aws sso login --sso-session ${s} --use-device-code`} color="emerald" />
+                ))}
+              </div>
+            )}
 
-          {ssoSessions.length > 0 && (
+            {loginProfiles.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-slate-400">
+                  <span className="text-violet-400 font-semibold">login_session profile</span>
+                  {' '}— salin perintah dan jalankan di terminal.
+                </p>
+                {loginProfiles.map(p => (
+                  <CopyableCommand key={p} cmd={`aws login --remote --profile ${p}`} color="violet" />
+                ))}
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <p className="text-slate-400">
-                <span className="text-emerald-400 font-semibold">SSO session</span>
-                {' '}— salin perintah, jalankan di terminal, buka URL di browser lalu masukkan kodenya.
+                <span className="text-amber-300 font-semibold">Access key profile</span>
+                {' '}— jika tidak pakai SSO, buat profile access key.
               </p>
-              {ssoSessions.map(s => (
-                <CopyableCommand key={s} cmd={`aws sso login --sso-session ${s} --use-device-code`} color="emerald" />
-              ))}
+              <CopyableCommand cmd="aws configure --profile monitoring" color="emerald" />
             </div>
-          )}
-
-          {loginProfiles.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-slate-400">
-                <span className="text-violet-400 font-semibold">login_session profile</span>
-                {' '}— jalankan di terminal, buka URL di browser, lalu paste kode balik ke terminal.
-              </p>
-              {loginProfiles.map(p => (
-                <CopyableCommand key={p} cmd={`aws login --remote --profile ${p}`} color="violet" />
-              ))}
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <p className="text-slate-400">
-              <span className="text-amber-300 font-semibold">Access key profile</span>
-              {' '}— kalau tidak pakai SSO, buat profile dengan access key di terminal.
-            </p>
-            <CopyableCommand cmd="aws configure --profile monitoring" color="emerald" />
           </div>
-        </div>
-      )}
-    </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }
 
-type Status = 'connecting' | 'connected' | 'disconnected'
+type Status = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'failed'
 
 function StatusDot({ status }: { status: Status }) {
   return (
@@ -155,11 +165,14 @@ function StatusDot({ status }: { status: Status }) {
       className={cn('inline-block size-2 rounded-full shrink-0', {
         'bg-yellow-400 animate-pulse': status === 'connecting',
         'bg-green-400': status === 'connected',
-        'bg-red-400': status === 'disconnected',
+        'bg-orange-400 animate-pulse': status === 'reconnecting',
+        'bg-red-400': status === 'disconnected' || status === 'failed',
       })}
     />
   )
 }
+
+const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 5000, 5000]
 
 const DEFAULT_HEIGHT = 460
 const MIN_HEIGHT = 200
@@ -168,6 +181,8 @@ const MAX_HEIGHT = 800
 export function TerminalDrawer() {
   const { open, hide } = useTerminal()
   const [status, setStatus] = useState<Status>('connecting')
+  const [retryAttempt, setRetryAttempt] = useState(0)
+  const [retryInSec, setRetryInSec] = useState<number | null>(null)
   const [height, setHeight] = useState(DEFAULT_HEIGHT)
   const [minimized, setMinimized] = useState(false)
   const [firstSession, setFirstSession] = useState(false)
@@ -183,6 +198,23 @@ export function TerminalDrawer() {
   const activeTokenRef = useRef<string | null>(null)
   const outputBufferRef = useRef('')
   const viewportCleanupRef = useRef<(() => void) | null>(null)
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectTickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reconnectAttemptRef = useRef(0)
+  const connectInFlightRef = useRef(false)
+  const unmountedRef = useRef(false)
+
+  const clearReconnectTimers = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+    if (reconnectTickRef.current) {
+      clearInterval(reconnectTickRef.current)
+      reconnectTickRef.current = null
+    }
+    setRetryInSec(null)
+  }, [])
 
   useEffect(() => {
     autoFollowRef.current = autoFollow
@@ -249,10 +281,17 @@ export function TerminalDrawer() {
 
   // ── Connect ────────────────────────────────────────────────────────────────
   const connect = useCallback(async () => {
+    if (connectInFlightRef.current || unmountedRef.current) return
+    connectInFlightRef.current = true
+    clearReconnectTimers()
     setStatus('connecting')
 
     const token = await fetchTerminalToken()
-    if (!token) { setStatus('disconnected'); return }
+    if (!token) {
+      setStatus('failed')
+      connectInFlightRef.current = false
+      return
+    }
     activeTokenRef.current = token
 
     const { Terminal } = await import('@xterm/xterm')
@@ -261,7 +300,11 @@ export function TerminalDrawer() {
 
     // Dispose previous instances
     if (termRef.current) { termRef.current.dispose(); termRef.current = null }
-    if (wsRef.current) { wsRef.current.close(); wsRef.current = null }
+    if (wsRef.current) {
+      ;(wsRef.current as WebSocket & { __manualClose?: boolean }).__manualClose = true
+      wsRef.current.close()
+      wsRef.current = null
+    }
     if (viewportCleanupRef.current) { viewportCleanupRef.current(); viewportCleanupRef.current = null }
     outputBufferRef.current = ''
     setAutoFollow(true)
@@ -329,8 +372,50 @@ export function TerminalDrawer() {
     ws.binaryType = 'arraybuffer'
     wsRef.current = ws
 
+    let dropped = false
+    const handleDrop = (reason: 'closed' | 'error') => {
+      if (dropped || unmountedRef.current) return
+      dropped = true
+
+      const wsTyped = ws as WebSocket & { __manualClose?: boolean }
+      if (wsTyped.__manualClose) return
+
+      setStatus('disconnected')
+      term.write(`\r\n\x1b[31m[Connection ${reason}]\x1b[0m\r\n`)
+
+      if (!open) return
+
+      const nextAttempt = reconnectAttemptRef.current + 1
+      if (nextAttempt > RECONNECT_DELAYS_MS.length) {
+        setStatus('failed')
+        setRetryInSec(null)
+        return
+      }
+
+      reconnectAttemptRef.current = nextAttempt
+      setRetryAttempt(nextAttempt)
+      const delay = RECONNECT_DELAYS_MS[nextAttempt - 1]
+      setStatus('reconnecting')
+      setRetryInSec(Math.ceil(delay / 1000))
+
+      reconnectTickRef.current = setInterval(() => {
+        setRetryInSec((prev) => {
+          if (prev == null) return prev
+          return prev > 0 ? prev - 1 : 0
+        })
+      }, 1000)
+
+      reconnectTimeoutRef.current = setTimeout(() => {
+        clearReconnectTimers()
+        void connect()
+      }, delay)
+    }
+
     ws.onopen = () => {
       setStatus('connected')
+      reconnectAttemptRef.current = 0
+      setRetryAttempt(0)
+      clearReconnectTimers()
       // Sync backend PTY size immediately; otherwise it stays at default 80x24
       // until a manual resize event happens.
       if (ws.readyState === WebSocket.OPEN) {
@@ -363,14 +448,8 @@ export function TerminalDrawer() {
         }
       })
     }
-    ws.onclose = () => {
-      setStatus('disconnected')
-      term.write('\r\n\x1b[31m[Connection closed]\x1b[0m\r\n')
-    }
-    ws.onerror = () => {
-      setStatus('disconnected')
-      term.write('\r\n\x1b[31m[Connection error]\x1b[0m\r\n')
-    }
+    ws.onclose = () => handleDrop('closed')
+    ws.onerror = () => handleDrop('error')
 
     term.onData((data) => { if (ws.readyState === WebSocket.OPEN) ws.send(data) })
     term.onSelectionChange(() => {
@@ -409,7 +488,8 @@ export function TerminalDrawer() {
       }
       return true
     })
-  }, [fetchTerminalToken])
+    connectInFlightRef.current = false
+  }, [fetchTerminalToken, clearReconnectTimers, open])
 
   // ── Connect on first open ──────────────────────────────────────────────────
   useEffect(() => {
@@ -436,10 +516,21 @@ export function TerminalDrawer() {
     return () => { cancelled = true }
   }, [open, connect, fetchTerminalToken])
 
+  useEffect(() => {
+    if (open) return
+    clearReconnectTimers()
+    if (wsRef.current) {
+      ;(wsRef.current as WebSocket & { __manualClose?: boolean }).__manualClose = true
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    setStatus('disconnected')
+  }, [open, clearReconnectTimers])
+
   // ── ResizeObserver — fit whenever container dimensions actually change ──────
   useEffect(() => {
     const el = containerRef.current
-    if (!el) return
+    if (!el || typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver(() => {
       if (fitAddonRef.current && !minimized) fitAddonRef.current.fit()
     })
@@ -449,12 +540,25 @@ export function TerminalDrawer() {
 
   // ── Cleanup on unmount ─────────────────────────────────────────────────────
   useEffect(() => {
+    unmountedRef.current = false
     return () => {
+      unmountedRef.current = true
+      clearReconnectTimers()
       wsRef.current?.close()
       termRef.current?.dispose()
       viewportCleanupRef.current?.()
     }
-  }, [])
+  }, [clearReconnectTimers])
+
+  const statusLabel = status === 'reconnecting'
+    ? `Reconnecting ${retryAttempt}/${RECONNECT_DELAYS_MS.length}${retryInSec != null ? ` in ${retryInSec}s` : ''}`
+    : status === 'connected'
+      ? 'Connected'
+      : status === 'connecting'
+        ? 'Connecting'
+        : status === 'failed'
+          ? 'Failed'
+          : 'Disconnected'
 
   // Always render — use CSS to show/hide so xterm DOM is never destroyed
   return (
@@ -479,19 +583,28 @@ export function TerminalDrawer() {
       {/* Title bar */}
       <div className="flex items-center gap-2 px-3 h-9 shrink-0 border-b border-border/30 bg-[#111111] select-none">
         <StatusDot status={status} />
-        <span className="text-xs font-mono text-muted-foreground flex-1">bash — server</span>
+        <span className="text-xs font-mono text-muted-foreground">bash — server</span>
+        <span className="text-[11px] text-muted-foreground/80">{statusLabel}</span>
+        <div className="ml-auto" />
 
-        {status === 'disconnected' && !minimized && (
+        {(status === 'disconnected' || status === 'reconnecting' || status === 'failed') && !minimized && (
           <Button
             size="sm"
             variant="ghost"
             className="h-6 text-xs px-2 text-muted-foreground hover:text-foreground"
-            onClick={connect}
+            onClick={() => {
+              reconnectAttemptRef.current = 0
+              setRetryAttempt(0)
+              clearReconnectTimers()
+              void connect()
+            }}
           >
             <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} className="size-3 mr-1" />
-            Reconnect
+            Reconnect now
           </Button>
         )}
+
+        {!minimized && <LoginHint autoExpand={firstSession} />}
 
         {!minimized && (
           <button
@@ -551,9 +664,6 @@ export function TerminalDrawer() {
           <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} className="size-3.5" />
         </button>
       </div>
-
-      {/* AWS SSO login hint — only when expanded */}
-      {!minimized && <LoginHint autoExpand={firstSession} />}
 
       {/* xterm container — always in DOM, hidden via CSS when minimized */}
       <div

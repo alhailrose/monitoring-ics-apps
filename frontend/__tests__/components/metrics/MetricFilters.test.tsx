@@ -9,9 +9,9 @@ jest.mock('next/navigation', () => ({
 }))
 
 describe('MetricFilters', () => {
-  it('renders status select', () => {
+  it('renders time range select', () => {
     render(<MetricFilters customerId="cust-1" />)
-    expect(screen.getByLabelText('Filter by status')).toBeInTheDocument()
+    expect(screen.getByLabelText('Time range')).toBeInTheDocument()
   })
 
   it('renders check select', () => {

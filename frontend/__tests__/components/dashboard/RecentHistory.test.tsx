@@ -35,10 +35,10 @@ describe('RecentHistory', () => {
     expect(screen.getByText('guardduty')).toBeInTheDocument()
   })
 
-  it('renders check mode', () => {
+  it('renders run dates', () => {
     render(<RecentHistory runs={mockRuns} />)
-    expect(screen.getByText(/specific/)).toBeInTheDocument()
-    expect(screen.getAllByText(/\ball\b/).length).toBeGreaterThan(0)
+    expect(screen.getByText('15 Jan, 17:30')).toBeInTheDocument()
+    expect(screen.getByText('14 Jan, 15:00')).toBeInTheDocument()
   })
 
   it('renders result status counts', () => {

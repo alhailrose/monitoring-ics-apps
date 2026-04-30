@@ -11,6 +11,7 @@ jest.mock('@/app/(auth)/login/actions', () => ({
 // Mock next/navigation (used transitively)
 jest.mock('next/navigation', () => ({
   redirect: jest.fn(),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 describe('LoginForm', () => {

@@ -3,6 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { CustomerList } from '@/components/customers/CustomerList'
 import type { Customer } from '@/lib/types/api'
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}))
+
 jest.mock('@/app/(dashboard)/customers/actions', () => ({
   createCustomer: jest.fn(),
   updateCustomer: jest.fn(),
@@ -129,9 +133,9 @@ describe('CustomerList', () => {
     expect(screen.getByRole('button', { name: /new customer/i })).toBeInTheDocument()
   })
 
-  it('shows Slack badge for slack-enabled customers', () => {
+  it('does not render legacy Slack badge', () => {
     render(<CustomerList customers={mockCustomers} role="user" />)
-    expect(screen.getByText('Slack')).toBeInTheDocument()
+    expect(screen.queryByText('Slack')).not.toBeInTheDocument()
   })
 
   it('renders without errors when customers have accounts', () => {

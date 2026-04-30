@@ -2,12 +2,16 @@ import { render, screen } from '@testing-library/react'
 import { AuthModeBadge } from '@/components/common/AuthModeBadge'
 
 describe('AuthModeBadge', () => {
-  const modes = ['profile', 'access_key', 'assumed_role'] as const
+  const cases = [
+    { mode: 'profile' as const, label: 'Profile' },
+    { mode: 'access_key' as const, label: 'Access Key' },
+    { mode: 'assumed_role' as const, label: 'Assumed Role' },
+  ]
 
-  modes.forEach((mode) => {
+  cases.forEach(({ mode, label }) => {
     it(`renders ${mode}`, () => {
       render(<AuthModeBadge mode={mode} />)
-      expect(screen.getByRole('generic')).toBeInTheDocument()
+      expect(screen.getByText(label)).toBeInTheDocument()
     })
   })
 })

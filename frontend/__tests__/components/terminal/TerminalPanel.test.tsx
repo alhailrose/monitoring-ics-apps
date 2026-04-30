@@ -27,6 +27,11 @@ const mockLoadAddon = jest.fn()
 const mockDispose = jest.fn()
 const mockOnData = jest.fn()
 const mockOnResize = jest.fn()
+const mockOnSelectionChange = jest.fn()
+const mockHasSelection = jest.fn().mockReturnValue(false)
+const mockGetSelection = jest.fn().mockReturnValue('')
+const mockScrollToBottom = jest.fn()
+const mockAttachCustomKeyEventHandler = jest.fn()
 
 jest.mock('@xterm/xterm', () => ({
   Terminal: jest.fn().mockImplementation(() => ({
@@ -36,6 +41,11 @@ jest.mock('@xterm/xterm', () => ({
     dispose: mockDispose,
     onData: mockOnData,
     onResize: mockOnResize,
+    onSelectionChange: mockOnSelectionChange,
+    hasSelection: mockHasSelection,
+    getSelection: mockGetSelection,
+    scrollToBottom: mockScrollToBottom,
+    attachCustomKeyEventHandler: mockAttachCustomKeyEventHandler,
   })),
 }))
 
@@ -91,6 +101,14 @@ function renderOpenDrawer() {
   }
 }
 
+async function flushEffects() {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -106,48 +124,56 @@ beforeEach(() => {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('TerminalDrawer', () => {
-  it('is hidden (aria-hidden) when closed', () => {
+  it('is hidden (aria-hidden) when closed', async () => {
     const ctx = { open: false, toggle: jest.fn(), show: jest.fn(), hide: jest.fn() }
     const { container } = render(
       <TerminalContext.Provider value={ctx}>
         <TerminalDrawer />
       </TerminalContext.Provider>,
     )
+    await flushEffects()
     // Drawer is always mounted but aria-hidden when closed
     expect(container.firstChild).toHaveAttribute('aria-hidden', 'true')
   })
 
   it('shows title bar when open', async () => {
     renderOpenDrawer()
-    await act(async () => { await Promise.resolve() })
+    await flushEffects()
     expect(screen.getByText('bash — server')).toBeInTheDocument()
   })
 
   it('does not show Reconnect button when connecting or connected', async () => {
     renderOpenDrawer()
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await flushEffects()
     await act(async () => { wsInstance?.onopen?.(new Event('open')) })
     expect(screen.queryByText('Reconnect')).not.toBeInTheDocument()
   })
 
   it('shows Reconnect button after ws.onclose fires', async () => {
     renderOpenDrawer()
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await flushEffects()
     await act(async () => { wsInstance?.onclose?.(new CloseEvent('close')) })
-    expect(screen.getByText('Reconnect')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Reconnect now/i })).toBeInTheDocument()
+    expect(screen.getByText(/Reconnecting|Disconnected|Failed/i)).toBeInTheDocument()
+  })
+
+  it('shows compact SSO hint and details trigger when SSO output detected', async () => {
+    renderOpenDrawer()
+    await flushEffects()
+
+    await act(async () => {
+      wsInstance?.onmessage?.({
+        data: 'Open the browser to https://device.sso.ap-southeast-3.amazonaws.com/ and enter code ABCD-EFGH',
+      } as unknown as MessageEvent)
+    })
+
+    expect(screen.getByText(/SSO Login detected/i)).toBeInTheDocument()
+    expect(screen.getByText(/View details/i)).toBeInTheDocument()
   })
 
   it('close button calls hide()', async () => {
     const { ctx } = renderOpenDrawer()
-    await act(async () => { await Promise.resolve() })
+    await flushEffects()
     await act(async () => {
       await userEvent.click(screen.getByLabelText('Close terminal'))
     })
@@ -156,7 +182,7 @@ describe('TerminalDrawer', () => {
 
   it('minimize button toggles label', async () => {
     renderOpenDrawer()
-    await act(async () => { await Promise.resolve() })
+    await flushEffects()
     const minBtn = screen.getByLabelText('Minimize terminal')
     await act(async () => { await userEvent.click(minBtn) })
     expect(screen.getByLabelText('Expand terminal')).toBeInTheDocument()
