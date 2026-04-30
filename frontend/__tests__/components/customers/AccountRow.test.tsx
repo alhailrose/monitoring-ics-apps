@@ -55,10 +55,10 @@ describe('AccountRow', () => {
         onDetails={noop}
       />,
     )
-    expect(screen.getByText('sso')).toBeInTheDocument()
+    expect(screen.getByText('Profile')).toBeInTheDocument()
   })
 
-  it('does not show actions menu for user role', () => {
+  it('shows details action for user role', () => {
     render(
       <AccountRow
         account={mockAccount}
@@ -69,8 +69,7 @@ describe('AccountRow', () => {
         onDetails={noop}
       />,
     )
-    // No dropdown trigger button for non-super_user
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByRole('button')).toBeInTheDocument()
   })
 
   it('shows actions dropdown trigger for super_user role', () => {
@@ -87,7 +86,7 @@ describe('AccountRow', () => {
     expect(screen.getByRole('button')).toBeInTheDocument()
   })
 
-  it('applies opacity class when account is inactive', () => {
+  it('does not dim row when account is inactive', () => {
     const inactive = { ...mockAccount, is_active: false }
     const { container } = render(
       <AccountRow
@@ -99,7 +98,7 @@ describe('AccountRow', () => {
         onDetails={noop}
       />,
     )
-    expect(container.firstChild).toHaveClass('opacity-45')
+    expect(container.firstChild).not.toHaveClass('opacity-45')
   })
 
   it('shows inactive label when account is not active', () => {
